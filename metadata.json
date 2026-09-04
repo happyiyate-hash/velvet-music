@@ -1,0 +1,6 @@
+{
+  "name": "Velvet",
+  "description": "Dark. Ambient. Fluid Audio. A minimalist, luxury music app with dynamic audio-reactive background motion and time-synced lyrics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

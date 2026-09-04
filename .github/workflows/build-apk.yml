@@ -1,0 +1,97 @@
+name: Build and Release Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Publish as a GitHub Release (direct 1-tap APK download on phone)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Signing and Configuration
+        run: |
+          chmod +x gradlew
+
+          # Restore debug keystore from base64 if present
+          if [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+            echo "Restored debug.keystore successfully."
+          fi
+
+          # Ensure .env exists for Secrets Gradle Plugin
+          if [ ! -f ".env" ]; then
+            if [ -f ".env.example" ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
+            echo "Prepared .env configuration file."
+          fi
+
+      - name: Build Debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Package APK for Distribution
+        run: |
+          mkdir -p build-apks
+          cp app/build/outputs/apk/debug/app-debug.apk build-apks/Velvet-Music.apk
+          echo "APK generated: build-apks/Velvet-Music.apk"
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Velvet-Music-APK
+          path: build-apks/Velvet-Music.apk
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && format('Velvet Music {0}', github.ref_name) || format('Velvet Music (Build #{0})', github.run_number) }}
+          body: |
+            ### Velvet Music Android APK
+            
+            Install directly on your Android device:
+            1. Download `Velvet-Music.apk` below directly to your Android device.
+            2. Tap the downloaded file and select **Install**.
+            3. If prompted by Android, enable **Allow from this source** in settings.
+          files: build-apks/Velvet-Music.apk
+          draft: false
+          prerelease: false
