@@ -44,10 +44,16 @@ jobs:
         run: |
           chmod +x gradlew
 
-          # Restore debug keystore from base64 if present
+          # Ensure debug.keystore exists for debugConfig signing
           if [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore
-            echo "Restored debug.keystore successfully."
+            echo "Restored debug.keystore from base64."
+          fi
+
+          if [ ! -f "debug.keystore" ]; then
+            echo "debug.keystore not found. Generating standard debug keystore using keytool..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            echo "Generated debug.keystore successfully."
           fi
 
           # Ensure .env exists for Secrets Gradle Plugin
