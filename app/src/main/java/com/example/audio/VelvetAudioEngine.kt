@@ -1,8 +1,11 @@
 package com.example.audio
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import com.example.media.ArtworkColorExtractor
+import com.example.media.VelvetMediaSessionManager
 import com.example.model.SampleData
 import com.example.model.Track
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +33,8 @@ data class AudioTelemetry(
 class VelvetAudioEngine(
     private val scope: CoroutineScope
 ) {
+    private var appContext: Context? = null
+
     private val _currentTrack = MutableStateFlow<Track>(SampleData.trackAfterHours)
     val currentTrack: StateFlow<Track> = _currentTrack.asStateFlow()
 
@@ -54,6 +59,23 @@ class VelvetAudioEngine(
     private val _offlineCachedTrackIds = MutableStateFlow(setOf("track_1", "track_2"))
     val offlineCachedTrackIds: StateFlow<Set<String>> = _offlineCachedTrackIds.asStateFlow()
 
+    private val _trackPlayCounts = MutableStateFlow<Map<String, Int>>(
+        mapOf("track_1" to 5, "track_2" to 3, "track_3" to 2, "rel_1" to 1)
+    )
+    val trackPlayCounts: StateFlow<Map<String, Int>> = _trackPlayCounts.asStateFlow()
+
+    private val _favoriteTrackIds = MutableStateFlow(setOf("track_1", "rel_1"))
+    val favoriteTrackIds: StateFlow<Set<String>> = _favoriteTrackIds.asStateFlow()
+
+    private val _nextQueueTrack = MutableStateFlow<Track?>(null)
+    val nextQueueTrack: StateFlow<Track?> = _nextQueueTrack.asStateFlow()
+
+    private val _deviceTracks = MutableStateFlow<List<Track>>(emptyList())
+    val deviceTracks: StateFlow<List<Track>> = _deviceTracks.asStateFlow()
+
+    private val _deletedTrackIds = MutableStateFlow<Set<String>>(emptySet())
+    val deletedTrackIds: StateFlow<Set<String>> = _deletedTrackIds.asStateFlow()
+
     private var playbackJob: Job? = null
     private var synthJob: Job? = null
     private var nativeAudioTrack: AudioTrack? = null
@@ -62,12 +84,71 @@ class VelvetAudioEngine(
         startTelemetryLoop()
     }
 
+    fun bindMediaSession(context: Context) {
+        this.appContext = context.applicationContext
+        VelvetMediaSessionManager.initialize(context)
+        VelvetMediaSessionManager.onPlayAction = { resume() }
+        VelvetMediaSessionManager.onPauseAction = { pause() }
+        VelvetMediaSessionManager.onNextAction = { playNext() }
+        VelvetMediaSessionManager.onPreviousAction = { playPrevious() }
+        VelvetMediaSessionManager.onSeekAction = { pos -> seekTo(pos) }
+        updateMediaSession()
+    }
+
+    private fun updateMediaSession() {
+        val ctx = appContext ?: return
+        VelvetMediaSessionManager.updatePlaybackState(
+            context = ctx,
+            track = _currentTrack.value,
+            isPlaying = _isPlaying.value,
+            playbackPositionMs = _playbackPositionMs.value
+        )
+    }
+
+    fun setDeviceTracks(tracks: List<Track>) {
+        _deviceTracks.value = tracks
+    }
+
     fun playTrack(track: Track) {
-        _currentTrack.value = track
+        // Dynamically extract vibrant artwork color so the whole background reflects this song's picture!
+        val ctx = appContext
+        val themedTrack = if (ctx != null) {
+            val colors = ArtworkColorExtractor.extractColors(ctx, track)
+            track.copy(dominantColor = colors.dominant, secondaryColor = colors.secondary)
+        } else {
+            track
+        }
+
+        _currentTrack.value = themedTrack
         _playbackPositionMs.value = 0L
         _isPlaying.value = true
+
+        // Increment track play count so user's most-played habits update immediately
+        val counts = _trackPlayCounts.value.toMutableMap()
+        counts[themedTrack.id] = (counts[themedTrack.id] ?: 0) + 1
+        _trackPlayCounts.value = counts
+
         startPlaybackProgress()
         startAudioSynthesis()
+        updateMediaSession()
+    }
+
+    fun queueNext(track: Track) {
+        _nextQueueTrack.value = track
+    }
+
+    fun toggleFavorite(trackId: String) {
+        val current = _favoriteTrackIds.value.toMutableSet()
+        if (current.contains(trackId)) {
+            current.remove(trackId)
+        } else {
+            current.add(trackId)
+        }
+        _favoriteTrackIds.value = current
+    }
+
+    fun deleteTrack(trackId: String) {
+        _deletedTrackIds.value = _deletedTrackIds.value + trackId
     }
 
     fun togglePlayPause() {
@@ -81,17 +162,20 @@ class VelvetAudioEngine(
     fun pause() {
         _isPlaying.value = false
         stopAudioSynthesis()
+        updateMediaSession()
     }
 
     fun resume() {
         _isPlaying.value = true
         startPlaybackProgress()
         startAudioSynthesis()
+        updateMediaSession()
     }
 
     fun seekTo(positionMs: Long) {
         val duration = _currentTrack.value.durationMs
         _playbackPositionMs.value = positionMs.coerceIn(0L, duration)
+        updateMediaSession()
     }
 
     fun toggleShuffle() {
@@ -117,34 +201,62 @@ class VelvetAudioEngine(
     }
 
     fun playNext() {
-        val all = SampleData.recentlyPlayedTracks + SampleData.newReleases
+        val queued = _nextQueueTrack.value
+        if (queued != null) {
+            _nextQueueTrack.value = null
+            playTrack(queued)
+            return
+        }
+        val all = getAllAvailableTracks()
         val currentIndex = all.indexOfFirst { it.id == _currentTrack.value.id }
         val nextIndex = if (currentIndex != -1 && currentIndex < all.lastIndex) currentIndex + 1 else 0
-        playTrack(all[nextIndex])
+        if (all.isNotEmpty()) {
+            playTrack(all[nextIndex])
+        }
+    }
+
+    fun getAllAvailableTracks(): List<Track> {
+        val deleted = _deletedTrackIds.value
+        return (SampleData.recentlyPlayedTracks + SampleData.newReleases + _deviceTracks.value)
+            .distinctBy { it.id }
+            .filterNot { deleted.contains(it.id) }
     }
 
     fun playPrevious() {
-        val all = SampleData.recentlyPlayedTracks + SampleData.newReleases
+        val all = getAllAvailableTracks()
         val currentIndex = all.indexOfFirst { it.id == _currentTrack.value.id }
-        val prevIndex = if (currentIndex > 0) currentIndex - 1 else all.lastIndex
-        playTrack(all[prevIndex])
+        val prevIndex = if (currentIndex > 0) currentIndex - 1 else if (all.isNotEmpty()) all.lastIndex else 0
+        if (all.isNotEmpty()) {
+            playTrack(all[prevIndex])
+        }
     }
 
     private fun startPlaybackProgress() {
         playbackJob?.cancel()
         playbackJob = scope.launch(Dispatchers.Default) {
+            var lastTime = System.currentTimeMillis()
+            var syncTick = 0
             while (isActive && _isPlaying.value) {
-                delay(100L)
-                val current = _playbackPositionMs.value + 100L
+                delay(200L)
+                val now = System.currentTimeMillis()
+                val delta = now - lastTime
+                lastTime = now
+                val current = _playbackPositionMs.value + delta
                 val max = _currentTrack.value.durationMs
                 if (current >= max) {
                     if (_isRepeat.value) {
                         _playbackPositionMs.value = 0L
+                        lastTime = System.currentTimeMillis()
                     } else {
                         playNext()
                     }
                 } else {
                     _playbackPositionMs.value = current
+                }
+
+                syncTick++
+                if (syncTick % 5 == 0) {
+                    updateMediaSession()
                 }
             }
         }

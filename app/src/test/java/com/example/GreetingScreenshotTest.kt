@@ -28,7 +28,9 @@ class GreetingScreenshotTest {
         HomeFeedScreen(
           currentTrack = SampleData.trackAfterHours,
           isPlaying = false,
-          onSelectMix = {},
+          allTracks = SampleData.recentlyPlayedTracks,
+          mostPlayedTracks = SampleData.recentlyPlayedTracks,
+          recentlyAddedTracks = SampleData.newReleases,
           onSelectTrack = {},
           onOpenSearch = {},
           onOpenSettings = {},

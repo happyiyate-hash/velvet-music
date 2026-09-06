@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,15 +64,19 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
 import kotlinx.coroutines.launch
 import com.example.audio.VelvetAudioEngine
+import com.example.media.DeviceMediaManager
 import com.example.mesh.SoundCatchMeshBackground
+import com.example.model.SampleData
 import com.example.model.Track
 import com.example.ui.theme.VelvetActiveGlow
 import com.example.ui.theme.VelvetAshGray
@@ -96,6 +101,7 @@ fun VelvetApp() {
     val coroutineScope = rememberCoroutineScope()
     val audioEngine = remember { VelvetAudioEngine(coroutineScope) }
 
+    val context = LocalContext.current
     val currentTrack by audioEngine.currentTrack.collectAsState()
     val isPlaying by audioEngine.isPlaying.collectAsState()
     val playbackPositionMs by audioEngine.playbackPositionMs.collectAsState()
@@ -104,6 +110,36 @@ fun VelvetApp() {
     val isShuffle by audioEngine.isShuffle.collectAsState()
     val isRepeat by audioEngine.isRepeat.collectAsState()
     val offlineCachedIds by audioEngine.offlineCachedTrackIds.collectAsState()
+    val trackPlayCounts by audioEngine.trackPlayCounts.collectAsState()
+    val favoriteTrackIds by audioEngine.favoriteTrackIds.collectAsState()
+    val deviceTracks by audioEngine.deviceTracks.collectAsState()
+    val deletedTrackIds by audioEngine.deletedTrackIds.collectAsState()
+
+    // Initialize media session lock screen controls and query device audio files upon launch
+    LaunchedEffect(Unit) {
+        audioEngine.bindMediaSession(context)
+        val loaded = DeviceMediaManager.loadDeviceTracks(context)
+        if (loaded.isNotEmpty()) {
+            audioEngine.setDeviceTracks(loaded)
+        }
+    }
+
+    // Combined tracks (device audio + curated catalog minus deleted tracks)
+    val allTracks = remember(deviceTracks, deletedTrackIds) {
+        (SampleData.recentlyPlayedTracks + SampleData.newReleases + deviceTracks)
+            .distinctBy { it.id }
+            .filterNot { deletedTrackIds.contains(it.id) }
+    }
+
+    // Most played tracks (user likes playing all the time: 1, 2, 3+ times, ranked live)
+    val mostPlayedTracks = remember(allTracks, trackPlayCounts) {
+        allTracks.sortedByDescending { trackPlayCounts[it.id] ?: it.playCount }
+    }
+
+    // Recently added tracks (sorted by dateAddedMs)
+    val recentlyAddedTracks = remember(allTracks) {
+        allTracks.sortedByDescending { it.dateAddedMs }
+    }
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
@@ -142,12 +178,11 @@ fun VelvetApp() {
                     0 -> HomeFeedScreen(
                         currentTrack = currentTrack,
                         isPlaying = isPlaying,
-                        onSelectMix = { mix ->
-                            audioEngine.playTrack(mix.tracks.first())
-                        },
-                        onSelectTrack = { track ->
-                            audioEngine.playTrack(track)
-                        },
+                        allTracks = allTracks,
+                        mostPlayedTracks = mostPlayedTracks,
+                        recentlyAddedTracks = recentlyAddedTracks,
+                        playCounts = trackPlayCounts,
+                        onSelectTrack = { track -> audioEngine.playTrack(track) },
                         onOpenSearch = { selectedTab = 1 },
                         onOpenSettings = { isSettingsOpen = true },
                         onOpenNotifications = { isProTierOpen = true },
@@ -161,13 +196,7 @@ fun VelvetApp() {
                         onTrackMenuClick = { track -> actionSheetTrack = track }
                     )
 
-                    2 -> IndiePortalScreen(
-                        currentTrack = currentTrack,
-                        isPlaying = isPlaying,
-                        offlineCachedIds = offlineCachedIds,
-                        onSelectTrack = { track -> audioEngine.playTrack(track) },
-                        onTrackMenuClick = { track -> actionSheetTrack = track }
-                    )
+                    2 -> VideoLibraryScreen()
                 }
 
                 // Mini Player Bar (rests directly above the curved ash glass bottom bar when active)
@@ -255,7 +284,22 @@ fun VelvetApp() {
             TrackActionBottomSheet(
                 track = track,
                 isCached = offlineCachedIds.contains(track.id),
+                isFavorite = favoriteTrackIds.contains(track.id),
                 onPlayNow = { audioEngine.playTrack(track) },
+                onPlayNext = {
+                    audioEngine.queueNext(track)
+                    Toast.makeText(context, "Playing next: ${track.title.substringBefore(" - ")}", Toast.LENGTH_SHORT).show()
+                },
+                onToggleFavorite = {
+                    audioEngine.toggleFavorite(track.id)
+                    val isFav = !favoriteTrackIds.contains(track.id)
+                    Toast.makeText(context, if (isFav) "Added to Favorites" else "Removed from Favorites", Toast.LENGTH_SHORT).show()
+                },
+                onShareTrack = { DeviceMediaManager.shareTrack(context, track) },
+                onDeleteTrack = {
+                    audioEngine.deleteTrack(track.id)
+                    Toast.makeText(context, "Removed from library", Toast.LENGTH_SHORT).show()
+                },
                 onToggleOfflineCache = { audioEngine.toggleOfflineCache(track.id) },
                 onViewLyrics = {
                     audioEngine.playTrack(track)
@@ -297,27 +341,38 @@ fun AshGlassBottomNavigationBar(
             .testTag("ash_glass_navigation_bar"),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // 1. Reduced-Transparency Frosted Ashes Glass Canvas with Micro-Stipple Texture & Top Rim
+        // 1. Sticky Transparent Frosted Glass Canvas with Micro-Stipple Texture & Top Rim
         Canvas(
             modifier = Modifier.matchParentSize()
         ) {
             val w = size.width
             val h = size.height
 
-            // High-opacity Smoky Ashes Glass (substantially reduced transparency)
+            // Sticky Transparent Glass: semi-opaque smoky dark base that diffuses behind it without showing full clarity
             drawRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xF5242933), // Opaque smoky white-ash frosted top (96% opacity)
-                        Color(0xFA181B22), // Deep smoky ash mid (98% opacity)
-                        Color(0xFF0F1116)  // Solid charcoal ash bottom (100% opacity)
+                        Color(0xB8231C28), // Sticky frosted ash top (~72% opacity)
+                        Color(0xC817121D), // Sticky smoky body (~78% opacity)
+                        Color(0xD80E0A14)  // Rich sticky charcoal bottom (~85% opacity)
+                    )
+                )
+            )
+
+            // App's signature glass glaze (frosted specular sheen + subtle crimson infusion)
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.07f),
+                        Color(0xFFE50914).copy(alpha = 0.035f),
+                        Color.White.copy(alpha = 0.02f)
                     )
                 )
             )
 
             // Tactile micro-stippled dot texture (fine dots scattering light so surface looks almost smooth)
-            val dotColor1 = Color(0x1EFFFFFF)
-            val dotColor2 = Color(0x14CCD4E0)
+            val dotColor1 = Color(0x1AFFFFFF)
+            val dotColor2 = Color(0x12CCD4E0)
             val stepX = 3.8f
             val stepY = 3.8f
             var curY = 1.5f
@@ -397,32 +452,18 @@ fun AshGlassBottomNavigationBar(
                         )
                     }
 
-                    // TAB 2: Standalone Profile Icon with 4-Point Diamond Star Badge
+                    // TAB 2: Standalone Video Icon
                     AshGlassNavTabItem(
                         isSelected = selectedTab == 2,
                         onClick = { onSelectTab(2) },
-                        testTag = "nav_tab_indie"
+                        testTag = "nav_tab_videos"
                     ) { iconColor ->
-                        Box(
-                            modifier = Modifier.size(26.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Person,
-                                contentDescription = "Profile",
-                                tint = iconColor,
-                                modifier = Modifier.size(25.dp)
-                            )
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = "Star",
-                                tint = iconColor,
-                                modifier = Modifier
-                                    .size(13.dp)
-                                    .align(Alignment.BottomEnd)
-                                    .offset(x = 4.dp, y = 4.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = "Videos",
+                            tint = iconColor,
+                            modifier = Modifier.size(26.dp)
+                        )
                     }
                 }
             }

@@ -1,10 +1,13 @@
 package com.example.mesh
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
@@ -67,6 +70,17 @@ fun SoundCatchMeshBackground(
     isSoundCatchEnabled: Boolean = true
 ) {
     val mesh = remember { MeshNodesState() }
+
+    val animatedDominant by animateColorAsState(
+        targetValue = dominantColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "meshDominant"
+    )
+    val animatedSecondary by animateColorAsState(
+        targetValue = secondaryColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "meshSecondary"
+    )
 
     // Continuous render loop for fluid motion
     LaunchedEffect(isPlaying, isSoundCatchEnabled) {
@@ -135,20 +149,28 @@ fun SoundCatchMeshBackground(
             val w = size.width
             val h = size.height
 
-            // 1. Base Canvas Gradient: Off-Blood to Deep Dark Ash (almost black at bottom)
+            // 1. Base Canvas Gradient: Dynamically capturing the song's picture color
+            // (e.g. if the song picture is blue, the background smoothly reflects that rich sapphire blue!)
+            val topTone = animatedDominant.copy(alpha = 0.85f)
+            val midTone = animatedSecondary.copy(alpha = 0.90f)
+            val deepTone = Color(
+                red = (animatedDominant.red * 0.12f + 0.05f).coerceIn(0f, 1f),
+                green = (animatedDominant.green * 0.12f + 0.05f).coerceIn(0f, 1f),
+                blue = (animatedDominant.blue * 0.12f + 0.07f).coerceIn(0f, 1f)
+            )
+
             drawRect(
                 brush = Brush.verticalGradient(
                     colorStops = arrayOf(
-                        0.0f to VelvetOffBloodTop,
-                        0.28f to VelvetBloodPlum,
-                        0.58f to VelvetDarkSmoky,
-                        0.82f to VelvetAshGrayMedium,
+                        0.0f to topTone,
+                        0.32f to midTone,
+                        0.62f to deepTone,
                         1.0f to VelvetAshGrayDark
                     )
                 )
             )
 
-            // 2. Node 1: Upper Crimson Swell (Fast Snap Kick Responsive)
+            // 2. Node 1: Dynamic Primary Chromatic Swell (Fast Snap Kick Responsive)
             val pos1 = Offset(
                 x = (mesh.node1X + mesh.node1SnapX).coerceIn(0.1f, 0.9f) * w,
                 y = (mesh.node1Y + mesh.node1SnapY).coerceIn(0.1f, 0.9f) * h
@@ -159,9 +181,9 @@ fun SoundCatchMeshBackground(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        dominantColor.copy(alpha = alpha1),
-                        dominantColor.copy(alpha = alpha1 * 0.45f),
-                        VelvetOffBloodTop.copy(alpha = 0.15f),
+                        animatedDominant.copy(alpha = alpha1),
+                        animatedDominant.copy(alpha = alpha1 * 0.45f),
+                        topTone.copy(alpha = 0.15f),
                         Color.Transparent
                     ),
                     center = pos1,
@@ -171,7 +193,7 @@ fun SoundCatchMeshBackground(
                 radius = radius1
             )
 
-            // 3. Node 2: Mid Burgundy / Secondary Wave (Fast Snap Snare Responsive)
+            // 3. Node 2: Dynamic Secondary Chromatic Swell (Fast Snap Snare Responsive)
             val pos2 = Offset(
                 x = (mesh.node2X + mesh.node2SnapX).coerceIn(0.1f, 0.9f) * w,
                 y = (mesh.node2Y + mesh.node2SnapY).coerceIn(0.1f, 0.9f) * h
@@ -182,9 +204,9 @@ fun SoundCatchMeshBackground(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        secondaryColor.copy(alpha = alpha2),
-                        secondaryColor.copy(alpha = alpha2 * 0.40f),
-                        VelvetDarkSmoky.copy(alpha = 0.15f),
+                        animatedSecondary.copy(alpha = alpha2),
+                        animatedSecondary.copy(alpha = alpha2 * 0.40f),
+                        midTone.copy(alpha = 0.15f),
                         Color.Transparent
                     ),
                     center = pos2,
@@ -215,11 +237,11 @@ fun SoundCatchMeshBackground(
                 radius = radius3
             )
 
-            // 5. Subtle ambient gradient overlay to seamlessly bind the off-blood and dark ash
+            // 5. Ambient gradient overlay dynamically reflecting the music color
             drawRect(
                 brush = Brush.verticalGradient(
                     colorStops = arrayOf(
-                        0.0f to VelvetOffBloodTop.copy(alpha = 0.25f),
+                        0.0f to topTone.copy(alpha = 0.25f),
                         0.40f to Color.Transparent,
                         0.75f to Color.Transparent,
                         1.0f to VelvetAshGrayDark.copy(alpha = 0.85f)

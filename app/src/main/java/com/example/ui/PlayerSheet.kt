@@ -1,14 +1,19 @@
 package com.example.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,21 +41,22 @@ import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,14 +66,9 @@ import androidx.compose.ui.unit.sp
 import com.example.audio.AudioTelemetry
 import com.example.mesh.SoundCatchMeshBackground
 import com.example.model.Track
-import com.example.ui.theme.VelvetActiveGlow
-import com.example.ui.theme.VelvetActivePill
 import com.example.ui.theme.VelvetAshGrayDark
 import com.example.ui.theme.VelvetBorder
 import com.example.ui.theme.VelvetBrightCrimson
-import com.example.ui.theme.VelvetDarkBurgundy
-import com.example.ui.theme.VelvetObsidian
-import com.example.ui.theme.VelvetPureBlack
 import com.example.ui.theme.VelvetSurfaceElevated
 import com.example.ui.theme.VelvetTextPrimary
 import com.example.ui.theme.VelvetTextSecondary
@@ -97,6 +98,18 @@ fun PlayerSheet(
 ) {
     var showLyrics by remember { mutableStateOf(false) }
 
+    // Dynamically animated background colors capturing the playing song's picture (blue, crimson, etc.)
+    val dynamicDominant by animateColorAsState(
+        targetValue = track.dominantColor,
+        animationSpec = tween(durationMillis = 700),
+        label = "playerDominant"
+    )
+    val dynamicSecondary by animateColorAsState(
+        targetValue = track.secondaryColor,
+        animationSpec = tween(durationMillis = 700),
+        label = "playerSecondary"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -105,18 +118,34 @@ fun PlayerSheet(
     ) {
         // Sound Catch background live under the player
         SoundCatchMeshBackground(
-            dominantColor = track.dominantColor,
-            secondaryColor = track.secondaryColor,
+            dominantColor = dynamicDominant,
+            secondaryColor = dynamicSecondary,
             audioTelemetry = telemetry,
             isPlaying = isPlaying,
             isSoundCatchEnabled = isSoundCatchEnabled
+        )
+
+        // Dynamic atmospheric gradient flood directly capturing the music's cover color
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            dynamicDominant.copy(alpha = 0.40f),
+                            dynamicSecondary.copy(alpha = 0.20f),
+                            Color.Transparent,
+                            VelvetAshGrayDark.copy(alpha = 0.85f)
+                        )
+                    )
+                )
         )
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
-                .padding(top = 44.dp, bottom = 32.dp),
+                .padding(top = 44.dp, bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Top Bar
@@ -139,17 +168,19 @@ fun PlayerSheet(
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "PLAYING FROM MIX",
+                        text = "NOW PLAYING",
                         fontSize = 10.sp,
-                        letterSpacing = 1.5.sp,
+                        letterSpacing = 2.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = VelvetTextTertiary
                     )
                     Text(
-                        text = "Dark Ambient Sessions",
+                        text = track.album,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
-                        color = VelvetTextSecondary
+                        color = VelvetTextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -160,15 +191,15 @@ fun PlayerSheet(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "Sound Catch Mesh Inspector",
-                        tint = if (isSoundCatchEnabled) VelvetBrightCrimson else VelvetTextTertiary,
+                        tint = if (isSoundCatchEnabled) dynamicDominant else VelvetTextTertiary,
                         modifier = Modifier.size(22.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Central Area: Artwork or Synced Lyrics
+            // Central Area: Artwork with dynamic colored glow or Synced Lyrics
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -176,13 +207,21 @@ fun PlayerSheet(
                 contentAlignment = Alignment.Center
             ) {
                 if (!showLyrics) {
+                    // Ambient halo capturing the picture's color
+                    Box(
+                        modifier = Modifier
+                            .size(260.dp)
+                            .clip(CircleShape)
+                            .background(dynamicDominant.copy(alpha = 0.25f))
+                    )
+
                     // Album Artwork Card
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.9f)
+                            .fillMaxWidth(0.88f)
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(24.dp))
-                            .border(1.dp, VelvetBorder, RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(26.dp))
+                            .border(1.2.dp, dynamicDominant.copy(alpha = 0.35f), RoundedCornerShape(26.dp))
                             .background(VelvetSurfaceElevated),
                         contentAlignment = Alignment.Center
                     ) {
@@ -202,7 +241,7 @@ fun PlayerSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Track metadata & Action pills
             Row(
@@ -238,7 +277,7 @@ fun PlayerSheet(
                         Icon(
                             imageVector = Icons.Default.Subtitles,
                             contentDescription = "Toggle Lyrics",
-                            tint = if (showLyrics) VelvetBrightCrimson else VelvetTextSecondary,
+                            tint = if (showLyrics) dynamicDominant else VelvetTextSecondary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -251,7 +290,7 @@ fun PlayerSheet(
                         Icon(
                             imageVector = if (isCachedOffline) Icons.Default.DownloadDone else Icons.Default.FileDownload,
                             contentDescription = "Offline Cache",
-                            tint = if (isCachedOffline) VelvetBrightCrimson else VelvetTextSecondary,
+                            tint = if (isCachedOffline) dynamicDominant else VelvetTextSecondary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -260,24 +299,13 @@ fun PlayerSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Progress Slider
-            val progressFraction = if (track.durationMs > 0) {
-                (playbackPositionMs.toFloat() / track.durationMs.toFloat()).coerceIn(0f, 1f)
-            } else 0f
-
-            Slider(
-                value = progressFraction,
-                onValueChange = { fraction ->
-                    onSeekTo((fraction * track.durationMs).toLong())
-                },
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = VelvetBrightCrimson,
-                    inactiveTrackColor = VelvetBorder
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("player_progress_slider")
+            // SLIM PROGRESS BAR (Very slim, no crossing line!)
+            SlimMusicProgressBar(
+                positionMs = playbackPositionMs,
+                durationMs = track.durationMs,
+                activeColor = dynamicDominant,
+                onSeekTo = onSeekTo,
+                modifier = Modifier.fillMaxWidth()
             )
 
             // Timestamps
@@ -287,56 +315,88 @@ fun PlayerSheet(
             ) {
                 Text(
                     text = formatMs(playbackPositionMs),
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     color = VelvetTextTertiary
                 )
                 Text(
                     text = formatMs(track.durationMs),
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     color = VelvetTextTertiary
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Playback controls row
+            // PLAYBACK CONTROLS ROW (Enlarged curved buttons with unique colors)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Shuffle
-                IconButton(
-                    onClick = onToggleShuffle,
-                    modifier = Modifier.testTag("player_shuffle_button")
+                // Shuffle button (Curved frosted enclosure)
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isShuffle) dynamicDominant.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.05f))
+                        .border(
+                            1.dp,
+                            if (isShuffle) dynamicDominant.copy(alpha = 0.50f) else Color.White.copy(alpha = 0.10f),
+                            RoundedCornerShape(14.dp)
+                        )
+                        .clickable { onToggleShuffle() }
+                        .testTag("player_shuffle_button"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Shuffle,
                         contentDescription = "Shuffle",
-                        tint = if (isShuffle) VelvetBrightCrimson else VelvetTextTertiary,
-                        modifier = Modifier.size(22.dp)
+                        tint = if (isShuffle) dynamicDominant else VelvetTextTertiary,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                // Previous
-                IconButton(
-                    onClick = onSkipPrevious,
-                    modifier = Modifier.testTag("player_previous_button")
+                // Previous Button (Enlarged with curved edges - not sharp)
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.10f),
+                                    dynamicDominant.copy(alpha = 0.18f)
+                                )
+                            )
+                        )
+                        .border(1.2.dp, dynamicDominant.copy(alpha = 0.38f), RoundedCornerShape(18.dp))
+                        .clickable { onSkipPrevious() }
+                        .testTag("player_previous_button"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipPrevious,
                         contentDescription = "Previous Track",
                         tint = VelvetTextPrimary,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
 
-                // Play / Pause central button
+                // Play / Pause central button (Curved squircle with unique radiant theme glow)
                 Box(
                     modifier = Modifier
-                        .size(68.dp)
-                        .clip(CircleShape)
-                        .background(VelvetBrightCrimson)
+                        .size(width = 78.dp, height = 64.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    dynamicDominant,
+                                    dynamicDominant.copy(alpha = 0.85f),
+                                    Color.White.copy(alpha = 0.15f)
+                                )
+                            )
+                        )
+                        .border(1.5.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
                         .clickable { onTogglePlayPause() }
                         .testTag("player_play_pause_button"),
                     contentAlignment = Alignment.Center
@@ -349,29 +409,52 @@ fun PlayerSheet(
                     )
                 }
 
-                // Next
-                IconButton(
-                    onClick = onSkipNext,
-                    modifier = Modifier.testTag("player_next_button")
+                // Next Button (Enlarged with curved edges - not sharp)
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.10f),
+                                    dynamicDominant.copy(alpha = 0.18f)
+                                )
+                            )
+                        )
+                        .border(1.2.dp, dynamicDominant.copy(alpha = 0.38f), RoundedCornerShape(18.dp))
+                        .clickable { onSkipNext() }
+                        .testTag("player_next_button"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next Track",
                         tint = VelvetTextPrimary,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
 
-                // Repeat
-                IconButton(
-                    onClick = onToggleRepeat,
-                    modifier = Modifier.testTag("player_repeat_button")
+                // Repeat button (Curved frosted enclosure)
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isRepeat) dynamicDominant.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.05f))
+                        .border(
+                            1.dp,
+                            if (isRepeat) dynamicDominant.copy(alpha = 0.50f) else Color.White.copy(alpha = 0.10f),
+                            RoundedCornerShape(14.dp)
+                        )
+                        .clickable { onToggleRepeat() }
+                        .testTag("player_repeat_button"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Repeat,
                         contentDescription = "Repeat",
-                        tint = if (isRepeat) VelvetBrightCrimson else VelvetTextTertiary,
-                        modifier = Modifier.size(22.dp)
+                        tint = if (isRepeat) dynamicDominant else VelvetTextTertiary,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -398,7 +481,7 @@ fun PlayerSheet(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(if (isSoundCatchEnabled) VelvetBrightCrimson else VelvetTextTertiary)
+                                .background(if (isSoundCatchEnabled) dynamicDominant else VelvetTextTertiary)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -411,6 +494,107 @@ fun PlayerSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * Ultra-slim, elegant progress scrubber bar with NO crossing line!
+ * Supports both smooth tapping and dragging with instant seek feedback.
+ */
+@Composable
+fun SlimMusicProgressBar(
+    positionMs: Long,
+    durationMs: Long,
+    activeColor: Color,
+    onSeekTo: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val progressFraction = if (durationMs > 0) {
+        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    var isDragging by remember { mutableStateOf(false) }
+    var dragFraction by remember { mutableFloatStateOf(0f) }
+
+    val displayFraction = if (isDragging) dragFraction else progressFraction
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(26.dp) // Generous touch target for easy tapping and dragging
+            .pointerInput(durationMs) {
+                detectTapGestures { offset ->
+                    val newFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                    onSeekTo((newFraction * durationMs).toLong())
+                }
+            }
+            .pointerInput(durationMs) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        isDragging = true
+                        dragFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                    },
+                    onDragEnd = {
+                        isDragging = false
+                        onSeekTo((dragFraction * durationMs).toLong())
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        change.consume()
+                        val newFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        dragFraction = newFraction
+                    }
+                )
+            }
+            .testTag("player_progress_slider"),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        val widthPx = constraints.maxWidth.toFloat()
+        val currentProgressWidth = (widthPx * displayFraction).coerceIn(0f, widthPx)
+
+        // 1. Inactive Background Track (Very slim 3.5dp, rounded smooth ends)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.5.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.12f))
+        )
+
+        // 2. Active Progress Track (Slim 3.5dp, dynamic vibrant gradient)
+        Box(
+            modifier = Modifier
+                .width(with(LocalDensity.current) { currentProgressWidth.toDp() })
+                .height(3.5.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            activeColor.copy(alpha = 0.65f),
+                            activeColor,
+                            Color.White
+                        )
+                    )
+                )
+        )
+
+        // 3. Sleek glowing round bead on tip - NO CROSSING LINE!
+        // Smoothly rides on top of the slim track
+        val beadSize = if (isDragging) 11.dp else 8.5.dp
+        Box(
+            modifier = Modifier
+                .padding(
+                    start = with(LocalDensity.current) {
+                        (currentProgressWidth - (beadSize.toPx() / 2f)).coerceAtLeast(0f).toDp()
+                    }
+                )
+                .size(beadSize)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(1.2.dp, activeColor, CircleShape)
+        )
     }
 }
 

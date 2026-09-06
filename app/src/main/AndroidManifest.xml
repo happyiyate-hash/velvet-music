@@ -3,6 +3,12 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:allowBackup="true"
@@ -24,6 +30,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".media.VelvetPlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+
+        <receiver
+            android:name=".media.MediaControlReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.ACTION_TOGGLE_PLAY" />
+                <action android:name="com.example.ACTION_PLAY" />
+                <action android:name="com.example.ACTION_PAUSE" />
+                <action android:name="com.example.ACTION_NEXT" />
+                <action android:name="com.example.ACTION_PREVIOUS" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

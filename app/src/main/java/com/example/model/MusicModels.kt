@@ -21,12 +21,25 @@ data class Track(
     val artist: String,
     val album: String,
     val durationMs: Long,
-    @DrawableRes val coverResId: Int,
+    @DrawableRes val coverResId: Int = R.drawable.art_after_hours,
     val dominantColor: Color = VelvetDarkBurgundy,
     val secondaryColor: Color = VelvetDeepCrimson,
     val catalogSource: String = "Jamendo / Creative Commons",
     val lyrics: List<LyricLine> = emptyList(),
-    val bpm: Int = 84
+    val bpm: Int = 84,
+    val playCount: Int = 0,
+    val dateAddedMs: Long = System.currentTimeMillis(),
+    val contentUri: String? = null
+)
+
+data class DeviceVideo(
+    val id: String,
+    val title: String,
+    val durationMs: Long,
+    val sizeBytes: Long = 0L,
+    val resolution: String = "1080p",
+    val contentUri: String? = null,
+    val dateAddedMs: Long = System.currentTimeMillis()
 )
 
 data class Mix(
@@ -235,11 +248,32 @@ object SampleData {
         )
     )
 
-    val allMixes = listOf(mixLuminousEchoes, mixAcousticWaves, mixSunsetBeats, mixNightGrooves)
+    val trackAzureDrift = Track(
+        id = "track_blue",
+        title = "Azure Drift (Neon Blue)",
+        artist = "Cobalt Echoes",
+        album = "Electric Ocean",
+        durationMs = 210000L,
+        coverResId = R.drawable.art_azure_drift,
+        dominantColor = Color(0xFF0D58A6),
+        secondaryColor = Color(0xFF051D3A),
+        catalogSource = "Velvet Ocean Sessions",
+        lyrics = listOf(
+            LyricLine(0L, "[Vibrant Blue Waves - Atmospheric Synth]", isHeader = true),
+            LyricLine(4000L, "Deep electric ocean rolling under midnight skies"),
+            LyricLine(9500L, "Cobalt reflections shining in your eyes"),
+            LyricLine(15200L, "Lost in azure currents, drifting into space"),
+            LyricLine(21000L, "Feel the sound catch pulse at our own pace")
+        ),
+        bpm = 90
+    )
 
-    val recentlyPlayedTracks = listOf(trackAfterHours, trackGoodNews, trackBlindingLights)
+    val allMixes = listOf(mixLuminousEchoes, mixAcousticWaves, mixNightGrooves, mixSunsetBeats)
+
+    val recentlyPlayedTracks = listOf(trackAfterHours, trackAzureDrift, trackGoodNews, trackBlindingLights)
 
     val newReleases = listOf(
+        trackAzureDrift,
         Track(
             id = "rel_1",
             title = "Midnight Velvet Pulse",

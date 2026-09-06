@@ -8,18 +8,21 @@ val VelvetOffBloodTop = Color(0xFF63101C)
 val VelvetBloodPlum = Color(0xFF420B15)
 val VelvetDarkSmoky = Color(0xFF26141D)
 
-// Bottom: "from the very bottom to a specific height, reduce it to almost black, but keep it bright"
-val VelvetAshGrayDark = Color(0xFF0C0E12)
-val VelvetAshGray = Color(0xFF14171E)
-val VelvetAshGrayMedium = Color(0xFF1D212A)
-val VelvetAshGrayLight = Color(0xFF2E333E)
+// Bottom: Deep, warm charcoal-black with subtle crimson undertones (taming cold grey ash)
+val VelvetAshGrayDark = Color(0xFF0D0B0E)
+val VelvetAshGray = Color(0xFF120E12)
+val VelvetAshGrayMedium = Color(0xFF181216)
+val VelvetAshGrayLight = Color(0xFF241A21)
 val VelvetWhiteAsh = Color(0xFFD8DDE6)
 
-// Frosted Ash Glass Surfaces
-val VelvetBottomBarGlass = Color(0xBF22252C)
-val VelvetBottomBarBorder = Color(0x33FFFFFF)
-val VelvetGlassSurface = Color(0x402D3038)
-val VelvetCardBorder = Color(0x2EFFFFFF)
+// Frosted Glass Surfaces (translucent light glass + 15% white border)
+val VelvetFrostedGlassBg = Color(0x0DFFFFFF) // ~5% white tint
+val VelvetDockGlassBg = Color(0x1AFFFFFF) // ~10% white tint for floating dock
+val VelvetGlassBorder = Color(0x26FFFFFF) // ~15% sharp glass border
+val VelvetBottomBarGlass = Color(0x1AFFFFFF)
+val VelvetBottomBarBorder = Color(0x26FFFFFF)
+val VelvetGlassSurface = Color(0x0DFFFFFF)
+val VelvetCardBorder = Color(0x26FFFFFF)
 
 // Accent and active glow
 val VelvetBrightCrimson = Color(0xFFE5284D)

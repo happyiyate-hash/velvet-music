@@ -17,11 +17,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.Button
@@ -63,7 +67,12 @@ import com.example.ui.theme.VelvetTextTertiary
 fun TrackActionBottomSheet(
     track: Track,
     isCached: Boolean,
+    isFavorite: Boolean = false,
     onPlayNow: () -> Unit,
+    onPlayNext: () -> Unit = {},
+    onToggleFavorite: () -> Unit = {},
+    onShareTrack: () -> Unit = {},
+    onDeleteTrack: () -> Unit = {},
     onToggleOfflineCache: () -> Unit,
     onViewLyrics: () -> Unit,
     onViewSoundCatch: () -> Unit,
@@ -106,20 +115,51 @@ fun TrackActionBottomSheet(
                 color = VelvetTextSecondary
             )
             Text(
-                text = "Catalog: ${track.catalogSource}",
+                text = "Source: ${track.catalogSource}",
                 fontSize = 11.sp,
                 color = VelvetBrightCrimson,
                 modifier = Modifier.padding(top = 2.dp)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             ActionRowItem(
                 icon = Icons.Default.PlayArrow,
                 title = "Play Now",
-                subtitle = "Start playback with Sound Catch Mesh",
+                subtitle = "Start playback immediately with Sound Catch Mesh",
                 onClick = {
                     onPlayNow()
+                    onDismiss()
+                }
+            )
+
+            ActionRowItem(
+                icon = Icons.Default.QueueMusic,
+                title = "Play Next",
+                subtitle = "Place at the top of the playback queue",
+                onClick = {
+                    onPlayNext()
+                    onDismiss()
+                }
+            )
+
+            ActionRowItem(
+                icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                title = if (isFavorite) "Favorited" else "Add to Favorites",
+                subtitle = if (isFavorite) "In your Loved Tracks" else "Save to your favorites collection",
+                iconTint = if (isFavorite) VelvetBrightCrimson else VelvetTextSecondary,
+                onClick = {
+                    onToggleFavorite()
+                    onDismiss()
+                }
+            )
+
+            ActionRowItem(
+                icon = Icons.Default.Share,
+                title = "Share Track",
+                subtitle = "Share song details with friends",
+                onClick = {
+                    onShareTrack()
                     onDismiss()
                 }
             )
@@ -145,11 +185,12 @@ fun TrackActionBottomSheet(
             )
 
             ActionRowItem(
-                icon = Icons.Default.GraphicEq,
-                title = "Inspect Sound Catch Mesh Telemetry",
-                subtitle = "Fast Snap & Smooth Drift live vectors",
+                icon = Icons.Default.Delete,
+                title = "Delete Track",
+                subtitle = "Remove from your library list",
+                iconTint = Color(0xFFFF5252),
                 onClick = {
-                    onViewSoundCatch()
+                    onDeleteTrack()
                     onDismiss()
                 }
             )
@@ -162,6 +203,7 @@ fun ActionRowItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
+    iconTint: Color = VelvetBrightCrimson,
     onClick: () -> Unit
 ) {
     Row(
@@ -169,7 +211,7 @@ fun ActionRowItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
-            .padding(vertical = 10.dp, horizontal = 6.dp),
+            .padding(vertical = 9.dp, horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -183,7 +225,7 @@ fun ActionRowItem(
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = VelvetBrightCrimson,
+                tint = iconTint,
                 modifier = Modifier.size(20.dp)
             )
         }
