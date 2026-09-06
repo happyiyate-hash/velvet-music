@@ -1,7 +1,5 @@
 package com.example.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -34,11 +31,9 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -48,10 +43,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioTelemetry
-import com.example.mesh.SoundCatchMeshBackground
 import com.example.model.Track
 import com.example.ui.theme.VelvetAshGrayDark
-import com.example.ui.theme.VelvetBorder
 import com.example.ui.theme.VelvetSurfaceElevated
 import com.example.ui.theme.VelvetTextPrimary
 import com.example.ui.theme.VelvetTextSecondary
@@ -79,46 +72,14 @@ fun PlayerSheet(
     onOpenInspector: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val dynamicDominant by animateColorAsState(
-        targetValue = track.dominantColor,
-        animationSpec = tween(durationMillis = 700),
-        label = "playerDominant"
-    )
-    val dynamicSecondary by animateColorAsState(
-        targetValue = track.secondaryColor,
-        animationSpec = tween(durationMillis = 700),
-        label = "playerSecondary"
-    )
-
+    // Sound Catch is intentionally not rendered on this player. The player keeps a
+    // stable, undimmed background so the future visual feature can be developed separately.
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(VelvetAshGrayDark)
             .testTag("full_player_sheet")
     ) {
-        SoundCatchMeshBackground(
-            dominantColor = dynamicDominant,
-            secondaryColor = dynamicSecondary,
-            audioTelemetry = telemetry,
-            isPlaying = isPlaying,
-            isSoundCatchEnabled = isSoundCatchEnabled
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            dynamicDominant.copy(alpha = 0.40f),
-                            dynamicSecondary.copy(alpha = 0.20f),
-                            Color.Transparent,
-                            VelvetAshGrayDark.copy(alpha = 0.85f)
-                        )
-                    )
-                )
-        )
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -161,17 +122,7 @@ fun PlayerSheet(
                     )
                 }
 
-                IconButton(
-                    onClick = onOpenInspector,
-                    modifier = Modifier.testTag("open_sound_catch_inspector_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = "Sound Catch Mesh Inspector",
-                        tint = if (isSoundCatchEnabled) dynamicDominant else VelvetTextTertiary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                Spacer(modifier = Modifier.size(48.dp))
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -189,7 +140,7 @@ fun PlayerSheet(
                         .clip(RoundedCornerShape(28.dp))
                         .border(
                             1.2.dp,
-                            dynamicDominant.copy(alpha = 0.35f),
+                            Color.White.copy(alpha = 0.10f),
                             RoundedCornerShape(28.dp)
                         )
                         .background(VelvetSurfaceElevated),
@@ -238,8 +189,8 @@ fun PlayerSheet(
                 onValueChange = { onSeekTo(it.toLong()) },
                 valueRange = 0f..duration.toFloat(),
                 colors = SliderDefaults.colors(
-                    thumbColor = dynamicDominant,
-                    activeTrackColor = dynamicDominant,
+                    thumbColor = VelvetTextPrimary,
+                    activeTrackColor = VelvetTextPrimary,
                     inactiveTrackColor = Color.White.copy(alpha = 0.15f)
                 ),
                 modifier = Modifier
@@ -279,14 +230,12 @@ fun PlayerSheet(
                     icon = Icons.Default.Shuffle,
                     contentDescription = "Shuffle",
                     active = isShuffle,
-                    activeColor = dynamicDominant,
                     onClick = onToggleShuffle,
                     tag = "player_shuffle_button"
                 )
                 PlayerLargeControl(
                     icon = Icons.Default.SkipPrevious,
                     contentDescription = "Previous Track",
-                    activeColor = dynamicDominant,
                     onClick = onSkipPrevious,
                     tag = "player_previous_button"
                 )
@@ -294,16 +243,7 @@ fun PlayerSheet(
                     modifier = Modifier
                         .size(width = 78.dp, height = 64.dp)
                         .clip(RoundedCornerShape(22.dp))
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    dynamicDominant,
-                                    dynamicDominant.copy(alpha = 0.85f),
-                                    Color.White.copy(alpha = 0.15f)
-                                )
-                            )
-                        )
-                        .border(1.5.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
+                        .background(VelvetTextPrimary)
                         .clickable { onTogglePlayPause() }
                         .testTag("player_play_pause_button"),
                     contentAlignment = Alignment.Center
@@ -311,14 +251,13 @@ fun PlayerSheet(
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = Color.White,
+                        tint = VelvetAshGrayDark,
                         modifier = Modifier.size(36.dp)
                     )
                 }
                 PlayerLargeControl(
                     icon = Icons.Default.SkipNext,
                     contentDescription = "Next Track",
-                    activeColor = dynamicDominant,
                     onClick = onSkipNext,
                     tag = "player_next_button"
                 )
@@ -326,45 +265,9 @@ fun PlayerSheet(
                     icon = Icons.Default.Repeat,
                     contentDescription = "Repeat",
                     active = isRepeat,
-                    activeColor = dynamicDominant,
                     onClick = onToggleRepeat,
                     tag = "player_repeat_button"
                 )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Kept for now; this bottom Sound Catch element can be redesigned separately later.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(VelvetSurfaceElevated)
-                        .border(1.dp, VelvetBorder, RoundedCornerShape(20.dp))
-                        .clickable { onOpenInspector() }
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                        .testTag("sound_catch_badge")
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(dynamicDominant)
-                        )
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text(
-                            text = if (isSoundCatchEnabled) "Sound Catch Active" else "Sound Catch Paused",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = VelvetTextSecondary
-                        )
-                    }
-                }
             }
         }
     }
@@ -375,7 +278,6 @@ private fun PlayerSmallControl(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     active: Boolean,
-    activeColor: Color,
     onClick: () -> Unit,
     tag: String
 ) {
@@ -384,13 +286,12 @@ private fun PlayerSmallControl(
             .size(46.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(
-                if (active) activeColor.copy(alpha = 0.22f)
-                else Color.White.copy(alpha = 0.05f)
+                if (active) Color.White.copy(alpha = 0.10f)
+                else Color.White.copy(alpha = 0.04f)
             )
             .border(
                 1.dp,
-                if (active) activeColor.copy(alpha = 0.50f)
-                else Color.White.copy(alpha = 0.10f),
+                Color.White.copy(alpha = if (active) 0.25f else 0.08f),
                 RoundedCornerShape(14.dp)
             )
             .clickable(onClick = onClick)
@@ -400,7 +301,7 @@ private fun PlayerSmallControl(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = if (active) activeColor else VelvetTextTertiary,
+            tint = if (active) VelvetTextPrimary else VelvetTextTertiary,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -410,7 +311,6 @@ private fun PlayerSmallControl(
 private fun PlayerLargeControl(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
-    activeColor: Color,
     onClick: () -> Unit,
     tag: String
 ) {
@@ -418,15 +318,8 @@ private fun PlayerLargeControl(
         modifier = Modifier
             .size(58.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.10f),
-                        activeColor.copy(alpha = 0.18f)
-                    )
-                )
-            )
-            .border(1.2.dp, activeColor.copy(alpha = 0.38f), RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .border(1.2.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
             .testTag(tag),
         contentAlignment = Alignment.Center
@@ -441,7 +334,7 @@ private fun PlayerLargeControl(
 }
 
 private fun formatPlayerTime(milliseconds: Long): String {
-    val totalSeconds = (milliseconds.coerceAtLeast(0L) / 1000L)
+    val totalSeconds = milliseconds.coerceAtLeast(0L) / 1000L
     val minutes = totalSeconds / 60L
     val seconds = totalSeconds % 60L
     return "%d:%02d".format(minutes, seconds)
