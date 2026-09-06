@@ -20,23 +20,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -44,10 +38,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -55,12 +47,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.media.DeviceMediaManager
 import com.example.model.Track
 import com.example.ui.theme.VelvetAshGray
 import com.example.ui.theme.VelvetBrightCrimson
 import com.example.ui.theme.VelvetCardBorder
-import com.example.ui.theme.VelvetDarkBurgundy
 import com.example.ui.theme.VelvetTextPrimary
 import com.example.ui.theme.VelvetTextSecondary
 import com.example.ui.theme.VelvetTextTertiary
@@ -83,7 +73,8 @@ fun HomeFeedScreen(
     onAddTrack: ((Track) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Two candidates for the Most Played Card: top slot and bottom slot
+    // Keep the home showcase focused on artwork only. No ranking, title, play-count,
+    // or large card chrome is placed over the album covers.
     val candidatePlayed = mostPlayedTracks.ifEmpty { allTracks }
     val topSlotTrack = candidatePlayed.getOrNull(0)
     val bottomSlotTrack = candidatePlayed.getOrNull(1)
@@ -94,7 +85,6 @@ fun HomeFeedScreen(
             .testTag("home_feed_screen"),
         contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp)
     ) {
-        // 1. Top Header: "Welcome back, Echo", "Home Feed", Bell, Settings, Search
         item {
             Column(
                 modifier = Modifier
@@ -123,7 +113,6 @@ fun HomeFeedScreen(
                         )
                     }
 
-                    // Ash Glass Icon Buttons: Bell, Settings, Search
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -151,109 +140,53 @@ fun HomeFeedScreen(
             }
         }
 
-        // 2. TOP CARD: "Most Played" (Compact, minimal padding so content enlarges)
+        // Artwork showcase: two larger covers, one above the other, with no text inside.
         item {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.06f),
-                                Color(0xFFE50914).copy(alpha = 0.04f),
-                                Color.White.copy(alpha = 0.03f)
-                            )
-                        )
-                    )
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(22.dp))
-                    .padding(8.dp)
-                    .testTag("most_played_container")
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                if (topSlotTrack != null) {
+                    ArtworkOnlyMostPlayedTile(
+                        track = topSlotTrack,
+                        isCurrent = topSlotTrack.id == currentTrack.id,
+                        isPlaying = isPlaying && topSlotTrack.id == currentTrack.id,
+                        onClick = { onSelectTrack(topSlotTrack) },
+                        tag = "compact_most_played_rank_1"
+                    )
+                }
+
+                if (bottomSlotTrack != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ArtworkOnlyMostPlayedTile(
+                        track = bottomSlotTrack,
+                        isCurrent = bottomSlotTrack.id == currentTrack.id,
+                        isPlaying = isPlaying && bottomSlotTrack.id == currentTrack.id,
+                        onClick = { onSelectTrack(bottomSlotTrack) },
+                        tag = "compact_most_played_rank_2"
+                    )
+                }
+
+                if (topSlotTrack == null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Most Played",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = VelvetTextPrimary
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(VelvetBrightCrimson.copy(alpha = 0.22f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "FREQUENTLY PLAYED",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = VelvetBrightCrimson
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (topSlotTrack != null) {
-                        val count1 = playCounts[topSlotTrack.id] ?: topSlotTrack.playCount.coerceAtLeast(1)
-                        // ONE MUSIC AT THE TOP
-                        CompactMostPlayedRow(
-                            track = topSlotTrack,
-                            rank = 1,
-                            playCount = count1,
-                            isCurrent = topSlotTrack.id == currentTrack.id,
-                            isPlaying = isPlaying && topSlotTrack.id == currentTrack.id,
-                            onClick = { onSelectTrack(topSlotTrack) }
+                        Text(
+                            text = "Play music from your device to display your favorites here",
+                            fontSize = 12.sp,
+                            color = VelvetTextSecondary,
+                            textAlign = TextAlign.Center
                         )
-
-                        if (bottomSlotTrack != null) {
-                            HorizontalDivider(
-                                color = Color.White.copy(alpha = 0.08f),
-                                thickness = 1.dp,
-                                modifier = Modifier.padding(vertical = 6.dp)
-                            )
-
-                            val count2 = playCounts[bottomSlotTrack.id] ?: bottomSlotTrack.playCount.coerceAtLeast(1)
-                            // ONE MUSIC AT THE BOTTOM
-                            CompactMostPlayedRow(
-                                track = bottomSlotTrack,
-                                rank = 2,
-                                playCount = count2,
-                                isCurrent = bottomSlotTrack.id == currentTrack.id,
-                                isPlaying = isPlaying && bottomSlotTrack.id == currentTrack.id,
-                                onClick = { onSelectTrack(bottomSlotTrack) }
-                            )
-                        }
-                    } else {
-                        // Empty state inside the card when device has no music
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Play music from your device to display your favorites here",
-                                fontSize = 12.sp,
-                                color = VelvetTextSecondary,
-                                textAlign = TextAlign.Center
-                            )
-                        }
                     }
                 }
             }
         }
 
-        // 3. "All Music" (Standalone list with minimal padding)
         item {
             Column(
                 modifier = Modifier
@@ -370,6 +303,54 @@ fun HomeFeedScreen(
     }
 }
 
+@Composable
+private fun ArtworkOnlyMostPlayedTile(
+    track: Track,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    tag: String
+) {
+    Box(
+        modifier = Modifier
+            .size(174.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .border(
+                width = if (isCurrent) 2.dp else 1.dp,
+                color = if (isCurrent) VelvetBrightCrimson else Color.White.copy(alpha = 0.10f),
+                shape = RoundedCornerShape(18.dp)
+            )
+            .clickable { onClick() }
+            .testTag(tag)
+    ) {
+        Image(
+            painter = painterResource(id = track.coverResId),
+            contentDescription = track.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (isCurrent && isPlaying) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.GraphicEq,
+                    contentDescription = "Playing",
+                    tint = Color.White,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+        }
+    }
+}
+
 /**
  * Standalone music row sitting cleanly in the main background canvas:
  * - Album artwork with crisp border
@@ -448,7 +429,6 @@ fun StandaloneMusicRow(
             )
         }
 
-        // STANDING STRAIGHT VERTICAL THREE DOTS (MoreVert)
         IconButton(
             onClick = onMenuClick,
             modifier = Modifier
@@ -475,112 +455,13 @@ fun CompactMostPlayedRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val cleanTitle = track.title.substringBefore(" - ")
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (isCurrent) Color.White.copy(alpha = 0.05f) else Color.Transparent)
-            .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-            .testTag("compact_most_played_rank_$rank"),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Compact album artwork (48.dp x 48.dp)
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .border(
-                    1.dp,
-                    if (isCurrent) VelvetBrightCrimson else Color.White.copy(alpha = 0.12f),
-                    RoundedCornerShape(11.dp)
-                )
-        ) {
-            Image(
-                painter = painterResource(id = track.coverResId),
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (isCurrent && isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.45f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = "Playing",
-                        tint = VelvetBrightCrimson,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = cleanTitle,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (isCurrent) VelvetBrightCrimson else VelvetTextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(VelvetBrightCrimson.copy(alpha = 0.18f))
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                ) {
-                    Text(
-                        text = "TOP #$rank",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = VelvetBrightCrimson
-                    )
-                }
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (playCount > 1) "Played ${playCount}x" else track.artist,
-                    fontSize = 11.sp,
-                    color = VelvetTextSecondary.copy(alpha = 0.85f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Curved Play Action Button
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (isCurrent && isPlaying) VelvetBrightCrimson else Color.White.copy(alpha = 0.08f))
-                .border(
-                    1.dp,
-                    if (isCurrent && isPlaying) VelvetBrightCrimson else Color.White.copy(alpha = 0.15f),
-                    RoundedCornerShape(10.dp)
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = if (isCurrent && isPlaying) Icons.Default.GraphicEq else Icons.Default.PlayArrow,
-                contentDescription = "Play",
-                tint = if (isCurrent && isPlaying) Color.White else VelvetTextPrimary,
-                modifier = Modifier.size(16.dp)
-            )
-        }
-    }
+    ArtworkOnlyMostPlayedTile(
+        track = track,
+        isCurrent = isCurrent,
+        isPlaying = isPlaying,
+        onClick = onClick,
+        tag = "compact_most_played_rank_$rank"
+    )
 }
 
 @Composable
