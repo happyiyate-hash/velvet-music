@@ -3,19 +3,71 @@ package com.example.media
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import com.example.R
 import com.example.model.DeviceVideo
-import com.example.model.SampleData
+import com.example.model.FallbackArtworkPool
 import com.example.model.Track
 import com.example.ui.theme.VelvetDarkBurgundy
 import com.example.ui.theme.VelvetDeepCrimson
 import java.io.File
 
 object DeviceMediaManager {
+
+    val requiredAudioPermissions: Array<String>
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(android.Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+    val requiredVideoPermissions: Array<String>
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(android.Manifest.permission.READ_MEDIA_VIDEO)
+        } else {
+            arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+    val allMediaPermissions: Array<String>
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
+                android.Manifest.permission.READ_MEDIA_AUDIO,
+                android.Manifest.permission.READ_MEDIA_VIDEO
+            )
+        } else {
+            arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+    fun hasAudioPermission(context: Context): Boolean {
+        return requiredAudioPermissions.all { perm ->
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                perm
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    fun hasVideoPermission(context: Context): Boolean {
+        return requiredVideoPermissions.all { perm ->
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                perm
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    fun hasAllMediaPermissions(context: Context): Boolean {
+        return allMediaPermissions.all { perm ->
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                perm
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
 
     fun loadDeviceTracks(context: Context): List<Track> {
         val tracks = mutableListOf<Track>()
@@ -54,25 +106,23 @@ object DeviceMediaManager {
                     val dateAdded = cursor.getLong(dateAddedColumn) * 1000L
                     val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
 
-                    // Cycle sample covers for attractive visuals
-                    val covers = listOf(
-                        R.drawable.art_after_hours,
-                        R.drawable.art_luminous_echoes,
-                        R.drawable.art_night_grooves,
-                        R.drawable.art_sunset_beats
-                    )
-                    val cover = covers[(id % covers.size).toInt().coerceAtLeast(0)]
+                    val cleanArtist = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist
+                    val trackId = "device_audio_$id"
+
+                    // If music doesn't have a photo, system automatically picks a distinct photo from the app's pool
+                    val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
+                    val colors = ArtworkColorExtractor.getColorsForDrawable(context, cover)
 
                     tracks.add(
                         Track(
-                            id = "device_audio_$id",
+                            id = trackId,
                             title = title,
-                            artist = if (artist.contains("<unknown>")) "Local File" else artist,
+                            artist = cleanArtist,
                             album = album,
                             durationMs = if (durationMs > 0) durationMs else 180000L,
                             coverResId = cover,
-                            dominantColor = VelvetDarkBurgundy,
-                            secondaryColor = VelvetDeepCrimson,
+                            dominantColor = colors.dominant,
+                            secondaryColor = colors.secondary,
                             catalogSource = "Device Storage",
                             dateAddedMs = dateAdded,
                             contentUri = contentUri.toString()
@@ -84,6 +134,47 @@ object DeviceMediaManager {
             Log.e("DeviceMediaManager", "Error querying audio MediaStore", e)
         }
         return tracks
+    }
+
+    /**
+     * Creates a Track when a user picks an audio file directly from device storage or downloads.
+     */
+    fun createTrackFromUri(context: Context, uri: Uri): Track? {
+        return try {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(context, uri)
+            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                ?: uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')
+                ?: "Device Audio File"
+            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?: "Local Artist"
+            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                ?: "Device Storage"
+            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            val durationMs = durationStr?.toLongOrNull() ?: 180000L
+            val id = "imported_${System.currentTimeMillis()}_${(0..999).random()}"
+
+            val cover = FallbackArtworkPool.getPhotoForTrack(id, title, artist)
+            val colors = ArtworkColorExtractor.getColorsForDrawable(context, cover)
+            retriever.release()
+
+            Track(
+                id = id,
+                title = title,
+                artist = artist,
+                album = album,
+                durationMs = durationMs,
+                coverResId = cover,
+                dominantColor = colors.dominant,
+                secondaryColor = colors.secondary,
+                catalogSource = "Device Audio",
+                contentUri = uri.toString(),
+                dateAddedMs = System.currentTimeMillis()
+            )
+        } catch (e: Exception) {
+            Log.e("DeviceMediaManager", "Error reading audio file from URI: $uri", e)
+            null
+        }
     }
 
     fun loadDeviceVideos(context: Context): List<DeviceVideo> {

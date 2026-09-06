@@ -39,6 +39,20 @@ object ArtworkColorExtractor {
         return generateThemePalette(track.dominantColor)
     }
 
+    fun getColorsForDrawable(context: Context, @DrawableRes resId: Int): TrackThemeColors {
+        try {
+            val options = BitmapFactory.Options().apply { inSampleSize = 8 }
+            val bitmap = BitmapFactory.decodeResource(context.resources, resId, options)
+            if (bitmap != null) {
+                val sampled = sampleDominantColor(bitmap)
+                if (sampled != null) {
+                    return generateThemePalette(sampled)
+                }
+            }
+        } catch (_: Exception) {}
+        return generateThemePalette(Color(0xFF880E2F))
+    }
+
     private fun loadThumbnailBitmap(context: Context, track: Track): Bitmap? {
         try {
             if (track.contentUri != null) {

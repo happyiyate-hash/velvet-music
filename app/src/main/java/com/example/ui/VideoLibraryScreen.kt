@@ -2,6 +2,8 @@ package com.example.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
@@ -34,6 +37,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -58,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -84,9 +89,24 @@ fun VideoLibraryScreen(
     var selectedFilter by remember { mutableStateOf("All") }
     var selectedVideoForAction by remember { mutableStateOf<DeviceVideo?>(null) }
     var previewVideo by remember { mutableStateOf<DeviceVideo?>(null) }
+    var hasPermission by remember { mutableStateOf(DeviceMediaManager.hasVideoPermission(context)) }
+
+    val videoPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        val granted = DeviceMediaManager.hasVideoPermission(context)
+        hasPermission = granted
+        if (granted) {
+            videos = DeviceMediaManager.loadDeviceVideos(context)
+        }
+    }
 
     LaunchedEffect(Unit) {
-        videos = DeviceMediaManager.loadDeviceVideos(context)
+        if (!hasPermission) {
+            videoPermissionLauncher.launch(DeviceMediaManager.requiredVideoPermissions)
+        } else {
+            videos = DeviceMediaManager.loadDeviceVideos(context)
+        }
     }
 
     val filteredVideos = remember(videos, searchQuery, selectedFilter) {
@@ -105,14 +125,14 @@ fun VideoLibraryScreen(
         modifier = modifier
             .fillMaxSize()
             .testTag("video_library_screen"),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 110.dp)
+        contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)
     ) {
         // Header
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 22.dp)
+                    .padding(horizontal = 8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -122,14 +142,14 @@ fun VideoLibraryScreen(
                     Column {
                         Text(
                             text = "Media Library",
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Normal,
                             color = VelvetTextSecondary
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Device Videos",
-                            fontSize = 28.sp,
+                            fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,
                             color = VelvetTextPrimary
                         )
@@ -137,7 +157,7 @@ fun VideoLibraryScreen(
 
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
                             .background(Color.White.copy(alpha = 0.06f))
                             .border(1.dp, Color.White.copy(alpha = 0.14f), CircleShape),
@@ -147,18 +167,18 @@ fun VideoLibraryScreen(
                             imageVector = Icons.Default.Videocam,
                             contentDescription = "Videos",
                             tint = VelvetBrightCrimson,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Search Bar
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search device videos...", color = VelvetTextTertiary, fontSize = 14.sp) },
+                    placeholder = { Text("Search device videos...", color = VelvetTextTertiary, fontSize = 13.sp) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
@@ -168,7 +188,7 @@ fun VideoLibraryScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(Color.White.copy(alpha = 0.04f))
                         .testTag("video_search_input"),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -180,19 +200,19 @@ fun VideoLibraryScreen(
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Filter Pills
                 val filterOptions = listOf("All", "4K / HD", "Shorts")
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     items(filterOptions) { filter ->
                         val isSelected = selectedFilter == filter
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(18.dp))
                                 .background(
                                     if (isSelected) VelvetBrightCrimson.copy(alpha = 0.20f)
                                     else Color.White.copy(alpha = 0.04f)
@@ -200,14 +220,14 @@ fun VideoLibraryScreen(
                                 .border(
                                     1.dp,
                                     if (isSelected) VelvetBrightCrimson else Color.White.copy(alpha = 0.12f),
-                                    RoundedCornerShape(20.dp)
+                                    RoundedCornerShape(18.dp)
                                 )
                                 .clickable { selectedFilter = filter }
-                                .padding(horizontal = 16.dp, vertical = 7.dp)
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 text = filter,
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                 color = if (isSelected) VelvetBrightCrimson else VelvetTextSecondary
                             )
@@ -215,15 +235,68 @@ fun VideoLibraryScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
                     text = "${filteredVideos.size} Videos on Device",
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     color = VelvetTextTertiary
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+
+        if (filteredVideos.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 20.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.White.copy(alpha = 0.03f))
+                        .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp))
+                        .padding(20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = VelvetTextSecondary.copy(alpha = 0.6f),
+                            modifier = Modifier.size(38.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (!hasPermission) "Video Permission Needed" else "No Videos Found",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = VelvetTextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (!hasPermission)
+                                "Allow Velvet to access your device videos to watch them here"
+                            else
+                                "No video files found on your device storage",
+                            fontSize = 12.sp,
+                            color = VelvetTextSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                        if (!hasPermission) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { videoPermissionLauncher.launch(DeviceMediaManager.requiredVideoPermissions) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = VelvetBrightCrimson)
+                            ) {
+                                Icon(imageVector = Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Allow Video Access", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -234,7 +307,7 @@ fun VideoLibraryScreen(
                 onClick = { previewVideo = video },
                 onMenuClick = { selectedVideoForAction = video }
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
         }
     }
 
@@ -394,20 +467,20 @@ fun DeviceVideoCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .padding(horizontal = 6.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(Color.White.copy(alpha = 0.04f))
-            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
             .clickable { onClick() }
-            .padding(12.dp)
+            .padding(8.dp)
             .testTag("device_video_${video.id}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Thumbnail with Duration Pill
+        // Thumbnail with Duration Pill - enlarged
         Box(
             modifier = Modifier
-                .width(100.dp)
-                .height(68.dp)
+                .width(118.dp)
+                .height(74.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(
                     Brush.linearGradient(

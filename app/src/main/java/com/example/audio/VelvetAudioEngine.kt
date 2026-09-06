@@ -35,7 +35,7 @@ class VelvetAudioEngine(
 ) {
     private var appContext: Context? = null
 
-    private val _currentTrack = MutableStateFlow<Track>(SampleData.trackAfterHours)
+    private val _currentTrack = MutableStateFlow<Track>(SampleData.defaultIdleTrack)
     val currentTrack: StateFlow<Track> = _currentTrack.asStateFlow()
 
     private val _isPlaying = MutableStateFlow(false)
@@ -56,15 +56,13 @@ class VelvetAudioEngine(
     private val _isRepeat = MutableStateFlow(false)
     val isRepeat: StateFlow<Boolean> = _isRepeat.asStateFlow()
 
-    private val _offlineCachedTrackIds = MutableStateFlow(setOf("track_1", "track_2"))
+    private val _offlineCachedTrackIds = MutableStateFlow<Set<String>>(emptySet())
     val offlineCachedTrackIds: StateFlow<Set<String>> = _offlineCachedTrackIds.asStateFlow()
 
-    private val _trackPlayCounts = MutableStateFlow<Map<String, Int>>(
-        mapOf("track_1" to 5, "track_2" to 3, "track_3" to 2, "rel_1" to 1)
-    )
+    private val _trackPlayCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
     val trackPlayCounts: StateFlow<Map<String, Int>> = _trackPlayCounts.asStateFlow()
 
-    private val _favoriteTrackIds = MutableStateFlow(setOf("track_1", "rel_1"))
+    private val _favoriteTrackIds = MutableStateFlow<Set<String>>(emptySet())
     val favoriteTrackIds: StateFlow<Set<String>> = _favoriteTrackIds.asStateFlow()
 
     private val _nextQueueTrack = MutableStateFlow<Track?>(null)
@@ -107,6 +105,27 @@ class VelvetAudioEngine(
 
     fun setDeviceTracks(tracks: List<Track>) {
         _deviceTracks.value = tracks
+        if ((_currentTrack.value.id == "idle_device_track" || _currentTrack.value.id == "track_1") && tracks.isNotEmpty()) {
+            val ctx = appContext
+            val first = tracks.first()
+            val themedFirst = if (ctx != null) {
+                val colors = ArtworkColorExtractor.extractColors(ctx, first)
+                first.copy(dominantColor = colors.dominant, secondaryColor = colors.secondary)
+            } else {
+                first
+            }
+            _currentTrack.value = themedFirst
+            updateMediaSession()
+        }
+    }
+
+    fun addDeviceTrack(track: Track) {
+        val updated = listOf(track) + _deviceTracks.value.filter { it.id != track.id }
+        _deviceTracks.value = updated
+        if (_currentTrack.value.id == "idle_device_track") {
+            _currentTrack.value = track
+            updateMediaSession()
+        }
     }
 
     fun playTrack(track: Track) {
@@ -217,7 +236,7 @@ class VelvetAudioEngine(
 
     fun getAllAvailableTracks(): List<Track> {
         val deleted = _deletedTrackIds.value
-        return (SampleData.recentlyPlayedTracks + SampleData.newReleases + _deviceTracks.value)
+        return _deviceTracks.value
             .distinctBy { it.id }
             .filterNot { deleted.contains(it.id) }
     }

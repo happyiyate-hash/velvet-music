@@ -54,28 +54,24 @@ import com.example.ui.theme.VelvetTextTertiary
 fun ExploreScreen(
     currentTrack: Track,
     isPlaying: Boolean,
+    tracks: List<Track> = emptyList(),
     onSelectTrack: (Track) -> Unit,
     onTrackMenuClick: (Track) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCatalog by remember { mutableStateOf("All Catalogs") }
+    var selectedCatalog by remember { mutableStateOf("All Audio") }
 
-    val catalogs = listOf("All Catalogs", "Jamendo", "Audius", "Archive.org", "Free Music Archive")
-    val allTracks = remember {
-        (SampleData.recentlyPlayedTracks + SampleData.newReleases + SampleData.allMixes.flatMap { it.tracks }).distinctBy { it.id }
-    }
+    val catalogs = listOf("All Audio", "Device Tracks", "Internal Storage")
 
-    val filteredTracks = remember(searchQuery, selectedCatalog) {
-        allTracks.filter { track ->
+    val filteredTracks = remember(searchQuery, selectedCatalog, tracks) {
+        tracks.filter { track ->
             val matchesQuery = searchQuery.isBlank() ||
                     track.title.contains(searchQuery, ignoreCase = true) ||
-                    track.artist.contains(searchQuery, ignoreCase = true)
+                    track.artist.contains(searchQuery, ignoreCase = true) ||
+                    track.album.contains(searchQuery, ignoreCase = true)
 
-            val matchesCatalog = selectedCatalog == "All Catalogs" ||
-                    track.catalogSource.contains(selectedCatalog, ignoreCase = true)
-
-            matchesQuery && matchesCatalog
+            matchesQuery
         }
     }
 
@@ -83,101 +79,77 @@ fun ExploreScreen(
         modifier = modifier
             .fillMaxSize()
             .testTag("explore_screen"),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp)
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
     ) {
         item {
-            Text(
-                text = "Search & Legal Catalogs",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = VelvetTextPrimary
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Stream royalty-free and public domain ambient catalogs with AAC audio",
-                fontSize = 13.sp,
-                color = VelvetTextSecondary
-            )
+            Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+                Text(
+                    text = "Music Library",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = VelvetTextPrimary
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${tracks.size} audio tracks on your device",
+                    fontSize = 13.sp,
+                    color = VelvetTextSecondary
+                )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("explore_search_input"),
-                placeholder = { Text("Search tracks, artists, moods...", color = VelvetTextTertiary) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = VelvetTextSecondary
-                    )
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(
-                                imageVector = Icons.Default.Clear,
-                                contentDescription = "Clear",
-                                tint = VelvetTextSecondary
-                            )
-                        }
-                    }
-                },
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = VelvetBrightCrimson,
-                    unfocusedBorderColor = VelvetBorder,
-                    focusedContainerColor = VelvetSurfaceElevated,
-                    unfocusedContainerColor = VelvetSurfaceElevated,
-                    focusedTextColor = VelvetTextPrimary,
-                    unfocusedTextColor = VelvetTextPrimary
-                ),
-                singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Catalog Filter Chips
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 16.dp)
-            ) {
-                items(catalogs) { catalog ->
-                    val isSelected = catalog == selectedCatalog
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) VelvetBrightCrimson else VelvetSurfaceElevated)
-                            .border(1.dp, if (isSelected) VelvetBrightCrimson else VelvetBorder, RoundedCornerShape(20.dp))
-                            .clickable { selectedCatalog = catalog }
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
-                            .testTag("catalog_chip_$catalog")
-                    ) {
-                        Text(
-                            text = catalog,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) Color.White else VelvetTextSecondary
+                // Search Bar with reduced margins
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("explore_search_input"),
+                    placeholder = { Text("Search songs, artists, albums...", color = VelvetTextTertiary, fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = VelvetTextSecondary
                         )
-                    }
-                }
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = VelvetTextSecondary
+                                )
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = VelvetBrightCrimson,
+                        unfocusedBorderColor = VelvetBorder,
+                        focusedContainerColor = VelvetSurfaceElevated,
+                        unfocusedContainerColor = VelvetSurfaceElevated,
+                        focusedTextColor = VelvetTextPrimary,
+                        unfocusedTextColor = VelvetTextPrimary
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
             }
         }
 
         items(filteredTracks) { track ->
             val isCurrent = track.id == currentTrack.id
-            RecentlyPlayedRow(
+            StandaloneMusicRow(
                 track = track,
                 isCurrent = isCurrent,
                 isPlaying = isPlaying && isCurrent,
                 onClick = { onSelectTrack(track) },
                 onMenuClick = { onTrackMenuClick(track) }
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
         }
 
         if (filteredTracks.isEmpty()) {
@@ -185,12 +157,12 @@ fun ExploreScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 40.dp),
+                        .padding(top = 32.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No tracks found matching \"$searchQuery\"",
-                        fontSize = 14.sp,
+                        text = if (searchQuery.isNotBlank()) "No tracks found matching \"$searchQuery\"" else "No audio files found on device",
+                        fontSize = 13.sp,
                         color = VelvetTextTertiary
                     )
                 }

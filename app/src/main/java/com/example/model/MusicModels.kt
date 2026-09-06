@@ -270,35 +270,41 @@ object SampleData {
 
     val allMixes = listOf(mixLuminousEchoes, mixAcousticWaves, mixNightGrooves, mixSunsetBeats)
 
-    val recentlyPlayedTracks = listOf(trackAfterHours, trackAzureDrift, trackGoodNews, trackBlindingLights)
-
-    val newReleases = listOf(
-        trackAzureDrift,
-        Track(
-            id = "rel_1",
-            title = "Midnight Velvet Pulse",
-            artist = "Aura Noir",
-            album = "Obsidian EP",
-            durationMs = 178000L,
-            coverResId = R.drawable.art_luminous_echoes,
-            dominantColor = Color(0xFF880E2F),
-            secondaryColor = Color(0xFF16060E),
-            catalogSource = "Indie Portal Verified",
-            lyrics = sampleLyricsLuminousEchoes,
-            bpm = 92
-        ),
-        Track(
-            id = "rel_2",
-            title = "Dusk Resonance",
-            artist = "Echo District",
-            album = "Analog Dreams",
-            durationMs = 205000L,
-            coverResId = R.drawable.art_night_grooves,
-            dominantColor = Color(0xFF6B1238),
-            secondaryColor = Color(0xFF1B050E),
-            catalogSource = "Jamendo Creative Commons",
-            lyrics = sampleLyricsAfterHours,
-            bpm = 78
-        )
+    val defaultIdleTrack = Track(
+        id = "idle_device_track",
+        title = "No Track Playing",
+        artist = "Device Audio",
+        album = "Device Music",
+        durationMs = 0L,
+        coverResId = R.drawable.art_after_hours,
+        dominantColor = Color(0xFF4A0A16),
+        secondaryColor = Color(0xFF140508),
+        catalogSource = "Device Storage"
     )
+
+    // Hardcoded music removed - Only real user device music is displayed
+    val recentlyPlayedTracks = emptyList<Track>()
+    val newReleases = emptyList<Track>()
+}
+
+/**
+ * Fallback pool using the app's photos to automatically assign distinct photos
+ * to device music that does not have an embedded photo.
+ */
+object FallbackArtworkPool {
+    val covers = listOf(
+        R.drawable.art_after_hours,
+        R.drawable.art_night_grooves,
+        R.drawable.art_luminous_echoes,
+        R.drawable.art_good_news,
+        R.drawable.art_sunset_beats,
+        R.drawable.art_blinding_lights,
+        R.drawable.art_acoustic_waves
+    )
+
+    fun getPhotoForTrack(id: String, title: String = "", artist: String = ""): Int {
+        val rawHash = id.hashCode() xor (title.hashCode() * 31) xor (artist.hashCode() * 17)
+        val index = kotlin.math.abs(rawHash) % covers.size
+        return covers[index]
+    }
 }

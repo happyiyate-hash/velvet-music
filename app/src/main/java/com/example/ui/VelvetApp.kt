@@ -1,5 +1,8 @@
 package com.example.ui
 
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -115,30 +118,49 @@ fun VelvetApp() {
     val deviceTracks by audioEngine.deviceTracks.collectAsState()
     val deletedTrackIds by audioEngine.deletedTrackIds.collectAsState()
 
-    // Initialize media session lock screen controls and query device audio files upon launch
-    LaunchedEffect(Unit) {
-        audioEngine.bindMediaSession(context)
-        val loaded = DeviceMediaManager.loadDeviceTracks(context)
-        if (loaded.isNotEmpty()) {
-            audioEngine.setDeviceTracks(loaded)
+    // Automatic permission launcher on mount: asks for permission to access user device audio & video
+    val mediaPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val audioGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions[android.Manifest.permission.READ_MEDIA_AUDIO] == true
+        } else {
+            permissions[android.Manifest.permission.READ_EXTERNAL_STORAGE] == true
+        }
+        if (audioGranted || DeviceMediaManager.hasAudioPermission(context)) {
+            val loaded = DeviceMediaManager.loadDeviceTracks(context)
+            if (loaded.isNotEmpty()) {
+                audioEngine.setDeviceTracks(loaded)
+            }
         }
     }
 
-    // Combined tracks (device audio + curated catalog minus deleted tracks)
+    // Initialize media session lock screen controls and auto-query device audio files upon launch
+    LaunchedEffect(Unit) {
+        audioEngine.bindMediaSession(context)
+        if (DeviceMediaManager.hasAudioPermission(context)) {
+            val loaded = DeviceMediaManager.loadDeviceTracks(context)
+            if (loaded.isNotEmpty()) {
+                audioEngine.setDeviceTracks(loaded)
+            }
+        } else {
+            // Automatically prompt for permission when mounting so user music & video can be detected
+            mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions)
+        }
+    }
+
+    // Only real device tracks (minus deleted tracks - no hardcoded music)
     val allTracks = remember(deviceTracks, deletedTrackIds) {
-        (SampleData.recentlyPlayedTracks + SampleData.newReleases + deviceTracks)
+        deviceTracks
             .distinctBy { it.id }
             .filterNot { deletedTrackIds.contains(it.id) }
     }
 
-    // Most played tracks (user likes playing all the time: 1, 2, 3+ times, ranked live)
+    // Most played tracks (user plays mostly / all the time, ranked by real play counts)
     val mostPlayedTracks = remember(allTracks, trackPlayCounts) {
-        allTracks.sortedByDescending { trackPlayCounts[it.id] ?: it.playCount }
-    }
-
-    // Recently added tracks (sorted by dateAddedMs)
-    val recentlyAddedTracks = remember(allTracks) {
-        allTracks.sortedByDescending { it.dateAddedMs }
+        val played = allTracks.filter { (trackPlayCounts[it.id] ?: 0) > 0 }
+            .sortedByDescending { trackPlayCounts[it.id] ?: 0 }
+        if (played.isNotEmpty()) played else allTracks
     }
 
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -153,10 +175,11 @@ fun VelvetApp() {
             .fillMaxSize()
             .background(VelvetAshGrayDark)
     ) {
-        // Global Sound Catch Reactive Mesh Background (Off-Blood to Ash Gray gradient)
+        // App background remains in its exact velvet theme color (Off-Blood to Ash Gray)
+        // Dynamic music artwork colors are strictly isolated to the PlayerSheet!
         SoundCatchMeshBackground(
-            dominantColor = currentTrack.dominantColor,
-            secondaryColor = currentTrack.secondaryColor,
+            dominantColor = VelvetOffBloodTop,
+            secondaryColor = VelvetBloodPlum,
             audioTelemetry = telemetry,
             isPlaying = isPlaying,
             isSoundCatchEnabled = isSoundCatchEnabled
@@ -180,18 +203,21 @@ fun VelvetApp() {
                         isPlaying = isPlaying,
                         allTracks = allTracks,
                         mostPlayedTracks = mostPlayedTracks,
-                        recentlyAddedTracks = recentlyAddedTracks,
                         playCounts = trackPlayCounts,
+                        hasAudioPermission = DeviceMediaManager.hasAudioPermission(context),
+                        onRequestPermission = { mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions) },
                         onSelectTrack = { track -> audioEngine.playTrack(track) },
                         onOpenSearch = { selectedTab = 1 },
                         onOpenSettings = { isSettingsOpen = true },
                         onOpenNotifications = { isProTierOpen = true },
-                        onTrackMenuClick = { track -> actionSheetTrack = track }
+                        onTrackMenuClick = { track -> actionSheetTrack = track },
+                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
                     )
 
                     1 -> ExploreScreen(
                         currentTrack = currentTrack,
                         isPlaying = isPlaying,
+                        tracks = allTracks,
                         onSelectTrack = { track -> audioEngine.playTrack(track) },
                         onTrackMenuClick = { track -> actionSheetTrack = track }
                     )
@@ -204,7 +230,7 @@ fun VelvetApp() {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 68.dp, start = 14.dp, end = 14.dp)
+                            .padding(bottom = 68.dp, start = 6.dp, end = 6.dp)
                     ) {
                         AshGlassMiniPlayerBar(
                             track = currentTrack,

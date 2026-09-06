@@ -144,8 +144,8 @@ fun PlayerSheet(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp)
-                .padding(top = 44.dp, bottom = 28.dp),
+                .padding(horizontal = 10.dp)
+                .padding(top = 18.dp, bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Top Bar
@@ -197,9 +197,9 @@ fun PlayerSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Central Area: Artwork with dynamic colored glow or Synced Lyrics
+            // Central Area: Artwork enlarged with dynamic colored glow or Synced Lyrics
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -210,18 +210,18 @@ fun PlayerSheet(
                     // Ambient halo capturing the picture's color
                     Box(
                         modifier = Modifier
-                            .size(260.dp)
+                            .size(280.dp)
                             .clip(CircleShape)
                             .background(dynamicDominant.copy(alpha = 0.25f))
                     )
 
-                    // Album Artwork Card
+                    // Enlarged Album Artwork Card with minimal padding
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.88f)
+                            .fillMaxWidth(0.96f)
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(26.dp))
-                            .border(1.2.dp, dynamicDominant.copy(alpha = 0.35f), RoundedCornerShape(26.dp))
+                            .clip(RoundedCornerShape(28.dp))
+                            .border(1.2.dp, dynamicDominant.copy(alpha = 0.35f), RoundedCornerShape(28.dp))
                             .background(VelvetSurfaceElevated),
                         contentAlignment = Alignment.Center
                     ) {
@@ -241,11 +241,13 @@ fun PlayerSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Track metadata & Action pills
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -258,7 +260,7 @@ fun PlayerSheet(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = track.artist,
                         fontSize = 14.sp,
@@ -297,7 +299,7 @@ fun PlayerSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // SLIM PROGRESS BAR (Very slim, no crossing line!)
             SlimMusicProgressBar(
@@ -305,12 +307,16 @@ fun PlayerSheet(
                 durationMs = track.durationMs,
                 activeColor = dynamicDominant,
                 onSeekTo = onSeekTo,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
             )
 
             // Timestamps
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
@@ -325,11 +331,13 @@ fun PlayerSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // PLAYBACK CONTROLS ROW (Enlarged curved buttons with unique colors)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
