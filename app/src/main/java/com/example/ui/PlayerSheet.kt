@@ -1,10 +1,5 @@
 package com.example.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -63,8 +57,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.audio.AudioTelemetry
-import com.example.mesh.SoundCatchMeshBackground
 import com.example.model.Track
 import com.example.ui.theme.VelvetAshGrayDark
 import com.example.ui.theme.VelvetBorder
@@ -80,8 +72,6 @@ fun PlayerSheet(
     track: Track,
     isPlaying: Boolean,
     playbackPositionMs: Long,
-    telemetry: AudioTelemetry,
-    isSoundCatchEnabled: Boolean,
     isShuffle: Boolean,
     isRepeat: Boolean,
     isCachedOffline: Boolean,
@@ -91,24 +81,14 @@ fun PlayerSheet(
     onSkipPrevious: () -> Unit,
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
-    onToggleSoundCatch: () -> Unit,
     onToggleOfflineCache: () -> Unit,
-    onOpenInspector: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var showLyrics by remember { mutableStateOf(false) }
 
-    // Dynamically animated background colors capturing the playing song's picture (blue, crimson, etc.)
-    val dynamicDominant by animateColorAsState(
-        targetValue = track.dominantColor,
-        animationSpec = tween(durationMillis = 700),
-        label = "playerDominant"
-    )
-    val dynamicSecondary by animateColorAsState(
-        targetValue = track.secondaryColor,
-        animationSpec = tween(durationMillis = 700),
-        label = "playerSecondary"
-    )
+    // Keep the existing dynamic artwork atmosphere without Sound Catch controls.
+    val dynamicDominant = track.dominantColor
+    val dynamicSecondary = track.secondaryColor
 
     Box(
         modifier = Modifier
@@ -116,16 +96,7 @@ fun PlayerSheet(
             .background(VelvetAshGrayDark)
             .testTag("full_player_sheet")
     ) {
-        // Sound Catch background live under the player
-        SoundCatchMeshBackground(
-            dominantColor = dynamicDominant,
-            secondaryColor = dynamicSecondary,
-            audioTelemetry = telemetry,
-            isPlaying = isPlaying,
-            isSoundCatchEnabled = isSoundCatchEnabled
-        )
-
-        // Dynamic atmospheric gradient flood directly capturing the music's cover color
+        // Existing artwork-color atmosphere; Sound Catch UI/mesh has been removed.
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -148,7 +119,6 @@ fun PlayerSheet(
                 .padding(top = 18.dp, bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -184,22 +154,11 @@ fun PlayerSheet(
                     )
                 }
 
-                IconButton(
-                    onClick = onOpenInspector,
-                    modifier = Modifier.testTag("open_sound_catch_inspector_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = "Sound Catch Mesh Inspector",
-                        tint = if (isSoundCatchEnabled) dynamicDominant else VelvetTextTertiary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                Spacer(modifier = Modifier.size(48.dp))
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Central Area: Artwork enlarged with dynamic colored glow or Synced Lyrics
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -207,7 +166,6 @@ fun PlayerSheet(
                 contentAlignment = Alignment.Center
             ) {
                 if (!showLyrics) {
-                    // Ambient halo capturing the picture's color
                     Box(
                         modifier = Modifier
                             .size(280.dp)
@@ -215,7 +173,6 @@ fun PlayerSheet(
                             .background(dynamicDominant.copy(alpha = 0.25f))
                     )
 
-                    // Enlarged Album Artwork Card with minimal padding
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(0.96f)
@@ -243,7 +200,6 @@ fun PlayerSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Track metadata & Action pills
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -271,7 +227,6 @@ fun PlayerSheet(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Lyrics toggle
                     IconButton(
                         onClick = { showLyrics = !showLyrics },
                         modifier = Modifier.testTag("toggle_lyrics_button")
@@ -284,7 +239,6 @@ fun PlayerSheet(
                         )
                     }
 
-                    // Offline cache button
                     IconButton(
                         onClick = onToggleOfflineCache,
                         modifier = Modifier.testTag("toggle_offline_cache_button")
@@ -301,7 +255,6 @@ fun PlayerSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // SLIM PROGRESS BAR (Very slim, no crossing line!)
             SlimMusicProgressBar(
                 positionMs = playbackPositionMs,
                 durationMs = track.durationMs,
@@ -312,7 +265,6 @@ fun PlayerSheet(
                     .padding(horizontal = 4.dp)
             )
 
-            // Timestamps
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -333,7 +285,6 @@ fun PlayerSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // PLAYBACK CONTROLS ROW (Enlarged curved buttons with unique colors)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -341,7 +292,6 @@ fun PlayerSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Shuffle button (Curved frosted enclosure)
                 Box(
                     modifier = Modifier
                         .size(46.dp)
@@ -364,7 +314,6 @@ fun PlayerSheet(
                     )
                 }
 
-                // Previous Button (Enlarged with curved edges - not sharp)
                 Box(
                     modifier = Modifier
                         .size(58.dp)
@@ -390,7 +339,6 @@ fun PlayerSheet(
                     )
                 }
 
-                // Play / Pause central button (Curved squircle with unique radiant theme glow)
                 Box(
                     modifier = Modifier
                         .size(width = 78.dp, height = 64.dp)
@@ -417,7 +365,6 @@ fun PlayerSheet(
                     )
                 }
 
-                // Next Button (Enlarged with curved edges - not sharp)
                 Box(
                     modifier = Modifier
                         .size(58.dp)
@@ -443,7 +390,6 @@ fun PlayerSheet(
                     )
                 }
 
-                // Repeat button (Curved frosted enclosure)
                 Box(
                     modifier = Modifier
                         .size(46.dp)
@@ -466,49 +412,10 @@ fun PlayerSheet(
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Catalog source and Sound Catch status badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(VelvetSurfaceElevated)
-                        .border(1.dp, VelvetBorder, RoundedCornerShape(20.dp))
-                        .clickable { onOpenInspector() }
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                        .testTag("sound_catch_badge")
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(if (isSoundCatchEnabled) dynamicDominant else VelvetTextTertiary)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isSoundCatchEnabled) "Sound Catch Active: ${telemetry.pipelineLatencyMs}ms Fast Snap" else "Sound Catch Paused",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = VelvetTextSecondary
-                        )
-                    }
-                }
-            }
         }
     }
 }
 
-/**
- * Ultra-slim, elegant progress scrubber bar with NO crossing line!
- * Supports both smooth tapping and dragging with instant seek feedback.
- */
 @Composable
 fun SlimMusicProgressBar(
     positionMs: Long,
@@ -529,7 +436,7 @@ fun SlimMusicProgressBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(26.dp) // Generous touch target for easy tapping and dragging
+            .height(26.dp)
             .pointerInput(durationMs) {
                 detectTapGestures { offset ->
                     val newFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
@@ -562,7 +469,6 @@ fun SlimMusicProgressBar(
         val widthPx = constraints.maxWidth.toFloat()
         val currentProgressWidth = (widthPx * displayFraction).coerceIn(0f, widthPx)
 
-        // 1. Inactive Background Track (Very slim 3.5dp, rounded smooth ends)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -571,7 +477,6 @@ fun SlimMusicProgressBar(
                 .background(Color.White.copy(alpha = 0.12f))
         )
 
-        // 2. Active Progress Track (Slim 3.5dp, dynamic vibrant gradient)
         Box(
             modifier = Modifier
                 .width(with(LocalDensity.current) { currentProgressWidth.toDp() })
@@ -588,8 +493,6 @@ fun SlimMusicProgressBar(
                 )
         )
 
-        // 3. Sleek glowing round bead on tip - NO CROSSING LINE!
-        // Smoothly rides on top of the slim track
         val beadSize = if (isDragging) 11.dp else 8.5.dp
         Box(
             modifier = Modifier
