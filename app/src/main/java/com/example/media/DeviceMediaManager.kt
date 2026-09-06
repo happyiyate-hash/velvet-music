@@ -99,8 +99,7 @@ object DeviceMediaManager {
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
-                    val rawTitle = cursor.getString(titleColumn) ?: "Unknown Track"
-                    val title = cleanTrackTitle(rawTitle)
+                    val title = cursor.getString(titleColumn) ?: "Unknown Track"
                     val artist = cursor.getString(artistColumn) ?: "Unknown Artist"
                     val album = cursor.getString(albumColumn) ?: "Device Audio"
                     val durationMs = cursor.getLong(durationColumn)
@@ -110,6 +109,7 @@ object DeviceMediaManager {
                     val cleanArtist = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist
                     val trackId = "device_audio_$id"
 
+                    // If music doesn't have a photo, system automatically picks a distinct photo from the app's pool
                     val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
                     val colors = ArtworkColorExtractor.getColorsForDrawable(context, cover)
 
@@ -137,47 +137,15 @@ object DeviceMediaManager {
     }
 
     /**
-     * Turns filename-like device metadata into a short, readable title without
-     * changing real song titles. This prevents long storage names/IDs from
-     * taking over the UI when a downloader did not write proper music metadata.
-     */
-    private fun cleanTrackTitle(rawTitle: String): String {
-        val base = rawTitle
-            .trim()
-            .substringBeforeLast('.', rawTitle)
-            .replace(Regex("_+"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-
-        val withoutGenericPrefix = base.replace(
-            Regex("(?i)^audio\\s+"),
-            ""
-        )
-
-        val withoutTrailingId = withoutGenericPrefix.replace(
-            Regex("\\s+[0-9]{8,}$"),
-            ""
-        ).trim()
-
-        val readable = withoutTrailingId
-            .replace(Regex("(?i)\\bn\\s+t\\b"), "n't")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-
-        return if (readable.isBlank()) "Untitled Track" else readable
-    }
-
-    /**
      * Creates a Track when a user picks an audio file directly from device storage or downloads.
      */
     fun createTrackFromUri(context: Context, uri: Uri): Track? {
         return try {
             val retriever = MediaMetadataRetriever()
             retriever.setDataSource(context, uri)
-            val rawTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
                 ?: uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')
                 ?: "Device Audio File"
-            val title = cleanTrackTitle(rawTitle)
             val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
                 ?: "Local Artist"
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
@@ -262,6 +230,7 @@ object DeviceMediaManager {
             Log.e("DeviceMediaManager", "Error querying video MediaStore", e)
         }
 
+        // If no videos on device/emulator, supply curated default device videos so the UI renders fully
         if (videos.isEmpty()) {
             videos.addAll(
                 listOf(

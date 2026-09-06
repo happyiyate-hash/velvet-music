@@ -1,8 +1,9 @@
 package com.example.audio
 
 import android.content.Context
-import android.media.MediaPlayer
-import android.net.Uri
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import com.example.media.ArtworkColorExtractor
 import com.example.media.VelvetMediaSessionManager
 import com.example.model.SampleData
@@ -20,9 +21,9 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 data class AudioTelemetry(
-    val transientSpike: Float = 0f,
-    val sustainedEnergy: Float = 0.4f,
-    val rmsLevel: Float = 0.3f,
+    val transientSpike: Float = 0f,    // 0..1, kicks & snares (Fast Snap)
+    val sustainedEnergy: Float = 0.4f,  // 0..1, vocals & synths (Smooth Drift)
+    val rmsLevel: Float = 0.3f,         // 0..1 overall energy
     val kickDetected: Boolean = false,
     val snareDetected: Boolean = false,
     val dominantFrequencyHz: Float = 110f,
@@ -74,8 +75,8 @@ class VelvetAudioEngine(
     val deletedTrackIds: StateFlow<Set<String>> = _deletedTrackIds.asStateFlow()
 
     private var playbackJob: Job? = null
-    private var mediaPlayer: MediaPlayer? = null
-    private var isPrepared = false
+    private var synthJob: Job? = null
+    private var nativeAudioTrack: AudioTrack? = null
 
     init {
         startTelemetryLoop()
@@ -128,6 +129,7 @@ class VelvetAudioEngine(
     }
 
     fun playTrack(track: Track) {
+        // Dynamically extract vibrant artwork color so the whole background reflects this song's picture!
         val ctx = appContext
         val themedTrack = if (ctx != null) {
             val colors = ArtworkColorExtractor.extractColors(ctx, track)
@@ -138,67 +140,16 @@ class VelvetAudioEngine(
 
         _currentTrack.value = themedTrack
         _playbackPositionMs.value = 0L
-        _isPlaying.value = false
-        isPrepared = false
+        _isPlaying.value = true
 
+        // Increment track play count so user's most-played habits update immediately
         val counts = _trackPlayCounts.value.toMutableMap()
         counts[themedTrack.id] = (counts[themedTrack.id] ?: 0) + 1
         _trackPlayCounts.value = counts
 
-        playbackJob?.cancel()
-        releaseMediaPlayer()
-
-        val contentUri = themedTrack.contentUri
-        if (ctx == null || contentUri.isNullOrBlank()) {
-            // Only real device/imported tracks can be played by this local player.
-            updateMediaSession()
-            return
-        }
-
-        val player = MediaPlayer()
-        mediaPlayer = player
-
-        try {
-            player.setOnPreparedListener { preparedPlayer ->
-                if (mediaPlayer !== preparedPlayer) return@setOnPreparedListener
-                isPrepared = true
-                _isPlaying.value = true
-                preparedPlayer.start()
-                startPlaybackProgress()
-                updateMediaSession()
-            }
-
-            player.setOnCompletionListener {
-                if (mediaPlayer !== player) return@setOnCompletionListener
-                isPrepared = false
-                _isPlaying.value = false
-                _playbackPositionMs.value = 0L
-                updateMediaSession()
-
-                if (_isRepeat.value) {
-                    playTrack(_currentTrack.value)
-                } else {
-                    playNext()
-                }
-            }
-
-            player.setOnErrorListener { _, _, _ ->
-                if (mediaPlayer === player) {
-                    isPrepared = false
-                    _isPlaying.value = false
-                    updateMediaSession()
-                }
-                true
-            }
-
-            // This is the actual MediaStore/content-provider URI of the user's audio file.
-            player.setDataSource(ctx, Uri.parse(contentUri))
-            player.prepareAsync()
-        } catch (_: Exception) {
-            releaseMediaPlayer()
-            _isPlaying.value = false
-            updateMediaSession()
-        }
+        startPlaybackProgress()
+        startAudioSynthesis()
+        updateMediaSession()
     }
 
     fun queueNext(track: Track) {
@@ -207,7 +158,11 @@ class VelvetAudioEngine(
 
     fun toggleFavorite(trackId: String) {
         val current = _favoriteTrackIds.value.toMutableSet()
-        if (current.contains(trackId)) current.remove(trackId) else current.add(trackId)
+        if (current.contains(trackId)) {
+            current.remove(trackId)
+        } else {
+            current.add(trackId)
+        }
         _favoriteTrackIds.value = current
     }
 
@@ -216,52 +171,29 @@ class VelvetAudioEngine(
     }
 
     fun togglePlayPause() {
-        if (_isPlaying.value) pause() else resume()
+        if (_isPlaying.value) {
+            pause()
+        } else {
+            resume()
+        }
     }
 
     fun pause() {
-        if (isPrepared) {
-            try {
-                mediaPlayer?.pause()
-            } catch (_: Exception) {
-            }
-        }
         _isPlaying.value = false
-        playbackJob?.cancel()
+        stopAudioSynthesis()
         updateMediaSession()
     }
 
     fun resume() {
-        val player = mediaPlayer
-        if (isPrepared && player != null) {
-            try {
-                player.start()
-                _isPlaying.value = true
-                startPlaybackProgress()
-                updateMediaSession()
-            } catch (_: Exception) {
-                _isPlaying.value = false
-                updateMediaSession()
-            }
-        } else {
-            // Re-open the actual selected device URI if the player was released.
-            val track = _currentTrack.value
-            if (!track.contentUri.isNullOrBlank()) {
-                playTrack(track)
-            }
-        }
+        _isPlaying.value = true
+        startPlaybackProgress()
+        startAudioSynthesis()
+        updateMediaSession()
     }
 
     fun seekTo(positionMs: Long) {
         val duration = _currentTrack.value.durationMs
-        val target = positionMs.coerceIn(0L, duration)
-        _playbackPositionMs.value = target
-        if (isPrepared) {
-            try {
-                mediaPlayer?.seekTo(target.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
-            } catch (_: Exception) {
-            }
-        }
+        _playbackPositionMs.value = positionMs.coerceIn(0L, duration)
         updateMediaSession()
     }
 
@@ -279,7 +211,11 @@ class VelvetAudioEngine(
 
     fun toggleOfflineCache(trackId: String) {
         val current = _offlineCachedTrackIds.value.toMutableSet()
-        if (current.contains(trackId)) current.remove(trackId) else current.add(trackId)
+        if (current.contains(trackId)) {
+            current.remove(trackId)
+        } else {
+            current.add(trackId)
+        }
         _offlineCachedTrackIds.value = current
     }
 
@@ -291,10 +227,11 @@ class VelvetAudioEngine(
             return
         }
         val all = getAllAvailableTracks()
-        if (all.isEmpty()) return
         val currentIndex = all.indexOfFirst { it.id == _currentTrack.value.id }
         val nextIndex = if (currentIndex != -1 && currentIndex < all.lastIndex) currentIndex + 1 else 0
-        playTrack(all[nextIndex])
+        if (all.isNotEmpty()) {
+            playTrack(all[nextIndex])
+        }
     }
 
     fun getAllAvailableTracks(): List<Track> {
@@ -306,28 +243,40 @@ class VelvetAudioEngine(
 
     fun playPrevious() {
         val all = getAllAvailableTracks()
-        if (all.isEmpty()) return
         val currentIndex = all.indexOfFirst { it.id == _currentTrack.value.id }
-        val prevIndex = if (currentIndex > 0) currentIndex - 1 else all.lastIndex
-        playTrack(all[prevIndex])
+        val prevIndex = if (currentIndex > 0) currentIndex - 1 else if (all.isNotEmpty()) all.lastIndex else 0
+        if (all.isNotEmpty()) {
+            playTrack(all[prevIndex])
+        }
     }
 
     private fun startPlaybackProgress() {
         playbackJob?.cancel()
         playbackJob = scope.launch(Dispatchers.Default) {
+            var lastTime = System.currentTimeMillis()
+            var syncTick = 0
             while (isActive && _isPlaying.value) {
                 delay(200L)
-                val player = mediaPlayer
-                if (player == null || !isPrepared) continue
-
-                try {
-                    val position = player.currentPosition.toLong()
-                    _playbackPositionMs.value = position.coerceIn(0L, _currentTrack.value.durationMs)
-                } catch (_: Exception) {
-                    break
+                val now = System.currentTimeMillis()
+                val delta = now - lastTime
+                lastTime = now
+                val current = _playbackPositionMs.value + delta
+                val max = _currentTrack.value.durationMs
+                if (current >= max) {
+                    if (_isRepeat.value) {
+                        _playbackPositionMs.value = 0L
+                        lastTime = System.currentTimeMillis()
+                    } else {
+                        playNext()
+                    }
+                } else {
+                    _playbackPositionMs.value = current
                 }
 
-                updateMediaSession()
+                syncTick++
+                if (syncTick % 5 == 0) {
+                    updateMediaSession()
+                }
             }
         }
     }
@@ -336,18 +285,20 @@ class VelvetAudioEngine(
         scope.launch(Dispatchers.Default) {
             var step = 0
             while (isActive) {
-                delay(40L)
+                delay(40L) // 25 fps telemetry update
                 if (_isPlaying.value) {
                     step++
                     val bpm = _currentTrack.value.bpm
                     val beatIntervalSteps = (60000 / bpm / 40).coerceAtLeast(6)
                     val isBeat = (step % beatIntervalSteps) == 0
                     val isSnare = (step % (beatIntervalSteps * 2)) == beatIntervalSteps
-                    val transient = if (isBeat || isSnare) {
-                        0.85f + (0.15f * kotlin.random.Random.nextFloat())
-                    } else {
+
+                    // Fast Snap transient spike (Kick or Snare)
+                    val transient = if (isBeat || isSnare) 0.85f + (0.15f * kotlin.random.Random.nextFloat()) else {
                         (_telemetry.value.transientSpike * 0.72f).coerceAtLeast(0f)
                     }
+
+                    // Smooth Drift sustained energy (smooth sine modulation)
                     val sustained = 0.45f + (0.35f * sin(step * 0.06f))
                     val rms = (transient * 0.4f + sustained * 0.6f).coerceIn(0.1f, 1f)
 
@@ -373,19 +324,90 @@ class VelvetAudioEngine(
         }
     }
 
-    private fun releaseMediaPlayer() {
-        playbackJob?.cancel()
-        playbackJob = null
-        isPrepared = false
-        try {
-            mediaPlayer?.reset()
-            mediaPlayer?.release()
-        } catch (_: Exception) {
+    private fun startAudioSynthesis() {
+        stopAudioSynthesis()
+        synthJob = scope.launch(Dispatchers.IO) {
+            val sampleRate = 22050
+            val bufferSize = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            ).coerceAtLeast(2048)
+
+            try {
+                val track = AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(bufferSize)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+
+                nativeAudioTrack = track
+                track.play()
+
+                val buffer = ShortArray(1024)
+                var phaseDrone = 0.0
+                var phaseHarmonic = 0.0
+                var beatCounter = 0
+
+                while (isActive && _isPlaying.value) {
+                    val bpm = _currentTrack.value.bpm
+                    val samplesPerBeat = (sampleRate * 60) / bpm
+
+                    for (i in buffer.indices) {
+                        beatCounter++
+                        if (beatCounter >= samplesPerBeat) {
+                            beatCounter = 0
+                        }
+
+                        // Warm dark ambient drone (55Hz / 110Hz warm sub chord)
+                        val droneFreq = 55.0
+                        val harmonicFreq = 110.0
+                        phaseDrone += 2.0 * PI * droneFreq / sampleRate
+                        phaseHarmonic += 2.0 * PI * harmonicFreq / sampleRate
+
+                        var sample = (sin(phaseDrone) * 0.25 + sin(phaseHarmonic) * 0.12)
+
+                        // Subtle warm kick pulse on downbeats
+                        val beatFraction = beatCounter.toDouble() / samplesPerBeat
+                        if (beatFraction < 0.1) {
+                            val kickEnvelope = (1.0 - (beatFraction / 0.1))
+                            sample += sin(phaseDrone * 1.5) * 0.35 * kickEnvelope
+                        }
+
+                        buffer[i] = (sample * 8000.0).toInt().coerceIn(-32768, 32767).toShort()
+                    }
+                    track.write(buffer, 0, buffer.size)
+                }
+            } catch (_: Exception) {
+                // Audio synthesis fallback for devices without audio access
+            }
         }
-        mediaPlayer = null
+    }
+
+    private fun stopAudioSynthesis() {
+        synthJob?.cancel()
+        synthJob = null
+        try {
+            nativeAudioTrack?.stop()
+            nativeAudioTrack?.release()
+        } catch (_: Exception) {}
+        nativeAudioTrack = null
     }
 
     fun release() {
-        releaseMediaPlayer()
+        playbackJob?.cancel()
+        stopAudioSynthesis()
     }
 }
