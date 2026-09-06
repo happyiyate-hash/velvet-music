@@ -18,16 +18,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,6 +59,11 @@ import com.example.ui.theme.VelvetTextPrimary
 import com.example.ui.theme.VelvetTextSecondary
 import com.example.ui.theme.VelvetTextTertiary
 
+private val DeviceSheetGreen = Color(0xFF0B2018)
+private val DeviceSheetGreenSurface = Color(0xFF102A20)
+private val DeviceSheetGreenLine = Color(0xFF25483A)
+private val DeviceSheetIconGray = Color(0xFF9AA49F)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackActionBottomSheet(
@@ -83,50 +85,48 @@ fun TrackActionBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = VelvetObsidian,
+        containerColor = DeviceSheetGreen,
         contentColor = VelvetTextPrimary,
         dragHandle = {
             Box(
                 modifier = Modifier
-                    .padding(vertical = 12.dp)
-                    .width(44.dp)
-                    .height(4.dp)
+                    .padding(top = 8.dp, bottom = 6.dp)
+                    .width(36.dp)
+                    .height(3.dp)
                     .clip(CircleShape)
-                    .background(VelvetBorder)
+                    .background(DeviceSheetGreenLine)
             )
         }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 36.dp)
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 14.dp)
                 .testTag("track_action_sheet")
         ) {
+            // Keep the heading compact. Long device filenames are cleaned by DeviceMediaManager.
             Text(
                 text = track.title,
-                fontSize = 18.sp,
+                fontSize = 17.sp,
+                lineHeight = 21.sp,
                 fontWeight = FontWeight.Bold,
-                color = VelvetTextPrimary
+                color = VelvetTextPrimary,
+                maxLines = 2
             )
             Text(
                 text = "${track.artist} • ${track.album}",
-                fontSize = 13.sp,
-                color = VelvetTextSecondary
-            )
-            Text(
-                text = "Source: ${track.catalogSource}",
-                fontSize = 11.sp,
-                color = VelvetBrightCrimson,
-                modifier = Modifier.padding(top = 2.dp)
+                fontSize = 12.sp,
+                color = VelvetTextSecondary,
+                maxLines = 1
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             ActionRowItem(
                 icon = Icons.Default.PlayArrow,
                 title = "Play Now",
-                subtitle = "Start playback immediately with Sound Catch Mesh",
+                subtitle = "Start playback",
                 onClick = {
                     onPlayNow()
                     onDismiss()
@@ -136,7 +136,7 @@ fun TrackActionBottomSheet(
             ActionRowItem(
                 icon = Icons.Default.QueueMusic,
                 title = "Play Next",
-                subtitle = "Place at the top of the playback queue",
+                subtitle = "Play after the current track",
                 onClick = {
                     onPlayNext()
                     onDismiss()
@@ -146,8 +146,8 @@ fun TrackActionBottomSheet(
             ActionRowItem(
                 icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 title = if (isFavorite) "Favorited" else "Add to Favorites",
-                subtitle = if (isFavorite) "In your Loved Tracks" else "Save to your favorites collection",
-                iconTint = if (isFavorite) VelvetBrightCrimson else VelvetTextSecondary,
+                subtitle = if (isFavorite) "Saved to favorites" else "Save this track",
+                iconTint = DeviceSheetIconGray,
                 onClick = {
                     onToggleFavorite()
                     onDismiss()
@@ -157,7 +157,7 @@ fun TrackActionBottomSheet(
             ActionRowItem(
                 icon = Icons.Default.Share,
                 title = "Share Track",
-                subtitle = "Share song details with friends",
+                subtitle = "Share song details",
                 onClick = {
                     onShareTrack()
                     onDismiss()
@@ -165,30 +165,10 @@ fun TrackActionBottomSheet(
             )
 
             ActionRowItem(
-                icon = if (isCached) Icons.Default.DownloadDone else Icons.Default.FileDownload,
-                title = if (isCached) "Cached Offline (Remove)" else "Download for Offline Listening",
-                subtitle = "AAC 160 kbps CD-Quality local storage",
-                onClick = {
-                    onToggleOfflineCache()
-                    onDismiss()
-                }
-            )
-
-            ActionRowItem(
-                icon = Icons.Default.Subtitles,
-                title = "View Whisper Synced Lyrics",
-                subtitle = "${track.lyrics.size} time-stamped karaoke lines",
-                onClick = {
-                    onViewLyrics()
-                    onDismiss()
-                }
-            )
-
-            ActionRowItem(
                 icon = Icons.Default.Delete,
                 title = "Delete Track",
-                subtitle = "Remove from your library list",
-                iconTint = Color(0xFFFF5252),
+                subtitle = "Remove from your library",
+                iconTint = DeviceSheetIconGray,
                 onClick = {
                     onDeleteTrack()
                     onDismiss()
@@ -203,46 +183,47 @@ fun ActionRowItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
-    iconTint: Color = VelvetBrightCrimson,
+    iconTint: Color = DeviceSheetIconGray,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
-            .padding(vertical = 9.dp, horizontal = 6.dp),
+            .padding(vertical = 5.dp, horizontal = 0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        // No icon card/button: the icon sits directly on the sheet.
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            tint = iconTint,
             modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(VelvetSurfaceElevated)
-                .border(1.dp, VelvetBorder, RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center
+                .size(27.dp)
+                .padding(1.dp)
+        )
+
+        Spacer(modifier = Modifier.width(15.dp))
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(vertical = 1.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        Column {
             Text(
                 text = title,
-                fontSize = 14.sp,
+                fontSize = 15.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = VelvetTextPrimary
+                color = VelvetTextPrimary,
+                maxLines = 1
             )
             Text(
                 text = subtitle,
-                fontSize = 11.sp,
-                color = VelvetTextSecondary
+                fontSize = 10.sp,
+                lineHeight = 13.sp,
+                color = VelvetTextSecondary,
+                maxLines = 1
             )
         }
     }
@@ -316,7 +297,6 @@ fun ProTierBottomSheet(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Pricing selection pill
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(24.dp))
@@ -358,7 +338,6 @@ fun ProTierBottomSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Pro Features list
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -461,7 +440,6 @@ fun SettingsBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Tech stack readout
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
