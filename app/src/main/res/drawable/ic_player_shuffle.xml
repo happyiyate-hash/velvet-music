@@ -1,0 +1,39 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Upper path: elongated run from x=6 to x=42 -->
+    <path
+        android:pathData="M6,14 H12 C17,14 20,18.5 24,24 C28,29.5 31,34 36,34 H42"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Lower path: elongated run from x=6 to x=42 -->
+    <path
+        android:pathData="M6,34 H12 C17,34 20,29.5 24,24 C28,18.5 31,14 36,14 H42"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Upper arrow -->
+    <path
+        android:pathData="M37,9 L42,14 L37,19"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Lower arrow -->
+    <path
+        android:pathData="M37,29 L42,34 L37,39"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+</vector>

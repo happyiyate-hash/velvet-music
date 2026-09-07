@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Top loop: starts along bottom, curves around left wall and top-left corner, runs along top, ends in pulled-back arrow -->
+    <path
+        android:pathData="M14,34 C9.5,34 6,30.5 6,26 V22 C6,17.5 9.5,14 14,14 H29 M24.5,9.5 L29,14 L24.5,18.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Bottom loop: starts along top, curves around right wall and bottom-right corner, runs along bottom, ends in pulled-back arrow -->
+    <path
+        android:pathData="M34,14 C38.5,14 42,17.5 42,22 V26 C42,30.5 38.5,34 34,34 H19 M23.5,29.5 L19,34 L23.5,38.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+</vector>

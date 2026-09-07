@@ -1,5 +1,6 @@
 package com.example.ui
 
+import com.example.R
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
@@ -51,6 +52,8 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -68,6 +71,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -90,6 +94,7 @@ import com.example.audio.AudioTelemetry
 import com.example.media.ArtworkColorExtractor
 import com.example.model.Track
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
 
 /**
@@ -147,34 +152,35 @@ fun PlayerSheet(
             .background(themeColors.darkBackground)
             .testTag("full_player_sheet")
     ) {
-        // Dynamic background atmosphere: subtle, dark, and soft
+        // Dynamic background atmosphere: full-screen atmospheric gradient preserving artwork hue from top to bottom
         Canvas(modifier = Modifier.fillMaxSize()) {
             val canvasWidth = size.width
             val canvasHeight = size.height
+
+            // Full screen vertical gradient transitioning from top atmosphere to deep tone at bottom
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        themeColors.bgTop,
+                        themeColors.bgMidUpper,
+                        themeColors.bgMidLower,
+                        themeColors.bgBottom
+                    ),
+                    startY = 0f,
+                    endY = canvasHeight
+                )
+            )
 
             // Soft radial ambient bloom centered behind the artwork
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        themeColors.atmosphericBloom.copy(alpha = 0.42f),
-                        themeColors.atmosphericBloom.copy(alpha = 0.18f),
+                        themeColors.atmosphericBloom.copy(alpha = 0.35f),
+                        themeColors.atmosphericBloom.copy(alpha = 0.12f),
                         Color.Transparent
                     ),
-                    center = Offset(canvasWidth * 0.5f, canvasHeight * 0.32f),
-                    radius = canvasWidth * 0.95f
-                )
-            )
-
-            // Gentle darkening gradient towards the edges and bottom
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        themeColors.atmosphericBloom.copy(alpha = 0.15f),
-                        Color.Transparent,
-                        Color(0xFF0B090C).copy(alpha = 0.88f)
-                    ),
-                    startY = 0f,
-                    endY = canvasHeight
+                    center = Offset(canvasWidth * 0.5f, canvasHeight * 0.28f),
+                    radius = canvasWidth * 0.85f
                 )
             )
         }
@@ -186,7 +192,7 @@ fun PlayerSheet(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
-                .padding(top = 10.dp, bottom = 18.dp),
+                .padding(top = 8.dp, bottom = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -245,13 +251,10 @@ fun PlayerSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // 2. ALBUM ARTWORK
+            // 2. ALBUM ARTWORK (Expanded size, centered, with clean rounded corners)
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp)
+                    .fillMaxWidth(0.94f)
                     .aspectRatio(1f)
                     .clip(RoundedCornerShape(26.dp))
                     .border(
@@ -269,9 +272,7 @@ fun PlayerSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // 3. SONG INFORMATION (Strict Visual Hierarchy, Left-Aligned)
+            // 3. SONG INFORMATION (Strict Visual Hierarchy, Left-Aligned, Compact Spacing)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -280,13 +281,13 @@ fun PlayerSheet(
             ) {
                 Text(
                     text = track.title.substringBefore(" - "),
-                    fontSize = 22.sp,
+                    fontSize = 21.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = track.artist,
                     fontSize = 15.sp,
@@ -295,22 +296,20 @@ fun PlayerSheet(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = if (track.catalogSource.contains("Device", ignoreCase = true) || track.contentUri != null) {
                         "Device Audio"
                     } else {
                         track.catalogSource
                     },
-                    fontSize = 13.sp,
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.Normal,
-                    color = Color.White.copy(alpha = 0.42f),
+                    color = Color.White.copy(alpha = 0.40f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
 
             // 4. REAL WAVEFORM + PROGRESS BAR (Unified Playback Component)
             NowPlayingWaveformProgress(
@@ -325,38 +324,59 @@ fun PlayerSheet(
                     .padding(horizontal = 8.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
             // 5. PLAYBACK CONTROLS (Previous — Play/Pause — Next)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Previous button
+                // Previous button (enlarged)
                 IconButton(
                     onClick = onSkipPrevious,
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(58.dp)
                         .testTag("player_previous_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipPrevious,
                         contentDescription = "Previous Track",
-                        tint = Color.White.copy(alpha = 0.90f),
-                        modifier = Modifier.size(30.dp)
+                        tint = Color.White.copy(alpha = 0.95f),
+                        modifier = Modifier.size(42.dp)
                     )
                 }
 
-                // Play/Pause button with muted artwork color circle
+                // Play/Pause button with enlarged premium gradient card/circle with glassmorphic border & ambient glow
                 Box(
                     modifier = Modifier
-                        .size(68.dp)
+                        .size(78.dp)
+                        .shadow(
+                            elevation = 12.dp,
+                            shape = CircleShape,
+                            spotColor = themeColors.accent.copy(alpha = 0.40f),
+                            ambientColor = themeColors.darkBackground
+                        )
                         .clip(CircleShape)
-                        .background(themeColors.playPauseCircle)
-                        .border(1.dp, themeColors.playPauseBorder, CircleShape)
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    themeColors.playPauseGradTop,
+                                    themeColors.playPauseGradBottom
+                                )
+                            )
+                        )
+                        .border(
+                            width = 1.5.dp,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.45f),
+                                    themeColors.accent.copy(alpha = 0.32f),
+                                    Color.White.copy(alpha = 0.12f)
+                                )
+                            ),
+                            shape = CircleShape
+                        )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -369,68 +389,74 @@ fun PlayerSheet(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
                         tint = Color.White,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(40.dp)
                     )
                 }
 
-                // Next button
+                // Next button (enlarged)
                 IconButton(
                     onClick = onSkipNext,
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(58.dp)
                         .testTag("player_next_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next Track",
-                        tint = Color.White.copy(alpha = 0.90f),
-                        modifier = Modifier.size(30.dp)
+                        tint = Color.White.copy(alpha = 0.95f),
+                        modifier = Modifier.size(42.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // 6. SHUFFLE AND REPEAT (Secondary actions aligned with progress bar edges)
+            // 6. SHUFFLE AND REPEAT (Minimal standalone controls floating naturally beneath primary controls)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Shuffle on the left
-                IconButton(
-                    onClick = onToggleShuffle,
+                // Shuffle on lower-left: clean, standalone, no visible button container
+                Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .testTag("player_shuffle_button")
+                        .size(48.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onToggleShuffle
+                        )
+                        .testTag("player_shuffle_button"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Shuffle,
+                        painter = painterResource(id = R.drawable.ic_player_shuffle),
                         contentDescription = "Toggle Shuffle",
-                        tint = if (isShuffle) themeColors.accent else Color.White.copy(alpha = 0.42f),
-                        modifier = Modifier.size(22.dp)
+                        tint = if (isShuffle) themeColors.accent else Color.White.copy(alpha = 0.40f),
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
-                // Repeat on the right
-                IconButton(
-                    onClick = onToggleRepeat,
+                // Repeat on lower-right: clean, standalone, looping shape, no visible button container
+                Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .testTag("player_repeat_button")
+                        .size(48.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onToggleRepeat
+                        )
+                        .testTag("player_repeat_button"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Repeat,
+                        painter = painterResource(id = R.drawable.ic_player_repeat),
                         contentDescription = "Toggle Repeat",
-                        tint = if (isRepeat) themeColors.accent else Color.White.copy(alpha = 0.42f),
-                        modifier = Modifier.size(22.dp)
+                        tint = if (isRepeat) themeColors.accent else Color.White.copy(alpha = 0.40f),
+                        modifier = Modifier.size(26.dp)
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(6.dp))
         }
 
         // 7. THREE-DOT SONG ACTION BOTTOM SHEET
@@ -540,7 +566,7 @@ fun NowPlayingWaveformProgress(
     var dragFraction by remember { mutableFloatStateOf(0f) }
     val displayFraction = if (isDragging) dragFraction else progressFraction
 
-    val barCount = 48
+    val barCount = 80
     // Generate an authentic acoustic signature for the song
     val baseProfile = remember(durationMs, barCount) {
         FloatArray(barCount) { i ->
@@ -548,7 +574,8 @@ fun NowPlayingWaveformProgress(
             val wave1 = abs(sin(norm * 3.14159f * 1.8f + 0.35f))
             val wave2 = abs(sin(norm * 3.14159f * 4.3f)) * 0.42f
             val wave3 = abs(sin(norm * 3.14159f * 7.8f + 1.1f)) * 0.28f
-            (wave1 * 0.58f + wave2 + wave3).coerceIn(0.18f, 0.95f)
+            val wave4 = abs(cos(norm * 3.14159f * 12.2f)) * 0.16f
+            (wave1 * 0.52f + wave2 + wave3 + wave4).coerceIn(0.18f, 0.95f)
         }
     }
 
@@ -581,40 +608,35 @@ fun NowPlayingWaveformProgress(
                 )
             }
     ) {
-        // Combined Waveform Bars and Progress Line (pulled tight together)
+        // 1. Thin, delicate waveform bars
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(34.dp)
+                .height(24.dp)
         ) {
             val totalWidth = size.width
-            val lineThickness = 2.5.dp.toPx()
-            val progressLineY = size.height - 6.dp.toPx()
-            val barBottomY = progressLineY - (lineThickness / 2f) - 2.dp.toPx()
-            val maxBarHeight = barBottomY - 1.dp.toPx()
-            val minBarHeight = 3.dp.toPx()
-
-            val barWidth = 2.2.dp.toPx()
+            val barWidth = 1.3.dp.toPx()
             val totalBarWidth = barWidth * barCount
             val barGap = if (barCount > 1) (totalWidth - totalBarWidth) / (barCount - 1) else 0f
+            val maxBarHeight = size.height
+            val minBarHeight = 2.5.dp.toPx()
 
             val liveEnergy = if (isPlaying) telemetry.rmsLevel else 0.32f
             val liveTransient = if (isPlaying) telemetry.transientSpike else 0f
 
-            // All waveform bars show the full active color by default, not moving with the progress bar
             for (i in 0 until barCount) {
                 val barX = i * (barWidth + barGap)
                 val base = baseProfile[i]
 
                 val modulation = if (isPlaying) {
-                    val ripple = sin(i * 0.42f + (positionMs / 200f)).toFloat()
-                    0.65f + 0.35f * liveEnergy + 0.20f * liveTransient * ripple.coerceAtLeast(0f)
+                    val ripple = sin(i * 0.35f + (positionMs / 220f)).toFloat()
+                    0.70f + 0.30f * liveEnergy + 0.18f * liveTransient * ripple.coerceAtLeast(0f)
                 } else {
                     0.72f
                 }
 
                 val barHeight = (base * maxBarHeight * modulation).coerceIn(minBarHeight, maxBarHeight)
-                val barTop = barBottomY - barHeight
+                val barTop = size.height - barHeight
 
                 drawRoundRect(
                     color = activeColor,
@@ -623,70 +645,83 @@ fun NowPlayingWaveformProgress(
                     cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
                 )
             }
+        }
 
-            // Progress Line Canvas immediately underneath
+        // 2. Clearly visible vertical gap between waveform and progress bar (they do NOT touch)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 3. Minimal, thin progress bar line with small indicator thumb
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+        ) {
+            val totalWidth = size.width
+            val centerY = size.height / 2f
+            val lineThickness = 2.0.dp.toPx()
+
             val progressWidth = (totalWidth * displayFraction).coerceIn(0f, totalWidth)
 
-            // Unplayed track line
+            // Unplayed track line (subtle minimal)
             drawRoundRect(
-                color = Color.White.copy(alpha = 0.14f),
-                topLeft = Offset(0f, progressLineY - lineThickness / 2f),
+                color = Color.White.copy(alpha = 0.16f),
+                topLeft = Offset(0f, centerY - lineThickness / 2f),
                 size = Size(totalWidth, lineThickness),
                 cornerRadius = CornerRadius(lineThickness / 2f, lineThickness / 2f)
             )
 
-            // Played track line with gradient
+            // Played track line
             if (progressWidth > 0f) {
                 drawRoundRect(
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            activeColor.copy(alpha = 0.80f),
+                            activeColor.copy(alpha = 0.85f),
                             activeColor,
-                            Color.White.copy(alpha = 0.95f)
+                            Color.White.copy(alpha = 0.90f)
                         ),
                         startX = 0f,
                         endX = progressWidth
                     ),
-                    topLeft = Offset(0f, progressLineY - lineThickness / 2f),
+                    topLeft = Offset(0f, centerY - lineThickness / 2f),
                     size = Size(progressWidth, lineThickness),
                     cornerRadius = CornerRadius(lineThickness / 2f, lineThickness / 2f)
                 )
             }
 
-            // Small indicator handle bead
-            val beadRadius = (if (isDragging) 4.6.dp else 4.0.dp).toPx()
+            // Small indicator handle bead (minimal)
+            val beadRadius = (if (isDragging) 4.2.dp else 3.5.dp).toPx()
             val beadX = progressWidth.coerceIn(beadRadius, totalWidth - beadRadius)
             drawCircle(
                 color = Color.White,
                 radius = beadRadius,
-                center = Offset(beadX, progressLineY)
+                center = Offset(beadX, centerY)
             )
             drawCircle(
                 color = activeColor,
                 radius = beadRadius,
-                center = Offset(beadX, progressLineY),
-                style = Stroke(width = 1.2.dp.toPx())
+                center = Offset(beadX, centerY),
+                style = Stroke(width = 1.0.dp.toPx())
             )
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-        // Underneath timestamps
+        // 4. Clean timestamps underneath
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = formatMs(if (isDragging) (dragFraction * durationMs).toLong() else positionMs),
-                fontSize = 12.sp,
+                fontSize = 11.5.sp,
                 fontWeight = FontWeight.Normal,
-                color = Color.White.copy(alpha = 0.45f)
+                color = Color.White.copy(alpha = 0.48f)
             )
             Text(
                 text = formatMs(durationMs),
-                fontSize = 12.sp,
+                fontSize = 11.5.sp,
                 fontWeight = FontWeight.Normal,
-                color = Color.White.copy(alpha = 0.45f)
+                color = Color.White.copy(alpha = 0.48f)
             )
         }
     }

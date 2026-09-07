@@ -18,10 +18,16 @@ data class TrackThemeColors(
     val secondary: Color,
     val accent: Color,
     val glow: Color,
-    val darkBackground: Color = Color(0xFF0F080B),
-    val atmosphericBloom: Color = Color(0xFF380C16),
-    val playPauseCircle: Color = Color(0xFF631826).copy(alpha = 0.52f),
-    val playPauseBorder: Color = Color(0xFF9E1F36).copy(alpha = 0.28f)
+    val darkBackground: Color = Color(0xFF14080D),
+    val atmosphericBloom: Color = Color(0xFF42101C),
+    val playPauseCircle: Color = Color(0xFF5A1422),
+    val playPauseBorder: Color = Color(0xFF8C1E34).copy(alpha = 0.40f),
+    val bgTop: Color = Color(0xFF38101A),
+    val bgMidUpper: Color = Color(0xFF280B13),
+    val bgMidLower: Color = Color(0xFF1C070D),
+    val bgBottom: Color = Color(0xFF130509),
+    val playPauseGradTop: Color = Color(0xFF5E1B2C),
+    val playPauseGradBottom: Color = Color(0xFF2E0C15)
 )
 
 object ArtworkColorExtractor {
@@ -197,13 +203,20 @@ object ArtworkColorExtractor {
         // Ambient soft glow
         val glow = Color.hsv(hue, sat, 0.88f)
 
-        // Restrained, calm dark background tone (deep obsidian with subtle artwork hue)
-        val darkBackground = Color.hsv(hue, (sat * 0.35f).coerceIn(0.12f, 0.40f), 0.07f)
-        // Atmospheric soft bloom radiating behind the album art
-        val atmosphericBloom = Color.hsv(hue, (sat * 0.70f).coerceIn(0.40f, 0.85f), 0.26f)
-        // Muted, controlled Play/Pause circle
-        val playPauseCircle = Color.hsv(hue, (sat * 0.70f).coerceIn(0.35f, 0.80f), 0.40f).copy(alpha = 0.52f)
-        val playPauseBorder = Color.hsv(hue, sat, 0.70f).copy(alpha = 0.28f)
+        // Atmosphere gradient: top warm atmosphere -> deep warm tone -> dark burnt-hue tone -> very dark hue tone (visibly preserving hue all the way down, never pure black)
+        val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0.40f, 0.82f), 0.32f)
+        val bgMidUpper = Color.hsv(hue, (sat * 0.65f).coerceIn(0.36f, 0.76f), 0.22f)
+        val bgMidLower = Color.hsv(hue, (sat * 0.60f).coerceIn(0.32f, 0.70f), 0.15f)
+        val bgBottom = Color.hsv(hue, (sat * 0.55f).coerceIn(0.28f, 0.65f), 0.09f)
+
+        val darkBackground = bgBottom
+        val atmosphericBloom = Color.hsv(hue, (sat * 0.78f).coerceIn(0.45f, 0.88f), 0.40f)
+
+        // Premium gradient circle matching the atmospheric background tones with clean glassmorphic depth
+        val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
+        val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
+        val playPauseCircle = playPauseGradTop
+        val playPauseBorder = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.40f)
 
         return TrackThemeColors(
             dominant = dominant,
@@ -213,7 +226,13 @@ object ArtworkColorExtractor {
             darkBackground = darkBackground,
             atmosphericBloom = atmosphericBloom,
             playPauseCircle = playPauseCircle,
-            playPauseBorder = playPauseBorder
+            playPauseBorder = playPauseBorder,
+            bgTop = bgTop,
+            bgMidUpper = bgMidUpper,
+            bgMidLower = bgMidLower,
+            bgBottom = bgBottom,
+            playPauseGradTop = playPauseGradTop,
+            playPauseGradBottom = playPauseGradBottom
         )
     }
 }
