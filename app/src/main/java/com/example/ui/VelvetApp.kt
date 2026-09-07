@@ -220,7 +220,8 @@ fun VelvetApp() {
                         isPlaying = isPlaying,
                         tracks = allTracks,
                         onSelectTrack = { track -> audioEngine.playTrack(track) },
-                        onTrackMenuClick = { track -> actionSheetTrack = track }
+                        onTrackMenuClick = { track -> actionSheetTrack = track },
+                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
                     )
 
                     2 -> VideoLibraryScreen()

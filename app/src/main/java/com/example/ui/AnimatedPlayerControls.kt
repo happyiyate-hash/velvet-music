@@ -31,12 +31,16 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
+// Solid milk-white: softened off-white with 100% solid opacity (no translucent gray)
+private val SolidMilkWhite = Color(0xFFF2F0ED)
+
 /**
  * Animated Repeat Icon:
- * Rather than rotating the whole icon, the actual vector strokes travel along their
- * racetrack path. When tapped, the two curved arrows circulate completely around each other
- * for one full cycle (~600ms) with arrowheads dynamically pointing along the tangents,
- * settling into the active state in the artwork's accent color.
+ * - Rendered with thin, solid off-white vector strokes (1.7.dp) matching navigation icons.
+ * - 100% solid opacity with zero translucent gray overlay.
+ * - The actual strokes travel along their racetrack loop path when tapped.
+ * - Arrowheads dynamically align along the path tangents with rounded caps and joins.
+ * - Switches to the solid artwork accent color when active, maintaining uniform stroke width and zero glow.
  */
 @Composable
 fun AnimatedRepeatIcon(
@@ -51,7 +55,7 @@ fun AnimatedRepeatIcon(
 
     LaunchedEffect(isRepeat) {
         if (isRepeat) {
-            // Circulate forward one full revolution (0f -> 1f) then reset to 0f
+            // One smooth circulation loop forward along racetrack path
             travelOffset.snapTo(0f)
             travelOffset.animateTo(
                 targetValue = 1f,
@@ -61,19 +65,20 @@ fun AnimatedRepeatIcon(
         } else {
             // Subtle reverse easing when turning off
             travelOffset.animateTo(
-                targetValue = -0.20f,
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                targetValue = -0.18f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
             )
             travelOffset.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing)
+                animationSpec = tween(durationMillis = 180, easing = LinearOutSlowInEasing)
             )
         }
     }
 
+    val targetColor = if (isRepeat) activeColor.copy(alpha = 1.0f) else SolidMilkWhite
     val iconColor by animateColorAsState(
-        targetValue = if (isRepeat) activeColor else Color.White.copy(alpha = 0.40f),
-        animationSpec = tween(durationMillis = 350),
+        targetValue = targetColor,
+        animationSpec = tween(durationMillis = 300),
         label = "repeatColor"
     )
 
@@ -89,22 +94,23 @@ fun AnimatedRepeatIcon(
     ) {
         Canvas(modifier = Modifier.size(iconSize)) {
             val scale = size.width / 48f
-            val strokeWidthPx = 2.4.dp.toPx()
+            // Slim, refined stroke matching the visual weight of clean navigation icons
+            val strokeWidthPx = 1.7.dp.toPx()
 
-            // Construct the canonical racetrack closed path in 48x48 space:
-            // Clockwise: top run (14,14)->(34,14), right cap (arc r=10), bottom run (34,34)->(14,34), left cap (arc r=10)
+            // Canonical racetrack path in 48x48 coordinate space
+            // Height = 18 (from y=15 to y=33), width = 28 (from x=10 to x=38), radius = 9
             val racetrack = Path().apply {
-                moveTo(14f * scale, 14f * scale)
-                lineTo(34f * scale, 14f * scale)
+                moveTo(16f * scale, 15f * scale)
+                lineTo(32f * scale, 15f * scale)
                 arcTo(
-                    rect = Rect(24f * scale, 14f * scale, 44f * scale, 34f * scale),
+                    rect = Rect(23f * scale, 15f * scale, 41f * scale, 33f * scale),
                     startAngleDegrees = -90f,
                     sweepAngleDegrees = 180f,
                     forceMoveTo = false
                 )
-                lineTo(14f * scale, 34f * scale)
+                lineTo(16f * scale, 33f * scale)
                 arcTo(
-                    rect = Rect(4f * scale, 14f * scale, 24f * scale, 34f * scale),
+                    rect = Rect(7f * scale, 15f * scale, 25f * scale, 33f * scale),
                     startAngleDegrees = 90f,
                     sweepAngleDegrees = 180f,
                     forceMoveTo = false
@@ -118,18 +124,23 @@ fun AnimatedRepeatIcon(
             if (totalLength <= 0f) return@Canvas
 
             // Resting positions:
-            // Arrow 1 head at distance (15 * scale) on top run, pointing right
-            // Arrow 2 head is at (15 * scale + totalLength / 2) on bottom run, pointing left
-            val baseHead1 = 15f * scale
+            // Arrow 1 head on the top straight run pointing right
+            // Arrow 2 head on the bottom straight run pointing left
+            val baseHead1 = 14f * scale
             val baseHead2 = baseHead1 + totalLength * 0.5f
-            val strokeLength = totalLength * 0.39f // each stroke occupies ~39% of circumference
+            val strokeLength = totalLength * 0.38f // elegant gap between the two arrows
 
             val offsetDist = travelOffset.value * totalLength
 
-            // Draw both circulating arrows
             val heads = listOf(
                 (baseHead1 + offsetDist).mod(totalLength),
                 (baseHead2 + offsetDist).mod(totalLength)
+            )
+
+            val strokeStyle = Stroke(
+                width = strokeWidthPx,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
             )
 
             for (headDist in heads) {
@@ -147,19 +158,15 @@ fun AnimatedRepeatIcon(
                 drawPath(
                     path = segmentPath,
                     color = iconColor,
-                    style = Stroke(
-                        width = strokeWidthPx,
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round
-                    )
+                    style = strokeStyle
                 )
 
-                // Draw the dynamic arrowhead at the head distance aligned with local tangent
+                // Dynamic arrowhead aligned precisely to the local path tangent
                 val headPos = pathMeasure.getPosition(headDist)
                 val tangent = pathMeasure.getTangent(headDist)
                 val angle = atan2(tangent.y, tangent.x)
-                val wingAngle = 0.72f // ~41 degrees
-                val wingLen = 4.8f * scale
+                val wingAngle = 0.70f // ~40 degrees
+                val wingLen = 4.2f * scale
 
                 val wing1 = headPos - Offset(
                     cos(angle - wingAngle) * wingLen,
@@ -191,9 +198,11 @@ fun AnimatedRepeatIcon(
 
 /**
  * Animated Shuffle Icon:
- * Instead of rotating or bouncing the whole icon, the two crossing paths flex,
- * slide through their crossing point, and the arrowheads push forward along their tracks,
- * giving the visual feeling that the two lines switch places and settle cleanly into place.
+ * - Slim, thin vector strokes (1.7.dp) matching navigation icons.
+ * - Solid off-white (#F2F0ED) with 100% solid opacity.
+ * - Solid opacity ensures the crossing point does NOT compound alpha or create a bright center hotspot.
+ * - When tapped, the two crossing paths flex and slide through their crossing point before easing into place.
+ * - Completely smooth rounded line caps and joins throughout.
  */
 @Composable
 fun AnimatedShuffleIcon(
@@ -208,30 +217,31 @@ fun AnimatedShuffleIcon(
 
     LaunchedEffect(isShuffle) {
         if (isShuffle) {
-            // Energetic flex & stroke slide through crossing point (0f -> 1f)
+            // Smooth natural flex and stroke slide through crossing point
             shuffleAnim.snapTo(0f)
             shuffleAnim.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 540, easing = FastOutSlowInEasing)
             )
             shuffleAnim.snapTo(0f)
         } else {
             // Gentle reverse pulse
             shuffleAnim.snapTo(0f)
             shuffleAnim.animateTo(
-                targetValue = 0.6f,
-                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                targetValue = 0.5f,
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
             )
             shuffleAnim.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)
+                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing)
             )
         }
     }
 
+    val targetColor = if (isShuffle) activeColor.copy(alpha = 1.0f) else SolidMilkWhite
     val iconColor by animateColorAsState(
-        targetValue = if (isShuffle) activeColor else Color.White.copy(alpha = 0.40f),
-        animationSpec = tween(durationMillis = 350),
+        targetValue = targetColor,
+        animationSpec = tween(durationMillis = 300),
         label = "shuffleColor"
     )
 
@@ -247,100 +257,77 @@ fun AnimatedShuffleIcon(
     ) {
         Canvas(modifier = Modifier.size(iconSize)) {
             val scale = size.width / 48f
-            val strokeWidthPx = 2.4.dp.toPx()
+            // Slim, refined stroke matching the visual weight of clean navigation icons
+            val strokeWidthPx = 1.7.dp.toPx()
 
             val progress = shuffleAnim.value
-            // Smooth half-sine curve peaking at halfway through animation
             val pulse = sin(progress * PI.toFloat())
-            val midYOffset = pulse * 3.4f * scale
-            val arrowNudge = pulse * 3.0f * scale
-            val leftPull = pulse * 1.5f * scale
+            val midYOffset = pulse * 2.8f * scale
+            val arrowNudge = pulse * 2.6f * scale
+            val leftPull = pulse * 1.2f * scale
 
-            // Path A: Top-left to bottom-right
-            // Rest: (6, 14) -> (12, 14) -> S-curve to (36, 34) -> (42, 34)
+            // Path A: Top-left (9, 16) -> S-curve to bottom-right (39, 32)
             val pathA = Path().apply {
-                moveTo((6f + leftPull) * scale, 14f * scale)
-                lineTo((12f + leftPull) * scale, 14f * scale)
+                moveTo((9f + leftPull) * scale, 16f * scale)
+                lineTo((15f + leftPull) * scale, 16f * scale)
                 cubicTo(
-                    17f * scale, (14f + midYOffset * 0.4f) * scale,
-                    20f * scale, (24f - midYOffset) * scale,
+                    20f * scale, (16f + midYOffset * 0.3f) * scale,
+                    22f * scale, (24f - midYOffset) * scale,
                     24f * scale, (24f - midYOffset) * scale
                 )
                 cubicTo(
-                    28f * scale, (24f - midYOffset) * scale,
-                    31f * scale, (34f - midYOffset * 0.4f) * scale,
-                    36f * scale, 34f * scale
+                    26f * scale, (24f - midYOffset) * scale,
+                    28f * scale, (32f - midYOffset * 0.3f) * scale,
+                    33f * scale, 32f * scale
                 )
-                lineTo((42f + arrowNudge) * scale, 34f * scale)
+                lineTo((39f + arrowNudge) * scale, 32f * scale)
             }
 
-            // Path B: Bottom-left to top-right
-            // Rest: (6, 34) -> (12, 34) -> S-curve to (36, 14) -> (42, 14)
+            // Path B: Bottom-left (9, 32) -> S-curve to top-right (39, 16)
             val pathB = Path().apply {
-                moveTo((6f + leftPull) * scale, 34f * scale)
-                lineTo((12f + leftPull) * scale, 34f * scale)
+                moveTo((9f + leftPull) * scale, 32f * scale)
+                lineTo((15f + leftPull) * scale, 32f * scale)
                 cubicTo(
-                    17f * scale, (34f - midYOffset * 0.4f) * scale,
-                    20f * scale, (24f + midYOffset) * scale,
+                    20f * scale, (32f - midYOffset * 0.3f) * scale,
+                    22f * scale, (24f + midYOffset) * scale,
                     24f * scale, (24f + midYOffset) * scale
                 )
                 cubicTo(
-                    28f * scale, (24f + midYOffset) * scale,
-                    31f * scale, (14f + midYOffset * 0.4f) * scale,
-                    36f * scale, 14f * scale
+                    26f * scale, (24f + midYOffset) * scale,
+                    28f * scale, (16f + midYOffset * 0.3f) * scale,
+                    33f * scale, 16f * scale
                 )
-                lineTo((42f + arrowNudge) * scale, 14f * scale)
+                lineTo((39f + arrowNudge) * scale, 16f * scale)
             }
 
-            // Draw crossing paths
-            drawPath(
-                path = pathA,
-                color = iconColor,
-                style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round)
-            )
-            drawPath(
-                path = pathB,
-                color = iconColor,
-                style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            val strokeStyle = Stroke(
+                width = strokeWidthPx,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
             )
 
-            // Arrowheads at the ends
-            val wingLen = 5.0f * scale
-            val wingX = 5.0f * scale
+            // Because iconColor has 100% solid opacity, drawing the crossing paths
+            // creates a completely uniform stroke brightness with NO alpha compounding at the intersection
+            drawPath(path = pathA, color = iconColor, style = strokeStyle)
+            drawPath(path = pathB, color = iconColor, style = strokeStyle)
 
-            // Arrow for Path A (bottom-right: tip at (42 + arrowNudge, 34))
-            val tipA = Offset((42f + arrowNudge) * scale, 34f * scale)
-            drawLine(
-                color = iconColor,
-                start = Offset(tipA.x - wingX, tipA.y - wingLen),
-                end = tipA,
-                strokeWidth = strokeWidthPx,
-                cap = StrokeCap.Round
-            )
-            drawLine(
-                color = iconColor,
-                start = Offset(tipA.x - wingX, tipA.y + wingLen),
-                end = tipA,
-                strokeWidth = strokeWidthPx,
-                cap = StrokeCap.Round
-            )
+            // Arrowheads: Slim, refined wings matching stroke width and geometry
+            val wingLen = 4.2f * scale
+            val wingAngle = 0.68f // ~39 degrees
 
-            // Arrow for Path B (top-right: tip at (42 + arrowNudge, 14))
-            val tipB = Offset((42f + arrowNudge) * scale, 14f * scale)
-            drawLine(
-                color = iconColor,
-                start = Offset(tipB.x - wingX, tipB.y - wingLen),
-                end = tipB,
-                strokeWidth = strokeWidthPx,
-                cap = StrokeCap.Round
-            )
-            drawLine(
-                color = iconColor,
-                start = Offset(tipB.x - wingX, tipB.y + wingLen),
-                end = tipB,
-                strokeWidth = strokeWidthPx,
-                cap = StrokeCap.Round
-            )
+            // Arrowhead A (bottom-right: tip at (39 + arrowNudge, 32), pointing right)
+            val tipA = Offset((39f + arrowNudge) * scale, 32f * scale)
+            val wingA1 = tipA - Offset(cos(wingAngle) * wingLen, sin(wingAngle) * wingLen)
+            val wingA2 = tipA - Offset(cos(wingAngle) * wingLen, -sin(wingAngle) * wingLen)
+            drawLine(color = iconColor, start = wingA1, end = tipA, strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
+            drawLine(color = iconColor, start = wingA2, end = tipA, strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
+
+            // Arrowhead B (top-right: tip at (39 + arrowNudge, 16), pointing right)
+            val tipB = Offset((39f + arrowNudge) * scale, 16f * scale)
+            val wingB1 = tipB - Offset(cos(wingAngle) * wingLen, sin(wingAngle) * wingLen)
+            val wingB2 = tipB - Offset(cos(wingAngle) * wingLen, -sin(wingAngle) * wingLen)
+            drawLine(color = iconColor, start = wingB1, end = tipB, strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
+            drawLine(color = iconColor, start = wingB2, end = tipB, strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
         }
     }
 }
