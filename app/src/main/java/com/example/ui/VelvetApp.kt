@@ -149,11 +149,12 @@ fun VelvetApp() {
         }
     }
 
-    // Only real device tracks (minus deleted tracks - no hardcoded music)
+    // Real device tracks with starter showcase fallback (minus deleted tracks)
     val allTracks = remember(deviceTracks, deletedTrackIds) {
-        deviceTracks
+        val filtered = deviceTracks
             .distinctBy { it.id }
             .filterNot { deletedTrackIds.contains(it.id) }
+        if (filtered.isNotEmpty()) filtered else com.example.model.SampleData.starterTracks.filterNot { deletedTrackIds.contains(it.id) }
     }
 
     // Most played tracks (user plays mostly / all the time, ranked by real play counts)
@@ -263,9 +264,9 @@ fun VelvetApp() {
                 isPlaying = isPlaying,
                 playbackPositionMs = playbackPositionMs,
                 telemetry = telemetry,
-                isSoundCatchEnabled = isSoundCatchEnabled,
                 isShuffle = isShuffle,
                 isRepeat = isRepeat,
+                isFavorite = favoriteTrackIds.contains(currentTrack.id),
                 isCachedOffline = offlineCachedIds.contains(currentTrack.id),
                 onTogglePlayPause = { audioEngine.togglePlayPause() },
                 onSeekTo = { pos -> audioEngine.seekTo(pos) },
@@ -273,9 +274,24 @@ fun VelvetApp() {
                 onSkipPrevious = { audioEngine.playPrevious() },
                 onToggleShuffle = { audioEngine.toggleShuffle() },
                 onToggleRepeat = { audioEngine.toggleRepeat() },
-                onToggleSoundCatch = { audioEngine.toggleSoundCatch() },
-                onToggleOfflineCache = { audioEngine.toggleOfflineCache(currentTrack.id) },
-                onOpenInspector = { isInspectorOpen = true },
+                onToggleFavorite = {
+                    audioEngine.toggleFavorite(currentTrack.id)
+                    val isFav = !favoriteTrackIds.contains(currentTrack.id)
+                    Toast.makeText(context, if (isFav) "Added to Favorites" else "Removed from Favorites", Toast.LENGTH_SHORT).show()
+                },
+                onPlayNext = {
+                    audioEngine.queueNext(currentTrack)
+                    Toast.makeText(context, "Playing next: ${currentTrack.title.substringBefore(" - ")}", Toast.LENGTH_SHORT).show()
+                },
+                onQueue = {
+                    audioEngine.queueNext(currentTrack)
+                },
+                onShareTrack = { DeviceMediaManager.shareTrack(context, currentTrack) },
+                onDeleteTrack = {
+                    audioEngine.deleteTrack(currentTrack.id)
+                    isPlayerExpanded = false
+                    Toast.makeText(context, "Removed from library", Toast.LENGTH_SHORT).show()
+                },
                 onDismiss = { isPlayerExpanded = false }
             )
         }
@@ -662,8 +678,8 @@ fun AshGlassMiniPlayerBar(
                         .clip(RoundedCornerShape(10.dp))
                         .border(1.dp, VelvetCardBorder, RoundedCornerShape(10.dp))
                 ) {
-                    Image(
-                        painter = painterResource(id = track.coverResId),
+                    TrackArtworkImage(
+                        track = track,
                         contentDescription = track.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

@@ -40,7 +40,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.model.SampleData
 import com.example.model.Track
 import com.example.ui.theme.VelvetBorder
 import com.example.ui.theme.VelvetBrightCrimson

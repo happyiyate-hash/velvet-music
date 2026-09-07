@@ -404,8 +404,8 @@ fun StandaloneMusicRow(
                 .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
                 .background(Color.Transparent)
         ) {
-            Image(
-                painter = painterResource(id = track.coverResId),
+            TrackArtworkImage(
+                track = track,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -498,8 +498,8 @@ fun CompactMostPlayedRow(
                     RoundedCornerShape(11.dp)
                 )
         ) {
-            Image(
-                painter = painterResource(id = track.coverResId),
+            TrackArtworkImage(
+                track = track,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

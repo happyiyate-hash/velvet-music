@@ -30,6 +30,7 @@ fun PlayerSheet(
         track = track,
         isPlaying = isPlaying,
         playbackPositionMs = playbackPositionMs,
+        telemetry = telemetry,
         isShuffle = isShuffle,
         isRepeat = isRepeat,
         isCachedOffline = isCachedOffline,
@@ -39,7 +40,6 @@ fun PlayerSheet(
         onSkipPrevious = onSkipPrevious,
         onToggleShuffle = onToggleShuffle,
         onToggleRepeat = onToggleRepeat,
-        onToggleOfflineCache = onToggleOfflineCache,
         onDismiss = onDismiss
     )
 }

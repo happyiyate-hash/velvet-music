@@ -78,7 +78,8 @@ object DeviceMediaManager {
                 MediaStore.Audio.Media.ARTIST,
                 MediaStore.Audio.Media.ALBUM,
                 MediaStore.Audio.Media.DURATION,
-                MediaStore.Audio.Media.DATE_ADDED
+                MediaStore.Audio.Media.DATE_ADDED,
+                MediaStore.Audio.Media.ALBUM_ID
             )
             val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
             val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
@@ -96,6 +97,7 @@ object DeviceMediaManager {
                 val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
                 val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
                 val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+                val albumIdColumn = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ID)
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
@@ -104,14 +106,25 @@ object DeviceMediaManager {
                     val album = cursor.getString(albumColumn) ?: "Device Audio"
                     val durationMs = cursor.getLong(durationColumn)
                     val dateAdded = cursor.getLong(dateAddedColumn) * 1000L
+                    val albumId = if (albumIdColumn != -1) cursor.getLong(albumIdColumn) else -1L
                     val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
 
                     val cleanArtist = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist
                     val trackId = "device_audio_$id"
 
-                    // If music doesn't have a photo, system automatically picks a distinct photo from the app's pool
-                    val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
-                    val colors = ArtworkColorExtractor.getColorsForDrawable(context, cover)
+                    // If the music fetched from user device has a photo, use that real photo!
+                    // Only when the music doesn't have any photo do we fall back to a photo from the app.
+                    val resolvedArtUri = resolveArtwork(context, contentUri, albumId, trackId)
+                    val cover = if (resolvedArtUri == null) {
+                        FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
+                    } else {
+                        R.drawable.art_luminous_echoes
+                    }
+                    val colors = if (resolvedArtUri != null) {
+                        ArtworkColorExtractor.extractColorsFromUri(context, resolvedArtUri)
+                    } else {
+                        ArtworkColorExtractor.getColorsForDrawable(context, cover)
+                    }
 
                     tracks.add(
                         Track(
@@ -125,7 +138,8 @@ object DeviceMediaManager {
                             secondaryColor = colors.secondary,
                             catalogSource = "Device Storage",
                             dateAddedMs = dateAdded,
-                            contentUri = contentUri.toString()
+                            contentUri = contentUri.toString(),
+                            artworkUri = resolvedArtUri
                         )
                     )
                 }
@@ -134,6 +148,58 @@ object DeviceMediaManager {
             Log.e("DeviceMediaManager", "Error querying audio MediaStore", e)
         }
         return tracks
+    }
+
+    private fun resolveArtwork(
+        context: Context,
+        contentUri: Uri,
+        albumId: Long,
+        trackId: String
+    ): String? {
+        // 1. Try MediaStore album art URI if albumId exists
+        if (albumId > 0) {
+            val albumArtUri = ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
+            try {
+                context.contentResolver.openInputStream(albumArtUri)?.use { stream ->
+                    val b = stream.read()
+                    if (b != -1) {
+                        return albumArtUri.toString()
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Try embedded picture from ID3 tag in audio file
+        try {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, contentUri)
+                val picture = retriever.embeddedPicture
+                if (picture != null && picture.isNotEmpty()) {
+                    val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
+                    val artFile = File(cacheDir, "art_${trackId}.jpg")
+                    artFile.outputStream().use { it.write(picture) }
+                    return Uri.fromFile(artFile).toString()
+                }
+            } finally {
+                retriever.release()
+            }
+        } catch (_: Exception) {}
+
+        // 3. Android 10+ (Q) loadThumbnail from contentResolver
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                val bmp = context.contentResolver.loadThumbnail(contentUri, android.util.Size(512, 512), null)
+                val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
+                val artFile = File(cacheDir, "art_${trackId}.jpg")
+                artFile.outputStream().use { out ->
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)
+                }
+                return Uri.fromFile(artFile).toString()
+            } catch (_: Exception) {}
+        }
+
+        return null
     }
 
     /**
@@ -154,9 +220,26 @@ object DeviceMediaManager {
             val durationMs = durationStr?.toLongOrNull() ?: 180000L
             val id = "imported_${System.currentTimeMillis()}_${(0..999).random()}"
 
-            val cover = FallbackArtworkPool.getPhotoForTrack(id, title, artist)
-            val colors = ArtworkColorExtractor.getColorsForDrawable(context, cover)
+            var resolvedArtUri: String? = null
+            val picture = retriever.embeddedPicture
+            if (picture != null && picture.isNotEmpty()) {
+                val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
+                val artFile = File(cacheDir, "art_${id}.jpg")
+                artFile.outputStream().use { it.write(picture) }
+                resolvedArtUri = Uri.fromFile(artFile).toString()
+            }
             retriever.release()
+
+            val cover = if (resolvedArtUri == null) {
+                FallbackArtworkPool.getPhotoForTrack(id, title, artist)
+            } else {
+                R.drawable.art_luminous_echoes
+            }
+            val colors = if (resolvedArtUri != null) {
+                ArtworkColorExtractor.extractColorsFromUri(context, resolvedArtUri)
+            } else {
+                ArtworkColorExtractor.getColorsForDrawable(context, cover)
+            }
 
             Track(
                 id = id,
@@ -169,6 +252,7 @@ object DeviceMediaManager {
                 secondaryColor = colors.secondary,
                 catalogSource = "Device Audio",
                 contentUri = uri.toString(),
+                artworkUri = resolvedArtUri,
                 dateAddedMs = System.currentTimeMillis()
             )
         } catch (e: Exception) {

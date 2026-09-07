@@ -17,7 +17,11 @@ data class TrackThemeColors(
     val dominant: Color,
     val secondary: Color,
     val accent: Color,
-    val glow: Color
+    val glow: Color,
+    val darkBackground: Color = Color(0xFF0F080B),
+    val atmosphericBloom: Color = Color(0xFF380C16),
+    val playPauseCircle: Color = Color(0xFF631826).copy(alpha = 0.52f),
+    val playPauseBorder: Color = Color(0xFF9E1F36).copy(alpha = 0.28f)
 )
 
 object ArtworkColorExtractor {
@@ -39,6 +43,28 @@ object ArtworkColorExtractor {
         return generateThemePalette(track.dominantColor)
     }
 
+    fun extractColorsFromUri(context: Context, artworkUriString: String): TrackThemeColors {
+        try {
+            val uri = Uri.parse(artworkUriString)
+            val bitmap = if (uri.scheme == "file") {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
+                BitmapFactory.decodeFile(uri.path, opts)
+            } else {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    BitmapFactory.decodeStream(stream, null, opts)
+                }
+            }
+            if (bitmap != null) {
+                val sampled = sampleDominantColor(bitmap)
+                if (sampled != null) {
+                    return generateThemePalette(sampled)
+                }
+            }
+        } catch (_: Exception) {}
+        return generateThemePalette(Color(0xFF880E2F))
+    }
+
     fun getColorsForDrawable(context: Context, @DrawableRes resId: Int): TrackThemeColors {
         try {
             val options = BitmapFactory.Options().apply { inSampleSize = 8 }
@@ -55,7 +81,17 @@ object ArtworkColorExtractor {
 
     private fun loadThumbnailBitmap(context: Context, track: Track): Bitmap? {
         try {
-            if (track.contentUri != null) {
+            if (!track.artworkUri.isNullOrBlank()) {
+                val uri = Uri.parse(track.artworkUri)
+                if (uri.scheme == "file") {
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    return BitmapFactory.decodeFile(uri.path, opts)
+                }
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    return BitmapFactory.decodeStream(stream, null, opts)
+                }
+            } else if (track.contentUri != null) {
                 val uri = Uri.parse(track.contentUri)
                 val retriever = MediaMetadataRetriever()
                 try {
@@ -156,16 +192,28 @@ object ArtworkColorExtractor {
         val dominant = Color.hsv(hue, sat, 0.75f)
         // Deep secondary moody tone
         val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
-        // Vivid luminous accent for buttons and glows
-        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.4f, 0.9f), 0.96f)
+        // Vivid luminous accent for active waveform bars, progress bead, and active shuffle/repeat
+        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
         // Ambient soft glow
         val glow = Color.hsv(hue, sat, 0.88f)
+
+        // Restrained, calm dark background tone (deep obsidian with subtle artwork hue)
+        val darkBackground = Color.hsv(hue, (sat * 0.35f).coerceIn(0.12f, 0.40f), 0.07f)
+        // Atmospheric soft bloom radiating behind the album art
+        val atmosphericBloom = Color.hsv(hue, (sat * 0.70f).coerceIn(0.40f, 0.85f), 0.26f)
+        // Muted, controlled Play/Pause circle
+        val playPauseCircle = Color.hsv(hue, (sat * 0.70f).coerceIn(0.35f, 0.80f), 0.40f).copy(alpha = 0.52f)
+        val playPauseBorder = Color.hsv(hue, sat, 0.70f).copy(alpha = 0.28f)
 
         return TrackThemeColors(
             dominant = dominant,
             secondary = secondary,
             accent = accent,
-            glow = glow
+            glow = glow,
+            darkBackground = darkBackground,
+            atmosphericBloom = atmosphericBloom,
+            playPauseCircle = playPauseCircle,
+            playPauseBorder = playPauseBorder
         )
     }
 }

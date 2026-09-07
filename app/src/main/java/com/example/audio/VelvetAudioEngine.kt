@@ -1,8 +1,10 @@
 package com.example.audio
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
+import android.util.Log
 import com.example.media.ArtworkColorExtractor
 import com.example.media.VelvetMediaSessionManager
 import com.example.model.SampleData
@@ -40,10 +42,10 @@ class VelvetAudioEngine(
     private val _currentTrack = MutableStateFlow<Track>(SampleData.defaultIdleTrack)
     val currentTrack: StateFlow<Track> = _currentTrack.asStateFlow()
 
-    private val _isPlaying = MutableStateFlow(false)
+    private val _isPlaying = MutableStateFlow(true)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
-    private val _playbackPositionMs = MutableStateFlow(0L)
+    private val _playbackPositionMs = MutableStateFlow(94000L)
     val playbackPositionMs: StateFlow<Long> = _playbackPositionMs.asStateFlow()
 
     private val _telemetry = MutableStateFlow(AudioTelemetry())
@@ -78,6 +80,7 @@ class VelvetAudioEngine(
 
     init {
         startTelemetryLoop()
+        startPlaybackProgress()
     }
 
     fun bindMediaSession(context: Context) {
@@ -103,21 +106,31 @@ class VelvetAudioEngine(
 
     fun setDeviceTracks(tracks: List<Track>) {
         _deviceTracks.value = tracks
-        if ((_currentTrack.value.id == "idle_device_track" || _currentTrack.value.id == "track_1") && tracks.isNotEmpty()) {
+        val currentId = _currentTrack.value.id
+        if ((currentId == "device_music_idle" || currentId == "idle_device_track" || currentId == "le_1" || currentId == "track_1") && tracks.isNotEmpty()) {
             val first = tracks.first()
             val ctx = appContext
             _currentTrack.value = if (ctx != null) {
-                val colors = ArtworkColorExtractor.extractColors(ctx, first)
+                val colors = if (!first.artworkUri.isNullOrBlank()) {
+                    ArtworkColorExtractor.extractColorsFromUri(ctx, first.artworkUri)
+                } else {
+                    ArtworkColorExtractor.extractColors(ctx, first)
+                }
                 first.copy(dominantColor = colors.dominant, secondaryColor = colors.secondary)
             } else first
+            _isPlaying.value = false
+            _playbackPositionMs.value = 0L
             updateMediaSession()
         }
     }
 
     fun addDeviceTrack(track: Track) {
         _deviceTracks.value = listOf(track) + _deviceTracks.value.filter { it.id != track.id }
-        if (_currentTrack.value.id == "idle_device_track") {
+        val currentId = _currentTrack.value.id
+        if (currentId == "device_music_idle" || currentId == "idle_device_track") {
             _currentTrack.value = track
+            _isPlaying.value = false
+            _playbackPositionMs.value = 0L
             updateMediaSession()
         }
     }
@@ -127,7 +140,11 @@ class VelvetAudioEngine(
         val ctx = appContext ?: return
         val requestId = ++playbackRequestId
         val themedTrack = try {
-            val colors = ArtworkColorExtractor.extractColors(ctx, track)
+            val colors = if (!track.artworkUri.isNullOrBlank()) {
+                ArtworkColorExtractor.extractColorsFromUri(ctx, track.artworkUri)
+            } else {
+                ArtworkColorExtractor.extractColors(ctx, track)
+            }
             track.copy(dominantColor = colors.dominant, secondaryColor = colors.secondary)
         } catch (_: Exception) {
             track
@@ -142,10 +159,35 @@ class VelvetAudioEngine(
         releasePlayerOnly()
         playbackJob?.cancel()
 
+        if (themedTrack.contentUri.isNullOrBlank()) {
+            Log.w("VelvetAudioEngine", "Cannot play track with empty contentUri: ${themedTrack.title}")
+            _isPlaying.value = false
+            updateMediaSession()
+            return
+        }
+
         scope.launch(Dispatchers.IO) {
             try {
                 val player = MediaPlayer()
-                player.setDataSource(ctx, Uri.parse(themedTrack.contentUri))
+                player.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
+                val trackUri = Uri.parse(themedTrack.contentUri)
+                try {
+                    val pfd = ctx.contentResolver.openFileDescriptor(trackUri, "r")
+                    if (pfd != null) {
+                        player.setDataSource(pfd.fileDescriptor)
+                        pfd.close()
+                    } else {
+                        player.setDataSource(ctx, trackUri)
+                    }
+                } catch (_: Exception) {
+                    player.setDataSource(ctx, trackUri)
+                }
+
                 player.setOnPreparedListener { prepared ->
                     if (requestId != playbackRequestId) {
                         prepared.release()
@@ -170,7 +212,8 @@ class VelvetAudioEngine(
                         }
                     }
                 }
-                player.setOnErrorListener { _, _, _ ->
+                player.setOnErrorListener { _, what, extra ->
+                    Log.e("VelvetAudioEngine", "MediaPlayer error: what=$what extra=$extra")
                     if (requestId == playbackRequestId) {
                         _isPlaying.value = false
                         playbackJob?.cancel()
@@ -178,11 +221,9 @@ class VelvetAudioEngine(
                     }
                     true
                 }
-                player.prepare()
-                if (requestId != playbackRequestId) {
-                    player.release()
-                }
-            } catch (_: Exception) {
+                player.prepareAsync()
+            } catch (e: Exception) {
+                Log.e("VelvetAudioEngine", "Error initializing MediaPlayer for URI: ${themedTrack.contentUri}", e)
                 if (requestId == playbackRequestId) {
                     _isPlaying.value = false
                     playbackJob?.cancel()
@@ -231,13 +272,26 @@ class VelvetAudioEngine(
     }
 
     fun resume() {
-        try {
-            mediaPlayer?.start()
-            _isPlaying.value = true
-            startPlaybackProgress()
-            updateMediaSession()
-        } catch (_: Exception) {
-            _isPlaying.value = false
+        val player = mediaPlayer
+        if (player != null) {
+            try {
+                player.start()
+                _isPlaying.value = true
+                startPlaybackProgress()
+                updateMediaSession()
+            } catch (_: Exception) {
+                _isPlaying.value = false
+            }
+        } else {
+            val track = _currentTrack.value
+            if (!track.contentUri.isNullOrBlank()) {
+                playTrack(track)
+            } else {
+                val available = getAllAvailableTracks()
+                if (available.isNotEmpty()) {
+                    playTrack(available.first())
+                }
+            }
         }
     }
 
@@ -272,9 +326,11 @@ class VelvetAudioEngine(
         playTrack(all[nextIndex])
     }
 
-    fun getAllAvailableTracks(): List<Track> = _deviceTracks.value
-        .distinctBy { it.id }
-        .filterNot { _deletedTrackIds.value.contains(it.id) }
+    fun getAllAvailableTracks(): List<Track> {
+        return _deviceTracks.value
+            .distinctBy { it.id }
+            .filterNot { _deletedTrackIds.value.contains(it.id) }
+    }
 
     fun playPrevious() {
         val all = getAllAvailableTracks()
@@ -289,13 +345,15 @@ class VelvetAudioEngine(
         playbackJob = scope.launch(Dispatchers.Default) {
             while (isActive && _isPlaying.value) {
                 delay(200L)
-                val player = mediaPlayer ?: continue
-                try {
-                    val position = player.currentPosition.toLong()
-                    _playbackPositionMs.value = position
-                    updateMediaSession()
-                } catch (_: Exception) {
-                    break
+                val player = mediaPlayer
+                if (player != null && player.isPlaying) {
+                    try {
+                        val position = player.currentPosition.toLong()
+                        _playbackPositionMs.value = position
+                        updateMediaSession()
+                    } catch (_: Exception) {
+                        break
+                    }
                 }
             }
         }

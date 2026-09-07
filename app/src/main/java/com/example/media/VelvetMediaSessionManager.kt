@@ -11,6 +11,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
@@ -230,6 +231,17 @@ object VelvetMediaSessionManager {
 
     private fun loadTrackArtBitmap(context: Context, track: Track): Bitmap? {
         return try {
+            if (!track.artworkUri.isNullOrBlank()) {
+                val uri = Uri.parse(track.artworkUri)
+                if (uri.scheme == "file") {
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    return BitmapFactory.decodeFile(uri.path, opts)
+                }
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    return BitmapFactory.decodeStream(stream, null, opts)
+                }
+            }
             if (track.coverResId != 0) {
                 val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
                 BitmapFactory.decodeResource(context.resources, track.coverResId, opts)
