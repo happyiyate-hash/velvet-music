@@ -166,6 +166,8 @@ fun VelvetApp() {
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
+    var isDownloadSheetOpen by remember { mutableStateOf(false) }
+    var activeDownloadUrl by remember { mutableStateOf<String?>(null) }
     var isInspectorOpen by remember { mutableStateOf(false) }
     var isProTierOpen by remember { mutableStateOf(false) }
     var isSettingsOpen by remember { mutableStateOf(false) }
@@ -221,7 +223,10 @@ fun VelvetApp() {
                         tracks = allTracks,
                         onSelectTrack = { track -> audioEngine.playTrack(track) },
                         onTrackMenuClick = { track -> actionSheetTrack = track },
-                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
+                        onOpenDownloadSheet = { url ->
+                            activeDownloadUrl = url
+                            isDownloadSheetOpen = true
+                        }
                     )
 
                     2 -> VideoLibraryScreen()
