@@ -417,45 +417,25 @@ fun PlayerSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Shuffle on lower-left: clean, standalone, no visible button container
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onToggleShuffle
-                        )
-                        .testTag("player_shuffle_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_player_shuffle),
-                        contentDescription = "Toggle Shuffle",
-                        tint = if (isShuffle) themeColors.accent else Color.White.copy(alpha = 0.40f),
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
+                // Shuffle on lower-left: animated crossing paths stroke animation
+                AnimatedShuffleIcon(
+                    isShuffle = isShuffle,
+                    activeColor = themeColors.accent,
+                    onClick = onToggleShuffle,
+                    modifier = Modifier.testTag("player_shuffle_button"),
+                    touchSize = 48.dp,
+                    iconSize = 26.dp
+                )
 
-                // Repeat on lower-right: clean, standalone, looping shape, no visible button container
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onToggleRepeat
-                        )
-                        .testTag("player_repeat_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_player_repeat),
-                        contentDescription = "Toggle Repeat",
-                        tint = if (isRepeat) themeColors.accent else Color.White.copy(alpha = 0.40f),
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
+                // Repeat on lower-right: animated circulating strokes along racetrack loop
+                AnimatedRepeatIcon(
+                    isRepeat = isRepeat,
+                    activeColor = themeColors.accent,
+                    onClick = onToggleRepeat,
+                    modifier = Modifier.testTag("player_repeat_button"),
+                    touchSize = 48.dp,
+                    iconSize = 26.dp
+                )
             }
         }
 
