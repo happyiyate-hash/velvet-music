@@ -233,12 +233,12 @@ fun VelvetApp() {
                     2 -> VideoLibraryScreen()
                 }
 
-                // Mini Player Bar (rests directly above the curved ash glass bottom bar when active)
+                // Mini Player Bar (compact persistent player resting cleanly right above the bottom bar)
                 if (isPlaying) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 68.dp, start = 6.dp, end = 6.dp)
+                            .padding(bottom = 54.dp, start = 8.dp, end = 8.dp)
                     ) {
                         AshGlassMiniPlayerBar(
                             track = currentTrack,
@@ -486,7 +486,7 @@ fun AshGlassBottomNavigationBar(
             )
         }
 
-        // 2. Navigation Action Bar: Sleek 56.dp height, strictly centered on the same horizontal line
+        // 2. Navigation Action Bar: Sleek, compact 48.dp height
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -495,17 +495,17 @@ fun AshGlassBottomNavigationBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(48.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 42.dp),
+                        .padding(horizontal = 48.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // TAB 0: Standalone Music Note Icon (no border circle, no "active" text)
+                    // TAB 0: Standalone Music Note Icon
                     AshGlassNavTabItem(
                         isSelected = selectedTab == 0,
                         onClick = { onSelectTab(0) },
@@ -515,11 +515,11 @@ fun AshGlassBottomNavigationBar(
                             imageVector = Icons.Default.MusicNote,
                             contentDescription = "Music",
                             tint = iconColor,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(23.dp)
                         )
                     }
 
-                    // TAB 1: Standalone Search Icon
+                    // TAB 1: Standalone Search Icon (accent color when active)
                     AshGlassNavTabItem(
                         isSelected = selectedTab == 1,
                         onClick = { onSelectTab(1) },
@@ -529,7 +529,7 @@ fun AshGlassBottomNavigationBar(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
                             tint = iconColor,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(23.dp)
                         )
                     }
 
@@ -543,7 +543,7 @@ fun AshGlassBottomNavigationBar(
                             imageVector = Icons.Default.Videocam,
                             contentDescription = "Videos",
                             tint = iconColor,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(23.dp)
                         )
                     }
                 }
@@ -553,11 +553,9 @@ fun AshGlassBottomNavigationBar(
 }
 
 /**
- * Ash Glass Nav Tab Item:
- * - Standalone icon on the exact same horizontal center line
- * - Water wave animation that ripples and spreads far outward upon selection
- * - Soft red glowing shadow settling beneath the icon
- * - Icon turns a distinct, vibrant red when selected so it stands out sharply
+ * Compact, premium Nav Tab Item:
+ * - Clean icon with subtle accent when active and quiet tone when inactive
+ * - Restrained soft underglow that supports rather than dominates the interface
  */
 @Composable
 private fun AshGlassNavTabItem(
@@ -566,48 +564,17 @@ private fun AshGlassNavTabItem(
     testTag: String,
     content: @Composable (iconColor: Color) -> Unit
 ) {
-    // Water wave expansion animation (spreads far outward like a water wave when clicked)
-    val waveProgress = remember { Animatable(if (isSelected) 1f else 0f) }
-    // Glow spread animation (waves out wide, then shrinks to a smaller spread beneath the icon)
-    val glowSpread = remember { Animatable(if (isSelected) 1.0f else 0f) }
+    val activeAlpha by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0f,
+        animationSpec = tween(240),
+        label = "nav_active_alpha"
+    )
 
-    LaunchedEffect(isSelected) {
-        if (isSelected) {
-            waveProgress.snapTo(0f)
-            glowSpread.snapTo(0.2f)
-            launch {
-                // Water wave ripple expanding far outward (from 14dp up to 68dp)
-                waveProgress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = 650, easing = LinearOutSlowInEasing)
-                )
-            }
-            launch {
-                // Glow waves out wide (overshooting to 1.45x), then shrinks smoothly back to 1.0x spread
-                glowSpread.animateTo(
-                    targetValue = 1.45f,
-                    animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
-                )
-                glowSpread.animateTo(
-                    targetValue = 1.0f,
-                    animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing)
-                )
-            }
-        } else {
-            waveProgress.snapTo(0f)
-            glowSpread.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 220)
-            )
-        }
-    }
-
-    // Icon color: when selected, changes to a distinct vivid red so it stands out cleanly against the glow beneath
-    val iconColor = if (isSelected) Color(0xFFFF3054) else Color(0xFF8E95A2)
+    val iconColor = if (isSelected) Color(0xFFFF2E54) else Color(0xFF7A808E)
 
     Box(
         modifier = Modifier
-            .size(width = 68.dp, height = 56.dp)
+            .size(width = 54.dp, height = 44.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -615,65 +582,42 @@ private fun AshGlassNavTabItem(
             .testTag(testTag),
         contentAlignment = Alignment.Center
     ) {
-        // Red glow and water wave ripple rendered BENEATH the icon
-        if (isSelected || glowSpread.value > 0.01f || (waveProgress.value in 0.01f..0.99f)) {
+        // Controlled, subtle soft underglow beneath the active icon
+        if (activeAlpha > 0.01f) {
             Canvas(
                 modifier = Modifier
-                    .size(160.dp)
+                    .size(44.dp)
                     .align(Alignment.Center)
             ) {
                 val center = Offset(size.width / 2f, size.height / 2f)
-
-                // 1. Water wave ripple spreading far outward
-                if (waveProgress.value in 0.01f..0.99f) {
-                    val p = waveProgress.value
-                    // Spreads far outward (radius from 14dp up to 68dp)
-                    val waveRadius = 14.dp.toPx() + (p * 54.dp.toPx())
-                    val waveAlpha = (1f - p) * 0.52f
-
-                    // Soft outer water wave crest ring
-                    drawCircle(
-                        color = Color(0xFFFF1A44).copy(alpha = waveAlpha),
-                        radius = waveRadius,
-                        center = center,
-                        style = Stroke(width = 2.4.dp.toPx() * (1f - p * 0.4f))
-                    )
-
-                    // Diffuse secondary wave halo
-                    drawCircle(
-                        color = Color(0xFFE5284D).copy(alpha = waveAlpha * 0.38f),
-                        radius = waveRadius * 0.85f,
-                        center = center
-                    )
-                }
-
-                // 2. Steady red glow beneath the icon (shrinks to a nice smaller spread around the icon)
-                val currentSpread = glowSpread.value
-                if (currentSpread > 0.01f) {
-                    val spreadRadius = 32.dp.toPx() * currentSpread
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFFD6183C).copy(alpha = 0.55f * currentSpread.coerceAtMost(1f)),
-                                Color(0xFFA81432).copy(alpha = 0.32f * currentSpread.coerceAtMost(1f)),
-                                Color(0xFF6B0B1E).copy(alpha = 0.12f * currentSpread.coerceAtMost(1f)),
-                                Color.Transparent
-                            ),
-                            center = center,
-                            radius = spreadRadius
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFE51D44).copy(alpha = 0.38f * activeAlpha),
+                            Color(0xFF8A0F26).copy(alpha = 0.16f * activeAlpha),
+                            Color.Transparent
                         ),
                         center = center,
-                        radius = spreadRadius
-                    )
-                }
+                        radius = 20.dp.toPx()
+                    ),
+                    center = center,
+                    radius = 20.dp.toPx()
+                )
             }
         }
 
-        // 3. Standalone icon cleanly rendered on top
+        // Clean icon
         content(iconColor)
     }
 }
 
+/**
+ * Compact Persistent Mini-Player:
+ * - Slim profile (reduced vertical space)
+ * - Compact artwork thumbnail
+ * - Clear song info and refined playback controls
+ * - Slender progress line
+ */
 @Composable
 fun AshGlassMiniPlayerBar(
     track: Track,
@@ -690,17 +634,16 @@ fun AshGlassMiniPlayerBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        VelvetBloodPlum.copy(alpha = 0.85f),
-                        VelvetAshGrayMedium.copy(alpha = 0.90f),
-                        VelvetAshGrayDark.copy(alpha = 0.95f)
+                        Color(0xFF260D19).copy(alpha = 0.94f),
+                        Color(0xFF190913).copy(alpha = 0.96f)
                     )
                 )
             )
-            .border(1.dp, VelvetCardBorder, RoundedCornerShape(18.dp))
+            .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
             .clickable { onClick() }
             .testTag("mini_player_bar")
     ) {
@@ -708,14 +651,15 @@ fun AshGlassMiniPlayerBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Compact Artwork Thumbnail
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .border(1.dp, VelvetCardBorder, RoundedCornerShape(10.dp))
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
                 ) {
                     TrackArtworkImage(
                         track = track,
@@ -725,54 +669,65 @@ fun AshGlassMiniPlayerBar(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
+                // Track Title & Artist
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = track.title,
-                        fontSize = 13.sp,
+                        text = track.title.substringBefore(" - "),
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = VelvetTextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(1.dp))
                     Text(
                         text = track.artist,
                         fontSize = 11.sp,
-                        color = VelvetTextSecondary,
+                        color = VelvetTextSecondary.copy(alpha = 0.80f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
+                // Play/Pause Action
                 IconButton(
                     onClick = onTogglePlayPause,
-                    modifier = Modifier.size(36.dp).testTag("mini_player_play_pause")
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("mini_player_play_pause")
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
                         tint = VelvetBrightCrimson,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
+                // Skip Next Action
                 IconButton(
                     onClick = onSkipNext,
-                    modifier = Modifier.size(36.dp).testTag("mini_player_skip_next")
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("mini_player_skip_next")
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next Track",
-                        tint = VelvetWhiteAsh,
-                        modifier = Modifier.size(22.dp)
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
+            // Slender Live Progress Line
             LinearProgressIndicator(
                 progress = { progressFraction },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.5.dp),
                 color = VelvetBrightCrimson,
                 trackColor = Color.Transparent
             )

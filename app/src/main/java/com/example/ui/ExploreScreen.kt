@@ -1,6 +1,5 @@
 package com.example.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,19 +20,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,11 +44,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,18 +68,18 @@ import com.example.ui.theme.VelvetTextSecondary
 import com.example.ui.theme.VelvetTextTertiary
 
 /**
- * ExploreScreen (Search Page)
+ * ExploreScreen — Redesigned Search Experience
  *
- * The baseline search experience is preserved in its entirety:
- * - Search songs, artists, albums, or videos from the local library / device
- * - Dedicated "Say it" and "Sing it" acoustic search pills
- * - Filter tabs: "All", "Music", "Video"
- * - High-contrast, sleek typography and spacious Velvet aesthetic
+ * Minimal, premium, and focused on three primary top actions:
+ * - Search It: Instant search focus & activation
+ * - Paste It: One-tap media link integration (slides up MediaDownloaderSheet)
+ * - Say It: Acoustic voice/sound search
  *
- * Integrated capability:
- * - Recognizing media URLs (TikTok, Instagram, Web Media) entered or pasted in the search bar
- * - Seamlessly slides up the premium Media Downloader bottom sheet over the search page
- * - The search page remains intact underneath
+ * Features:
+ * - Clean title: "Search Anything"
+ * - Controlled atmospheric wine-crimson gradient top
+ * - Compact refined search input with full width for long pasted URLs & vertical centering
+ * - Lightweight search result rows with artwork, clear hierarchy, and far-right menu icon
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,12 +93,12 @@ fun ExploreScreen(
     onOpenMediaDownloader: (initialUrl: String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val searchFocusRequester = remember { FocusRequester() }
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") } // "All", "Music", "Video"
-    var showComingSoonDialog by remember { mutableStateOf<String?>(null) } // "Say it" or "Sing it"
+    var showComingSoonDialog by remember { mutableStateOf<String?>(null) } // "Say It"
 
     // Detect if entered text is a media link and seamlessly open the downloader sheet
     LaunchedEffect(searchQuery) {
@@ -106,13 +110,12 @@ fun ExploreScreen(
 
         if (isUrl && trimmed.length > 8) {
             val urlToOpen = trimmed
-            // Clear search query so the search results remain clean underneath
             searchQuery = ""
             onOpenMediaDownloader(urlToOpen)
         }
     }
 
-    // Filter tracks based on normal search query and filter tab
+    // Filter tracks based on search query and filter tab
     val filteredTracks = remember(searchQuery, selectedFilter, tracks) {
         tracks.filter { track ->
             val matchesType = when (selectedFilter) {
@@ -129,20 +132,33 @@ fun ExploreScreen(
         }
     }
 
-    // Coming soon dialog for "Say it" and "Sing it"
+    // Acoustic search dialog for "Say It" and "Sing It"
     if (showComingSoonDialog != null) {
-        val featureName = showComingSoonDialog ?: ""
+        val isSing = showComingSoonDialog?.equals("Sing it", ignoreCase = true) == true
+        val dialogTitle = if (isSing) "Sing It" else "Say It"
+        val dialogIcon = if (isSing) Icons.Default.GraphicEq else Icons.Default.Mic
+        val dialogSubtitle = if (isSing) {
+            "Melody recognition & humming search is preparing to launch."
+        } else {
+            "Voice audio & speech search is preparing to launch."
+        }
+        val dialogDesc = if (isSing) {
+            "Hum, whistle, or sing any tune directly to identify and stream tracks in seconds."
+        } else {
+            "Speak track titles, artist names, or lyrics to search music instantly."
+        }
+
         BasicAlertDialog(
             onDismissRequest = { showComingSoonDialog = null }
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .clip(RoundedCornerShape(24.dp))
+                    .fillMaxWidth(0.90f)
+                    .clip(RoundedCornerShape(22.dp))
                     .background(
                         brush = Brush.verticalGradient(
                             listOf(
-                                VelvetOffBloodTop.copy(alpha = 0.95f),
+                                VelvetOffBloodTop.copy(alpha = 0.96f),
                                 Color(0xFF1E0A12).copy(alpha = 0.98f)
                             )
                         )
@@ -156,9 +172,9 @@ fun ExploreScreen(
                                 Color.White.copy(alpha = 0.08f)
                             )
                         ),
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(22.dp)
                     )
-                    .padding(24.dp),
+                    .padding(22.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -167,61 +183,61 @@ fun ExploreScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(64.dp)
+                            .size(54.dp)
                             .clip(CircleShape)
                             .background(
                                 Brush.radialGradient(
                                     listOf(
-                                        VelvetBrightCrimson.copy(alpha = 0.40f),
+                                        VelvetBrightCrimson.copy(alpha = 0.45f),
                                         Color.Transparent
                                     )
                                 )
                             )
-                            .border(1.dp, VelvetBrightCrimson.copy(alpha = 0.5f), CircleShape),
+                            .border(1.dp, VelvetBrightCrimson.copy(alpha = 0.55f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (featureName == "Say it") Icons.Default.Mic else Icons.Default.GraphicEq,
-                            contentDescription = featureName,
+                            imageVector = dialogIcon,
+                            contentDescription = dialogTitle,
                             tint = Color.White,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = featureName,
-                        fontSize = 20.sp,
+                        text = dialogTitle,
+                        fontSize = 19.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "Sorry for interrupting, this particular feature is coming soon.",
-                        fontSize = 14.sp,
-                        color = VelvetTextSecondary,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 20.sp
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "Our high-precision acoustic AI engine for audio and voice recognition is currently in development.",
-                        fontSize = 12.sp,
+                        text = dialogSubtitle,
+                        fontSize = 13.sp,
+                        color = VelvetTextSecondary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = dialogDesc,
+                        fontSize = 11.5.sp,
                         color = VelvetTextTertiary,
                         textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
+                            .height(40.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
                                 Brush.horizontalGradient(
@@ -237,7 +253,7 @@ fun ExploreScreen(
                         Text(
                             text = "Got it",
                             color = Color.White,
-                            fontSize = 14.sp,
+                            fontSize = 13.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -246,315 +262,503 @@ fun ExploreScreen(
         }
     }
 
-    LazyColumn(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .testTag("explore_screen"),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+            .testTag("explore_screen")
     ) {
-        // 1. HEADER SECTION (Spacious, elegant, uncluttered)
-        item {
-            Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            // 1. CLEAN TOP HEADER: Title on left, the 3 Red Glass Action Cards on top-right
+            item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(
                             text = "Search",
-                            fontSize = 26.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            color = VelvetTextPrimary
+                            color = VelvetTextPrimary,
+                            letterSpacing = (-0.3).sp
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Search songs, artists, or paste media links",
-                            fontSize = 13.sp,
-                            color = VelvetTextSecondary,
-                            lineHeight = 18.sp
+                            text = "Music, videos & links",
+                            fontSize = 11.5.sp,
+                            color = VelvetTextTertiary
                         )
                     }
 
-                    // Subtle Link action chip (opens the downloader bottom sheet directly)
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.07f))
-                            .border(1.dp, VelvetBrightCrimson.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-                            .clickable {
-                                val clipText = clipboardManager.getText()?.text
-                                if (!clipText.isNullOrBlank() && (clipText.contains("tiktok") || clipText.contains("instagram") || clipText.startsWith("http"))) {
-                                    onOpenMediaDownloader(clipText.trim())
+                    // 3 Red Glass Cards clustered closely together at the top right corner
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RedGlassActionCard(
+                            title = "Paste it",
+                            icon = Icons.Default.ContentPaste,
+                            onClick = {
+                                val clipText = clipboardManager.getText()?.text?.trim()
+                                if (!clipText.isNullOrBlank() && (
+                                            clipText.startsWith("http://", ignoreCase = true) ||
+                                            clipText.startsWith("https://", ignoreCase = true) ||
+                                            clipText.contains("tiktok.com", ignoreCase = true) ||
+                                            clipText.contains("instagram.com", ignoreCase = true)
+                                        )) {
+                                    onOpenMediaDownloader(clipText)
                                 } else {
                                     onOpenMediaDownloader(null)
                                 }
-                            }
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
-                            .testTag("search_open_link_sheet"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Link,
-                                contentDescription = "Media Downloader",
-                                tint = VelvetBrightCrimson,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Text(
-                                text = "Link",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = VelvetTextPrimary
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // 2. SEARCH / URL INPUT BAR WITH "Say it" & "Sing it" ICONS
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(elevation = 8.dp, shape = RoundedCornerShape(18.dp), spotColor = VelvetBrightCrimson.copy(alpha = 0.25f))
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(
-                            brush = Brush.verticalGradient(
-                                listOf(
-                                    Color(0xFF2E131C).copy(alpha = 0.85f),
-                                    Color(0xFF1E0B12).copy(alpha = 0.95f)
-                                )
-                            )
-                        )
-                        .border(
-                            width = 1.2.dp,
-                            brush = Brush.horizontalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.25f),
-                                    VelvetBrightCrimson.copy(alpha = 0.45f),
-                                    Color.White.copy(alpha = 0.10f)
-                                )
-                            ),
-                            shape = RoundedCornerShape(18.dp)
-                        )
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(54.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Search Icon
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = VelvetBrightCrimson,
-                            modifier = Modifier.size(24.dp)
+                            },
+                            tag = "action_paste_it"
                         )
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                        RedGlassActionCard(
+                            title = "Say it",
+                            icon = Icons.Default.Mic,
+                            isComingSoon = true,
+                            onClick = { showComingSoonDialog = "Say it" },
+                            tag = "action_say_it"
+                        )
 
-                        // Text Field
-                        Box(modifier = Modifier.weight(1f)) {
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    text = "Search music or paste media link...",
-                                    color = VelvetTextTertiary,
-                                    fontSize = 13.5.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("explore_search_input"),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color.Transparent,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    focusedTextColor = VelvetTextPrimary,
-                                    unfocusedTextColor = VelvetTextPrimary,
-                                    cursorColor = VelvetBrightCrimson
-                               ),
-                                singleLine = true
-                            )
-                        }
-
-                        // Clear Button if text present
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear",
-                                    tint = VelvetTextSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-
-                        // Dedicated "Say it" & "Sing it" Interactive Icons inside the search bar
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            // "Say it" Icon Pill
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.White.copy(alpha = 0.08f))
-                                    .border(0.8.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = { showComingSoonDialog = "Say it" }
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                                    .testTag("search_say_it_button"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Mic,
-                                        contentDescription = "Say it",
-                                        tint = Color.White.copy(alpha = 0.90f),
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Text(
-                                        text = "Say it",
-                                        color = Color.White.copy(alpha = 0.90f),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-
-                            // "Sing it" Icon Pill
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.White.copy(alpha = 0.08f))
-                                    .border(0.8.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = { showComingSoonDialog = "Sing it" }
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                                    .testTag("search_sing_it_button"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.GraphicEq,
-                                        contentDescription = "Sing it",
-                                        tint = VelvetBrightCrimson,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Text(
-                                        text = "Sing it",
-                                        color = VelvetBrightCrimson,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-            }
-        }
-
-        // 3. SEARCH FILTER TABS (All / Music / Video)
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf("All", "Music", "Video").forEach { filter ->
-                    val isSelected = selectedFilter == filter
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (isSelected) VelvetBrightCrimson else Color.White.copy(alpha = 0.07f)
-                            )
-                            .clickable { selectedFilter = filter }
-                            .padding(horizontal = 16.dp, vertical = 7.dp)
-                    ) {
-                        Text(
-                            text = filter,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) Color.White else VelvetTextSecondary
+                        RedGlassActionCard(
+                            title = "Sing it",
+                            icon = Icons.Default.GraphicEq,
+                            isComingSoon = true,
+                            onClick = { showComingSoonDialog = "Sing it" },
+                            tag = "action_sing_it"
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-        }
-
-        // 4. SEARCH RESULTS / LIBRARY TRACKS LIST
-        items(filteredTracks) { track ->
-            val isCurrent = track.id == currentTrack.id
-            StandaloneMusicRow(
-                track = track,
-                isCurrent = isCurrent,
-                isPlaying = isPlaying && isCurrent,
-                onClick = { onSelectTrack(track) },
-                onMenuClick = { onTrackMenuClick(track) }
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-
-        if (filteredTracks.isEmpty() && searchQuery.isNotBlank()) {
+            // 2. REFINED SEARCH INPUT (Elevated to top, clean glass container, search action)
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 36.dp),
-                    contentAlignment = Alignment.Center
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0x18FFFFFF))
+                        .border(
+                            width = 0.8.dp,
+                            brush = Brush.horizontalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.22f),
+                                    Color.White.copy(alpha = 0.08f)
+                                )
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { searchFocusRequester.requestFocus() }
+                        )
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Left Search Icon / Button
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = "No results",
-                            tint = VelvetTextTertiary,
-                            modifier = Modifier.size(36.dp)
+                            contentDescription = "Search",
+                            tint = Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clickable { searchFocusRequester.requestFocus() }
+                                .testTag("search_icon_button")
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "No music or video matching \"$searchQuery\"",
-                            fontSize = 13.sp,
-                            color = VelvetTextTertiary
-                        )
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        // Full-width Centered Text Field
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxSize(),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Search music, artists, or paste URL...",
+                                    color = VelvetTextTertiary,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(searchFocusRequester)
+                                    .testTag("explore_search_input"),
+                                textStyle = TextStyle(
+                                    color = VelvetTextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Normal
+                                ),
+                                cursorBrush = SolidColor(VelvetBrightCrimson),
+                                singleLine = true
+                            )
+                        }
+
+                        // Clear Button when text is present
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { searchQuery = "" },
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = VelvetTextSecondary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
                     }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // 5. FILTER TABS (Compact, subtle pills)
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("All", "Music", "Video").forEach { filter ->
+                        val isSelected = selectedFilter == filter
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    if (isSelected) VelvetBrightCrimson.copy(alpha = 0.90f)
+                                    else Color.White.copy(alpha = 0.06f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+                                    RoundedCornerShape(16.dp)
+                                )
+                                .clickable { selectedFilter = filter }
+                                .padding(horizontal = 14.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = filter,
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (isSelected) Color.White else VelvetTextSecondary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+
+            // 6. RESULTS SECTION HEADER
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (searchQuery.isBlank()) "Search Results" else "Results for \"$searchQuery\"",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VelvetTextSecondary.copy(alpha = 0.90f),
+                        letterSpacing = 0.4.sp
+                    )
+
+                    Text(
+                        text = "${filteredTracks.size} tracks",
+                        fontSize = 11.sp,
+                        color = VelvetTextTertiary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            // 7. LIGHTWEIGHT RESULT ITEMS (Artwork, hierarchy, far-right menu icon, refined padding)
+            items(filteredTracks) { track ->
+                val isCurrent = track.id == currentTrack.id
+                SearchTrackResultRow(
+                    track = track,
+                    isCurrent = isCurrent,
+                    isPlaying = isPlaying && isCurrent,
+                    onClick = { onSelectTrack(track) },
+                    onMenuClick = { onTrackMenuClick(track) }
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            if (filteredTracks.isEmpty() && searchQuery.isNotBlank()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 36.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "No results",
+                                tint = VelvetTextTertiary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "No music or video matching \"$searchQuery\"",
+                                fontSize = 13.sp,
+                                color = VelvetTextTertiary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bottom space balancing the compact mini player and bottom navigation
+            item {
+                Spacer(modifier = Modifier.height(120.dp))
+            }
+        }
+    }
+}
+
+/**
+ * Lightweight, refined track result row for the Search experience:
+ * - [Artwork]  Song title                         ⋮
+ *              Artist • Source
+ * - Far-right menu action with generous touch target
+ * - Reduced vertical padding, no generic heavy dark card
+ */
+@Composable
+private fun SearchTrackResultRow(
+    track: Track,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onMenuClick: () -> Unit
+) {
+    val cleanTitle = track.title.substringBefore(" - ")
+    val sourceLabel = if (track.catalogSource.isNotBlank()) track.catalogSource else track.album
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (isCurrent) Color(0xFF280C19).copy(alpha = 0.50f)
+                else Color.Transparent
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 5.dp)
+            .testTag("standalone_track_${track.id}"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Compact Artwork
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            TrackArtworkImage(
+                track = track,
+                contentDescription = track.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            if (isCurrent && isPlaying) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = "Playing",
+                        tint = VelvetBrightCrimson,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
 
-        // Bottom space so items aren't obscured by mini player and bottom bar
-        item {
-            Spacer(modifier = Modifier.height(140.dp))
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Title and Metadata with strong visual hierarchy
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = cleanTitle,
+                fontSize = 13.5.sp,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (isCurrent) VelvetBrightCrimson else VelvetTextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Text(
+                text = "${track.artist} • $sourceLabel",
+                fontSize = 11.5.sp,
+                color = VelvetTextSecondary.copy(alpha = 0.75f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // Far-right three-dot menu button
+        IconButton(
+            onClick = onMenuClick,
+            modifier = Modifier
+                .size(36.dp)
+                .testTag("track_menu_${track.id}")
+        ) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "Track options",
+                tint = VelvetTextSecondary.copy(alpha = 0.70f),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
+
+/**
+ * Compact Red Glass Action Card
+ *
+ * Sits at the top right of the Search screen.
+ * Taller than wide, beautifully translucent red glass with illuminated borders,
+ * specular highlight, centered icon, label underneath, and subtle coming-soon indicator.
+ */
+@Composable
+private fun RedGlassActionCard(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    tag: String,
+    modifier: Modifier = Modifier,
+    isComingSoon: Boolean = false
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier = modifier
+            .width(48.dp)
+            .height(58.dp)
+            .shadow(
+                elevation = 5.dp,
+                shape = shape,
+                spotColor = Color(0x66E5284D),
+                ambientColor = Color.Transparent
+            )
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0x40FF2A55), // Specular vibrant crimson tint
+                        Color(0x2B880E2F), // Translucent deep wine body
+                        Color(0x1E420B15)  // Dark velvet foundation
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0x80FF6B8B), // Crisp illuminated glass edge at top
+                        Color(0x33FFFFFF), // Subtle white glass reflection
+                        Color(0x18FF2A55)  // Warm crimson bottom rim
+                    )
+                ),
+                shape = shape
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .testTag(tag),
+        contentAlignment = Alignment.Center
+    ) {
+        // Specular top highlight line for authentic frosted glass look
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(0.70f)
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.50f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = Color.White,
+                modifier = Modifier.size(19.dp)
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = title,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = VelvetTextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // Elegant tiny dot indicator for coming soon
+        if (isComingSoon) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 4.dp, end = 4.dp)
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF5277))
+            )
+        }
+    }
+}
+
