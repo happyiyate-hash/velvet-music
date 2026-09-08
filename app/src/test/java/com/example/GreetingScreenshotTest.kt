@@ -26,7 +26,7 @@ class GreetingScreenshotTest {
     composeTestRule.setContent {
       VelvetTheme {
         HomeFeedScreen(
-          currentTrack = SampleData.trackAfterHours,
+          currentTrack = SampleData.defaultIdleTrack,
           isPlaying = false,
           allTracks = SampleData.recentlyPlayedTracks,
           mostPlayedTracks = SampleData.recentlyPlayedTracks,

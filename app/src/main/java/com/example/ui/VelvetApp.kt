@@ -169,6 +169,8 @@ fun VelvetApp() {
     var isInspectorOpen by remember { mutableStateOf(false) }
     var isProTierOpen by remember { mutableStateOf(false) }
     var isSettingsOpen by remember { mutableStateOf(false) }
+    var isMediaDownloaderOpen by remember { mutableStateOf(false) }
+    var mediaDownloaderInitialUrl by remember { mutableStateOf<String?>(null) }
     var actionSheetTrack by remember { mutableStateOf<Track?>(null) }
 
     Box(
@@ -221,7 +223,11 @@ fun VelvetApp() {
                         tracks = allTracks,
                         onSelectTrack = { track -> audioEngine.playTrack(track) },
                         onTrackMenuClick = { track -> actionSheetTrack = track },
-                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
+                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) },
+                        onOpenMediaDownloader = { url ->
+                            mediaDownloaderInitialUrl = url
+                            isMediaDownloaderOpen = true
+                        }
                     )
 
                     2 -> VideoLibraryScreen()
@@ -294,6 +300,36 @@ fun VelvetApp() {
                     Toast.makeText(context, "Removed from library", Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { isPlayerExpanded = false }
+            )
+        }
+
+        // Full Screen Media Downloader Sheet (Layered over Search page, covering bottom navigation)
+        AnimatedVisibility(
+            visible = isMediaDownloaderOpen,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = tween(380, easing = FastOutSlowInEasing)
+            ),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = tween(300, easing = FastOutSlowInEasing)
+            )
+        ) {
+            MediaDownloaderSheet(
+                initialUrl = mediaDownloaderInitialUrl,
+                onAddTrack = { track ->
+                    audioEngine.addDeviceTrack(track)
+                },
+                onPlayTrack = { track ->
+                    audioEngine.addDeviceTrack(track)
+                    audioEngine.playTrack(track)
+                    isMediaDownloaderOpen = false
+                    isPlayerExpanded = true
+                },
+                onDismiss = {
+                    isMediaDownloaderOpen = false
+                    mediaDownloaderInitialUrl = null
+                }
             )
         }
 
