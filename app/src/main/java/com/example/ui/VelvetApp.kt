@@ -118,7 +118,6 @@ fun VelvetApp() {
     val deviceTracks by audioEngine.deviceTracks.collectAsState()
     val deletedTrackIds by audioEngine.deletedTrackIds.collectAsState()
 
-    // Automatic permission launcher on mount: asks for permission to access user device audio & video
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -129,35 +128,27 @@ fun VelvetApp() {
         }
         if (audioGranted || DeviceMediaManager.hasAudioPermission(context)) {
             val loaded = DeviceMediaManager.loadDeviceTracks(context)
-            if (loaded.isNotEmpty()) {
-                audioEngine.setDeviceTracks(loaded)
-            }
+            if (loaded.isNotEmpty()) audioEngine.setDeviceTracks(loaded)
         }
     }
 
-    // Initialize media session lock screen controls and auto-query device audio files upon launch
     LaunchedEffect(Unit) {
         audioEngine.bindMediaSession(context)
         if (DeviceMediaManager.hasAudioPermission(context)) {
             val loaded = DeviceMediaManager.loadDeviceTracks(context)
-            if (loaded.isNotEmpty()) {
-                audioEngine.setDeviceTracks(loaded)
-            }
+            if (loaded.isNotEmpty()) audioEngine.setDeviceTracks(loaded)
         } else {
-            // Automatically prompt for permission when mounting so user music & video can be detected
             mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions)
         }
     }
 
-    // Real device tracks with starter showcase fallback (minus deleted tracks)
     val allTracks = remember(deviceTracks, deletedTrackIds) {
         val filtered = deviceTracks
             .distinctBy { it.id }
             .filterNot { deletedTrackIds.contains(it.id) }
-        if (filtered.isNotEmpty()) filtered else com.example.model.SampleData.starterTracks.filterNot { deletedTrackIds.contains(it.id) }
+        if (filtered.isNotEmpty()) filtered else SampleData.starterTracks.filterNot { deletedTrackIds.contains(it.id) }
     }
 
-    // Most played tracks (user plays mostly / all the time, ranked by real play counts)
     val mostPlayedTracks = remember(allTracks, trackPlayCounts) {
         val played = allTracks.filter { (trackPlayCounts[it.id] ?: 0) > 0 }
             .sortedByDescending { trackPlayCounts[it.id] ?: 0 }
@@ -174,12 +165,8 @@ fun VelvetApp() {
     var actionSheetTrack by remember { mutableStateOf<Track?>(null) }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(VelvetAshGrayDark)
+        modifier = Modifier.fillMaxSize().background(VelvetAshGrayDark)
     ) {
-        // App background remains in its exact velvet theme color (Off-Blood to Ash Gray)
-        // Dynamic music artwork colors are strictly isolated to the PlayerSheet!
         SoundCatchMeshBackground(
             dominantColor = VelvetOffBloodTop,
             secondaryColor = VelvetBloodPlum,
@@ -194,12 +181,8 @@ fun VelvetApp() {
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { paddingValues ->
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .statusBarsPadding()
+                modifier = Modifier.fillMaxSize().padding(paddingValues).statusBarsPadding()
             ) {
-                // Active Screen Tab
                 when (selectedTab) {
                     0 -> HomeFeedScreen(
                         currentTrack = currentTrack,
@@ -216,7 +199,6 @@ fun VelvetApp() {
                         onTrackMenuClick = { track -> actionSheetTrack = track },
                         onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
                     )
-
                     1 -> ExploreScreen(
                         currentTrack = currentTrack,
                         isPlaying = isPlaying,
@@ -229,16 +211,12 @@ fun VelvetApp() {
                             isMediaDownloaderOpen = true
                         }
                     )
-
                     2 -> VideoLibraryScreen()
                 }
 
-                // Mini Player Bar (compact persistent player resting cleanly right above the bottom bar)
                 if (isPlaying) {
                     Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 54.dp, start = 8.dp, end = 8.dp)
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp, start = 8.dp, end = 8.dp)
                     ) {
                         AshGlassMiniPlayerBar(
                             track = currentTrack,
@@ -251,7 +229,6 @@ fun VelvetApp() {
                     }
                 }
 
-                // Bottom Navigation Bar:
                 AshGlassBottomNavigationBar(
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
@@ -260,7 +237,6 @@ fun VelvetApp() {
             }
         }
 
-        // Full Screen Player Sheet
         AnimatedVisibility(
             visible = isPlayerExpanded,
             enter = slideInVertically(initialOffsetY = { it }),
@@ -275,10 +251,8 @@ fun VelvetApp() {
                 isRepeat = isRepeat,
                 isFavorite = favoriteTrackIds.contains(currentTrack.id),
                 isCachedOffline = offlineCachedIds.contains(currentTrack.id),
-                upNextTracks = allTracks,
-                onSelectTrack = { t -> audioEngine.playTrack(t) },
                 onTogglePlayPause = { audioEngine.togglePlayPause() },
-                onSeekTo = { pos -> audioEngine.seekTo(pos) },
+                onSeekTo = { pos: Long -> audioEngine.seekTo(pos) },
                 onSkipNext = { audioEngine.playNext() },
                 onSkipPrevious = { audioEngine.playPrevious() },
                 onToggleShuffle = { audioEngine.toggleShuffle() },
@@ -292,9 +266,7 @@ fun VelvetApp() {
                     audioEngine.queueNext(currentTrack)
                     Toast.makeText(context, "Playing next: ${currentTrack.title.substringBefore(" - ")}", Toast.LENGTH_SHORT).show()
                 },
-                onQueue = {
-                    audioEngine.queueNext(currentTrack)
-                },
+                onQueue = { audioEngine.queueNext(currentTrack) },
                 onShareTrack = { DeviceMediaManager.shareTrack(context, currentTrack) },
                 onDeleteTrack = {
                     audioEngine.deleteTrack(currentTrack.id)
@@ -305,23 +277,14 @@ fun VelvetApp() {
             )
         }
 
-        // Full Screen Media Downloader Sheet (Layered over Search page, covering bottom navigation)
         AnimatedVisibility(
             visible = isMediaDownloaderOpen,
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = tween(380, easing = FastOutSlowInEasing)
-            ),
-            exit = slideOutVertically(
-                targetOffsetY = { it },
-                animationSpec = tween(300, easing = FastOutSlowInEasing)
-            )
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(380, easing = FastOutSlowInEasing)),
+            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300, easing = FastOutSlowInEasing))
         ) {
             MediaDownloaderSheet(
                 initialUrl = mediaDownloaderInitialUrl,
-                onAddTrack = { track ->
-                    audioEngine.addDeviceTrack(track)
-                },
+                onAddTrack = { track -> audioEngine.addDeviceTrack(track) },
                 onPlayTrack = { track ->
                     audioEngine.addDeviceTrack(track)
                     audioEngine.playTrack(track)
@@ -335,7 +298,6 @@ fun VelvetApp() {
             )
         }
 
-        // Sound Catch Inspector Sheet
         if (isInspectorOpen) {
             SoundCatchInspectorSheet(
                 track = currentTrack,
@@ -346,21 +308,9 @@ fun VelvetApp() {
             )
         }
 
-        // Pro Tier Sheet
-        if (isProTierOpen) {
-            ProTierBottomSheet(
-                onDismiss = { isProTierOpen = false }
-            )
-        }
+        if (isProTierOpen) ProTierBottomSheet(onDismiss = { isProTierOpen = false })
+        if (isSettingsOpen) SettingsBottomSheet(onDismiss = { isSettingsOpen = false })
 
-        // Settings Sheet
-        if (isSettingsOpen) {
-            SettingsBottomSheet(
-                onDismiss = { isSettingsOpen = false }
-            )
-        }
-
-        // Track Action Bottom Sheet
         actionSheetTrack?.let { track ->
             TrackActionBottomSheet(
                 track = track,
@@ -391,345 +341,6 @@ fun VelvetApp() {
                     isInspectorOpen = true
                 },
                 onDismiss = { actionSheetTrack = null }
-            )
-        }
-    }
-}
-
-/**
- * Ash Glass Bottom Navigation Bar matching user description and screenshot 1788538785231.png:
- * - Low-profile, sleek height flush to screen bottom with curved top corners
- * - Material: Translucent almost-white ashes frosted glass with micro-stippled dot texture
- *   ("dot dot in the surface, but very small that the space of each dot is not visible... looks almost smooth")
- * - Ambient glowing shadow spreading inside the frosted glass under whichever icon is chosen
- * - Icons float cleanly on the glass WITHOUT any wrapping card or circular container
- * - Left: Outlined music note tile with soft rose-ash tone and "ACTIVE" indicator label
- * - Center: Minimalist search icon
- * - Right: Profile outline with 4-point diamond star badge
- */
-@Composable
-fun AshGlassBottomNavigationBar(
-    selectedTab: Int,
-    onSelectTab: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val navBarShape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(navBarShape)
-            .testTag("ash_glass_navigation_bar"),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        // 1. Sticky Transparent Frosted Glass Canvas with Micro-Stipple Texture & Top Rim
-        Canvas(
-            modifier = Modifier.matchParentSize()
-        ) {
-            val w = size.width
-            val h = size.height
-
-            // Sticky Transparent Glass: semi-opaque smoky dark base that diffuses behind it without showing full clarity
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xB8231C28), // Sticky frosted ash top (~72% opacity)
-                        Color(0xC817121D), // Sticky smoky body (~78% opacity)
-                        Color(0xD80E0A14)  // Rich sticky charcoal bottom (~85% opacity)
-                    )
-                )
-            )
-
-            // App's signature glass glaze (frosted specular sheen + subtle crimson infusion)
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.07f),
-                        Color(0xFFE50914).copy(alpha = 0.035f),
-                        Color.White.copy(alpha = 0.02f)
-                    )
-                )
-            )
-
-            // Tactile micro-stippled dot texture (fine dots scattering light so surface looks almost smooth)
-            val dotColor1 = Color(0x1AFFFFFF)
-            val dotColor2 = Color(0x12CCD4E0)
-            val stepX = 3.8f
-            val stepY = 3.8f
-            var curY = 1.5f
-            while (curY < h) {
-                var curX = if (((curY / stepY).toInt() % 2) == 0) 1.5f else 3.4f
-                while (curX < w) {
-                    drawCircle(
-                        color = if (((curX + curY).toInt() % 3) == 0) dotColor1 else dotColor2,
-                        radius = 0.65f,
-                        center = Offset(curX, curY)
-                    )
-                    curX += stepX
-                }
-                curY += stepY
-            }
-
-            // Crisp frosted top edge highlight
-            drawLine(
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color(0x20FFFFFF),
-                        Color(0x70FFFFFF),
-                        Color(0x70FFFFFF),
-                        Color(0x20FFFFFF)
-                    )
-                ),
-                start = Offset(0f, 1f),
-                end = Offset(w, 1f),
-                strokeWidth = 1.4f
-            )
-        }
-
-        // 2. Navigation Action Bar: Sleek, compact 48.dp height
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 48.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // TAB 0: Standalone Music Note Icon
-                    AshGlassNavTabItem(
-                        isSelected = selectedTab == 0,
-                        onClick = { onSelectTab(0) },
-                        testTag = "nav_tab_music"
-                    ) { iconColor ->
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = "Music",
-                            tint = iconColor,
-                            modifier = Modifier.size(23.dp)
-                        )
-                    }
-
-                    // TAB 1: Standalone Search Icon (accent color when active)
-                    AshGlassNavTabItem(
-                        isSelected = selectedTab == 1,
-                        onClick = { onSelectTab(1) },
-                        testTag = "nav_tab_search"
-                    ) { iconColor ->
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = iconColor,
-                            modifier = Modifier.size(23.dp)
-                        )
-                    }
-
-                    // TAB 2: Standalone Video Icon
-                    AshGlassNavTabItem(
-                        isSelected = selectedTab == 2,
-                        onClick = { onSelectTab(2) },
-                        testTag = "nav_tab_videos"
-                    ) { iconColor ->
-                        Icon(
-                            imageVector = Icons.Default.Videocam,
-                            contentDescription = "Videos",
-                            tint = iconColor,
-                            modifier = Modifier.size(23.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Compact, premium Nav Tab Item:
- * - Clean icon with subtle accent when active and quiet tone when inactive
- * - Restrained soft underglow that supports rather than dominates the interface
- */
-@Composable
-private fun AshGlassNavTabItem(
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    testTag: String,
-    content: @Composable (iconColor: Color) -> Unit
-) {
-    val activeAlpha by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0f,
-        animationSpec = tween(240),
-        label = "nav_active_alpha"
-    )
-
-    val iconColor = if (isSelected) Color(0xFFFF2E54) else Color(0xFF7A808E)
-
-    Box(
-        modifier = Modifier
-            .size(width = 54.dp, height = 44.dp)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() }
-            .testTag(testTag),
-        contentAlignment = Alignment.Center
-    ) {
-        // Controlled, subtle soft underglow beneath the active icon
-        if (activeAlpha > 0.01f) {
-            Canvas(
-                modifier = Modifier
-                    .size(44.dp)
-                    .align(Alignment.Center)
-            ) {
-                val center = Offset(size.width / 2f, size.height / 2f)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFE51D44).copy(alpha = 0.38f * activeAlpha),
-                            Color(0xFF8A0F26).copy(alpha = 0.16f * activeAlpha),
-                            Color.Transparent
-                        ),
-                        center = center,
-                        radius = 20.dp.toPx()
-                    ),
-                    center = center,
-                    radius = 20.dp.toPx()
-                )
-            }
-        }
-
-        // Clean icon
-        content(iconColor)
-    }
-}
-
-/**
- * Compact Persistent Mini-Player:
- * - Slim profile (reduced vertical space)
- * - Compact artwork thumbnail
- * - Clear song info and refined playback controls
- * - Slender progress line
- */
-@Composable
-fun AshGlassMiniPlayerBar(
-    track: Track,
-    isPlaying: Boolean,
-    playbackPositionMs: Long,
-    onTogglePlayPause: () -> Unit,
-    onSkipNext: () -> Unit,
-    onClick: () -> Unit
-) {
-    val progressFraction = if (track.durationMs > 0) {
-        (playbackPositionMs.toFloat() / track.durationMs.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0xFF260D19).copy(alpha = 0.94f),
-                        Color(0xFF190913).copy(alpha = 0.96f)
-                    )
-                )
-            )
-            .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-            .clickable { onClick() }
-            .testTag("mini_player_bar")
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Compact Artwork Thumbnail
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                ) {
-                    TrackArtworkImage(
-                        track = track,
-                        contentDescription = track.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                // Track Title & Artist
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = track.title.substringBefore(" - "),
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = VelvetTextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(1.dp))
-                    Text(
-                        text = track.artist,
-                        fontSize = 11.sp,
-                        color = VelvetTextSecondary.copy(alpha = 0.80f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                // Play/Pause Action
-                IconButton(
-                    onClick = onTogglePlayPause,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .testTag("mini_player_play_pause")
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = VelvetBrightCrimson,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                // Skip Next Action
-                IconButton(
-                    onClick = onSkipNext,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .testTag("mini_player_skip_next")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Next Track",
-                        tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            // Slender Live Progress Line
-            LinearProgressIndicator(
-                progress = { progressFraction },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.5.dp),
-                color = VelvetBrightCrimson,
-                trackColor = Color.Transparent
             )
         }
     }
