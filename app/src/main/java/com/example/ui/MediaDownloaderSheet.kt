@@ -75,6 +75,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -100,7 +101,6 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.math.sin
 
-/** Metadata for a public media URL. */
 data class DetectedMediaInfo(
     val platform: String,
     val creatorName: String,
@@ -169,9 +169,7 @@ fun MediaDownloaderSheet(
 
     LaunchedEffect(sheetState) {
         val fetching = sheetState as? DownloaderSheetState.Fetching ?: return@LaunchedEffect
-        val result = runCatching {
-            withContext(Dispatchers.IO) { analyzeMediaUrl(context, fetching.url) }
-        }.getOrNull()
+        val result = runCatching { withContext(Dispatchers.IO) { analyzeMediaUrl(context, fetching.url) } }.getOrNull()
         sheetState = if (result != null) {
             DownloaderSheetState.MediaDetected(result)
         } else {
@@ -198,14 +196,9 @@ fun MediaDownloaderSheet(
             .testTag("media_downloader_sheet")
     ) {
         Canvas(Modifier.fillMaxSize()) {
+            drawRect(Brush.verticalGradient(listOf(animatedTop, Color(0xFF170B13), Color(0xFF0A070A)), endY = size.height))
             drawRect(
-                brush = Brush.verticalGradient(
-                    listOf(animatedTop, Color(0xFF170B13), Color(0xFF0A070A)),
-                    endY = size.height
-                )
-            )
-            drawRect(
-                brush = Brush.radialGradient(
+                Brush.radialGradient(
                     listOf(animatedAccent.copy(alpha = .16f), Color.Transparent),
                     center = androidx.compose.ui.geometry.Offset(size.width * .52f, size.height * .30f),
                     radius = size.width * .90f
@@ -213,84 +206,64 @@ fun MediaDownloaderSheet(
             )
         }
 
-        Column(
-            Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                IconButton(onClick = onDismiss, Modifier.size(44.dp).testTag("downloader_collapse_button")) {
-                    Icon(Icons.Default.KeyboardArrowDown, "Close", tint = Color.White, modifier = Modifier.size(30.dp))
-                }
-                Text(
-                    "MEDIA DOWNLOAD",
-                    color = Color.White.copy(alpha = .86f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp
-                )
-                IconButton(
-                    onClick = { inputUrl = ""; sheetState = DownloaderSheetState.Input() },
-                    Modifier.size(44.dp)
+        if (sheetState is DownloaderSheetState.MediaDetected) {
+            val media = (sheetState as DownloaderSheetState.MediaDetected).media
+            FetchedMediaFullScreenView(
+                media = media,
+                onBack = onDismiss,
+                onCopyLink = {
+                    clipboard.setText(AnnotatedString(media.originalUrl))
+                    Toast.makeText(context, "Link copied", Toast.LENGTH_SHORT).show()
+                },
+                onDownloadVideo = { startDownload(media, false, scope, onAddTrack) { sheetState = it } },
+                onDownloadAudio = { startDownload(media, true, scope, onAddTrack) { sheetState = it } }
+            )
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(Icons.Default.Refresh, "Reset", tint = Color.White.copy(alpha = .72f), modifier = Modifier.size(21.dp))
+                    IconButton(onClick = onDismiss, Modifier.size(44.dp).testTag("downloader_collapse_button")) {
+                        Icon(Icons.Default.KeyboardArrowDown, "Close", tint = Color.White, modifier = Modifier.size(30.dp))
+                    }
+                    Text("MEDIA DOWNLOAD", color = Color.White.copy(alpha = .86f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    IconButton(onClick = { inputUrl = ""; sheetState = DownloaderSheetState.Input() }, Modifier.size(44.dp)) {
+                        Icon(Icons.Default.Refresh, "Reset", tint = Color.White.copy(alpha = .72f), modifier = Modifier.size(21.dp))
+                    }
                 }
-            }
 
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AnimatedContent(
-                    targetState = sheetState,
-                    transitionSpec = { fadeIn(tween(280)) togetherWith fadeOut(tween(180)) },
-                    label = "downloaderContent"
-                ) { current ->
-                    when (current) {
-                        is DownloaderSheetState.Input -> PasteLinkInputView(
-                            inputUrl = inputUrl,
-                            onUrlChange = { inputUrl = it },
-                            onPaste = {
-                                val text = clipboard.getText()?.text
-                                if (!text.isNullOrBlank()) inputUrl = text.trim()
-                            },
-                            onProcess = { processUrl(inputUrl) }
-                        )
-                        is DownloaderSheetState.Fetching -> FetchingMediaWaveformView(current.url, animatedAccent)
-                        is DownloaderSheetState.MediaDetected -> FetchedMediaFullScreenView(
-                            media = current.media,
-                            onCopyLink = {
-                                clipboard.setText(androidx.compose.ui.text.AnnotatedString(current.media.originalUrl))
-                                Toast.makeText(context, "Link copied", Toast.LENGTH_SHORT).show()
-                            },
-                            onDownloadVideo = {
-                                startDownload(current.media, false, scope, onAddTrack) { sheetState = it }
-                            },
-                            onDownloadAudio = {
-                                startDownload(current.media, true, scope, onAddTrack) { sheetState = it }
+                Box(Modifier.fillMaxSize().navigationBarsPadding(), contentAlignment = Alignment.Center) {
+                    AnimatedContent(
+                        targetState = sheetState,
+                        transitionSpec = { fadeIn(tween(280)) togetherWith fadeOut(tween(180)) },
+                        label = "downloaderContent"
+                    ) { current ->
+                        when (current) {
+                            is DownloaderSheetState.Input -> PasteLinkInputView(inputUrl, { inputUrl = it }, {
+                                clipboard.getText()?.text?.let { inputUrl = it.trim() }
+                            }, { processUrl(inputUrl) })
+                            is DownloaderSheetState.Fetching -> FetchingMediaWaveformView(current.url, animatedAccent)
+                            is DownloaderSheetState.Downloading -> DownloadingView(current, animatedAccent)
+                            is DownloaderSheetState.DownloadComplete -> DownloadCompleteView(
+                                current,
+                                onPlay = { current.createdTrack?.let(onPlayTrack) },
+                                onShare = {
+                                    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, current.media.originalUrl) }
+                                    context.startActivity(Intent.createChooser(intent, "Share media"))
+                                },
+                                onAnother = { inputUrl = ""; sheetState = DownloaderSheetState.Input() }
+                            )
+                            is DownloaderSheetState.Error -> ErrorStateView(current) {
+                                inputUrl = current.failedUrl
+                                processUrl(current.failedUrl)
                             }
-                        )
-                        is DownloaderSheetState.Downloading -> DownloadingView(current, animatedAccent)
-                        is DownloaderSheetState.DownloadComplete -> DownloadCompleteView(
-                            current,
-                            onPlay = { current.createdTrack?.let(onPlayTrack) },
-                            onShare = {
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, current.media.originalUrl)
-                                }
-                                context.startActivity(Intent.createChooser(intent, "Share media"))
-                            },
-                            onAnother = { inputUrl = ""; sheetState = DownloaderSheetState.Input() }
-                        )
-                        is DownloaderSheetState.Error -> ErrorStateView(current, onRetry = {
-                            inputUrl = current.failedUrl
-                            processUrl(current.failedUrl)
-                        })
+                            is DownloaderSheetState.MediaDetected -> Unit
+                        }
                     }
                 }
             }
@@ -304,21 +277,15 @@ private fun platformColors(platform: String): Pair<Color, Color> = when (platfor
     else -> VelvetOffBloodTop to VelvetBrightCrimson
 }
 
-/** The fetched state is intentionally an immersive viewer: the media is the screen, not a card. */
 @Composable
 private fun FetchedMediaFullScreenView(
     media: DetectedMediaInfo,
+    onBack: () -> Unit,
     onCopyLink: () -> Unit,
     onDownloadVideo: () -> Unit,
     onDownloadAudio: () -> Unit
 ) {
-    var showAudioAction by remember { mutableStateOf(false) }
-    val bottomGradient = Brush.verticalGradient(
-        0f to Color.Transparent,
-        .54f to Color.Transparent,
-        .72f to Color.Black.copy(alpha = .22f),
-        1f to Color.Black.copy(alpha = .94f)
-    )
+    var showDownloadMenu by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Image(
@@ -327,22 +294,25 @@ private fun FetchedMediaFullScreenView(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
-        Box(Modifier.fillMaxSize().background(bottomGradient))
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.Black.copy(alpha = .28f), Color.Transparent, Color.Transparent))
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = .30f),
+                    .50f to Color.Transparent,
+                    .68f to Color.Black.copy(alpha = .10f),
+                    1f to Color.Black.copy(alpha = .94f)
+                )
             )
         )
 
         Row(
             Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { /* parent dismiss is handled by sheet header */ }, Modifier.size(42.dp)) {
+            IconButton(onClick = onBack, Modifier.size(44.dp)) {
                 Icon(Icons.Default.ArrowBack, "Back", tint = Color.White, modifier = Modifier.size(25.dp))
             }
             Row(
@@ -350,29 +320,29 @@ private fun FetchedMediaFullScreenView(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.ContentCopy, null, tint = Color.White.copy(alpha = .90f), modifier = Modifier.size(19.dp))
+                Icon(Icons.Default.ContentCopy, null, tint = Color.White.copy(alpha = .92f), modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Copy Link", color = Color.White.copy(alpha = .92f), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
-            IconButton(onClick = { showAudioAction = !showAudioAction }, Modifier.size(42.dp)) {
+            IconButton(onClick = { showDownloadMenu = !showDownloadMenu }, Modifier.size(44.dp)) {
                 Icon(Icons.Default.Download, "Download", tint = Color.White, modifier = Modifier.size(25.dp))
             }
         }
 
-        if (showAudioAction) {
+        if (showDownloadMenu) {
             Column(
                 Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
                     .padding(top = 54.dp, end = 14.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = .72f))
-                    .border(1.dp, Color.White.copy(alpha = .18f), RoundedCornerShape(16.dp))
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(Color.Black.copy(alpha = .74f))
+                    .border(1.dp, Color.White.copy(alpha = .18f), RoundedCornerShape(15.dp))
+                    .padding(7.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                CompactDownloadAction("Video", Icons.Default.Videocam, onDownloadVideo)
-                CompactDownloadAction("Audio", Icons.Default.MusicNote, onDownloadAudio)
+                CompactDownloadAction("Video", Icons.Default.Videocam) { showDownloadMenu = false; onDownloadVideo() }
+                CompactDownloadAction("Audio", Icons.Default.MusicNote) { showDownloadMenu = false; onDownloadAudio() }
             }
         }
 
@@ -380,70 +350,42 @@ private fun FetchedMediaFullScreenView(
             Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(start = 22.dp, end = 86.dp, bottom = 28.dp),
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 88.dp, bottom = 24.dp),
             verticalAlignment = Alignment.Bottom
         ) {
-            Box(
-                Modifier.size(46.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = .65f), CircleShape)
-            ) {
-                Image(
-                    painter = painterResource(media.coverResId),
-                    contentDescription = media.creatorName,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+            Box(Modifier.size(46.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = .68f), CircleShape)) {
+                Image(painterResource(media.coverResId), media.creatorName, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 Icon(
-                    painter = painterResource(
-                        when (media.platform) {
-                            "TikTok" -> R.drawable.ic_tiktok
-                            "Instagram" -> R.drawable.ic_instagram
-                            else -> R.drawable.ic_social_more
-                        }
-                    ),
+                    painter = painterResource(when (media.platform) {
+                        "TikTok" -> R.drawable.ic_tiktok
+                        "Instagram" -> R.drawable.ic_instagram
+                        else -> R.drawable.ic_social_more
+                    }),
                     contentDescription = media.platform,
                     tint = Color.Unspecified,
-                    modifier = Modifier.size(17.dp).align(Alignment.BottomEnd).background(Color.Black.copy(alpha = .68f), CircleShape).padding(2.dp)
+                    modifier = Modifier.size(17.dp).align(Alignment.BottomEnd).background(Color.Black.copy(alpha = .70f), CircleShape).padding(2.dp)
                 )
             }
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    media.creatorName,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    media.creatorHandle,
-                    color = Color.White.copy(alpha = .72f),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(media.creatorName, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(media.creatorHandle, color = Color.White.copy(alpha = .72f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(7.dp))
-                Text(
-                    media.title,
-                    color = Color.White,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Medium,
-                    lineHeight = 22.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(media.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium, lineHeight = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
 
         Box(
             Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 18.dp, bottom = 31.dp)
+                .navigationBarsPadding()
+                .padding(end = 18.dp, bottom = 26.dp)
                 .size(58.dp)
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = .30f))
                 .border(1.5.dp, media.accentColor.copy(alpha = .95f), CircleShape)
-                .clickable(onClick = { showAudioAction = !showAudioAction })
+                .clickable { showDownloadMenu = !showDownloadMenu }
                 .testTag("download_media_button"),
             contentAlignment = Alignment.Center
         ) {
@@ -454,10 +396,7 @@ private fun FetchedMediaFullScreenView(
 
 @Composable
 private fun CompactDownloadAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Row(
-        Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(horizontal = 11.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(horizontal = 11.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = Color.White, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Text("Download $label", color = Color.White, fontSize = 13.sp)
@@ -466,11 +405,7 @@ private fun CompactDownloadAction(label: String, icon: androidx.compose.ui.graph
 
 @Composable
 private fun PasteLinkInputView(inputUrl: String, onUrlChange: (String) -> Unit, onPaste: () -> Unit, onProcess: () -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 22.dp).verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Default.Link, null, tint = VelvetBrightCrimson, modifier = Modifier.size(40.dp))
         Spacer(Modifier.height(16.dp))
         Text("Paste a link", color = VelvetTextPrimary, fontSize = 25.sp, fontWeight = FontWeight.Bold)
@@ -575,11 +510,7 @@ private fun ErrorStateView(state: DownloaderSheetState.Error, onRetry: () -> Uni
 
 @Composable
 private fun SimpleActionButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(if (enabled) VelvetBrightCrimson else Color.White.copy(alpha = .08f)).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 15.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
+    Row(modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(if (enabled) VelvetBrightCrimson else Color.White.copy(alpha = .08f)).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 15.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         Icon(icon, null, tint = if (enabled) Color.White else VelvetTextSecondary, modifier = Modifier.size(19.dp))
         Spacer(Modifier.width(8.dp))
         Text(label, color = if (enabled) Color.White else VelvetTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -637,17 +568,7 @@ private suspend fun analyzeMediaUrl(context: Context, urlString: String): Detect
                         val creator = json.optString("author_name").ifBlank { "TikTok Creator" }
                         val authorUrl = json.optString("author_url")
                         val handle = if (authorUrl.contains("@")) "@${authorUrl.substringAfter("@").trimEnd('/')}" else "@$creator"
-                        return DetectedMediaInfo(
-                            platform = platform,
-                            creatorName = creator,
-                            creatorHandle = handle,
-                            title = title,
-                            durationText = "0:30",
-                            durationMs = 30_000L,
-                            coverResId = FallbackArtworkPool.getPhotoForTrack(url, title, creator),
-                            originalUrl = url,
-                            accentColor = accent
-                        )
+                        return DetectedMediaInfo(platform, creator, handle, title, "0:30", 30_000L, FallbackArtworkPool.getPhotoForTrack(url, title, creator), url, accent)
                     }
                 }
             }
@@ -662,15 +583,5 @@ private suspend fun analyzeMediaUrl(context: Context, urlString: String): Detect
         "Facebook" -> "Facebook media"
         else -> "Web media"
     }
-    return DetectedMediaInfo(
-        platform = platform,
-        creatorName = handle.removePrefix("@").replaceFirstChar { it.uppercase() },
-        creatorHandle = handle,
-        title = title,
-        durationText = "0:30",
-        durationMs = 30_000L,
-        coverResId = FallbackArtworkPool.getPhotoForTrack(url, title, handle),
-        originalUrl = url,
-        accentColor = accent
-    )
+    return DetectedMediaInfo(platform, handle.removePrefix("@").replaceFirstChar { it.uppercase() }, handle, title, "0:30", 30_000L, FallbackArtworkPool.getPhotoForTrack(url, title, handle), url, accent)
 }
