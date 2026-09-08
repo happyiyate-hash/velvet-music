@@ -275,6 +275,8 @@ fun VelvetApp() {
                 isRepeat = isRepeat,
                 isFavorite = favoriteTrackIds.contains(currentTrack.id),
                 isCachedOffline = offlineCachedIds.contains(currentTrack.id),
+                queueTracks = allTracks,
+                onSelectQueueTrack = { track -> audioEngine.playTrack(track) },
                 onTogglePlayPause = { audioEngine.togglePlayPause() },
                 onSeekTo = { pos -> audioEngine.seekTo(pos) },
                 onSkipNext = { audioEngine.playNext() },

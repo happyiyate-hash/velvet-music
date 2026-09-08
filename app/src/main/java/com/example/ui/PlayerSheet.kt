@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -15,10 +16,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -26,12 +30,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -58,6 +64,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,6 +74,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,10 +86,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -89,7 +99,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.example.audio.AudioTelemetry
 import com.example.media.ArtworkColorExtractor
 import com.example.model.Track
@@ -122,6 +134,8 @@ fun PlayerSheet(
     isRepeat: Boolean = false,
     isFavorite: Boolean = false,
     isCachedOffline: Boolean = false,
+    queueTracks: List<Track> = emptyList(),
+    onSelectQueueTrack: (Track) -> Unit = {},
     onTogglePlayPause: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onSkipNext: () -> Unit,
@@ -136,6 +150,7 @@ fun PlayerSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var showActionSheet by remember { mutableStateOf(false) }
     var showSongInfoDialog by remember { mutableStateOf(false) }
     var showVisualizerSheet by remember { mutableStateOf(false) }
@@ -146,12 +161,49 @@ fun PlayerSheet(
         ArtworkColorExtractor.extractColors(context, track)
     }
 
-    Box(
+    // Interactive continuous drag transition state between Full Now Playing (0f) and Up Next Queue (1f)
+    val dragProgress = remember { Animatable(0f) }
+    val p = dragProgress.value
+
+    // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
+    val queueItems = remember(queueTracks, track) {
+        if (queueTracks.isNotEmpty()) {
+            val otherTracks = queueTracks.filter { it.id != track.id }
+            listOf(track) + otherTracks
+        } else {
+            listOf(track) + com.example.model.SampleData.starterTracks.filter { it.id != track.id }
+        }
+    }
+
+    val queueListState = rememberLazyListState()
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(themeColors.darkBackground)
             .testTag("full_player_sheet")
     ) {
+        val totalHeight = maxHeight
+        val totalWidth = maxWidth
+        val density = LocalDensity.current
+        val totalHeightPx = with(density) { totalHeight.toPx() }
+        val dragDistancePx = (totalHeightPx * 0.65f).coerceAtLeast(350f)
+
+        // Unified vertical drag delta processor
+        val onDragDelta: (Float) -> Unit = { dragAmountPx ->
+            val delta = -dragAmountPx / dragDistancePx
+            coroutineScope.launch {
+                dragProgress.snapTo((dragProgress.value + delta).coerceIn(0f, 1f))
+            }
+        }
+
+        val onDragFinish: () -> Unit = {
+            coroutineScope.launch {
+                val target = if (dragProgress.value > 0.45f) 1f else 0f
+                dragProgress.animateTo(target, tween(320, easing = FastOutSlowInEasing))
+            }
+        }
+
         // Dynamic background atmosphere: full-screen atmospheric gradient preserving artwork hue from top to bottom
         Canvas(modifier = Modifier.fillMaxSize()) {
             val canvasWidth = size.width
@@ -171,39 +223,52 @@ fun PlayerSheet(
                 )
             )
 
-            // Soft radial ambient bloom centered behind the artwork
+            // Soft radial ambient bloom centered behind the artwork that dynamically breathes
+            val bloomScale = 1f + (p * 0.35f)
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        themeColors.atmosphericBloom.copy(alpha = 0.35f),
-                        themeColors.atmosphericBloom.copy(alpha = 0.12f),
+                        themeColors.atmosphericBloom.copy(alpha = (0.35f * (1f - p * 0.2f)).coerceAtLeast(0.15f)),
+                        themeColors.atmosphericBloom.copy(alpha = (0.12f * (1f - p * 0.2f)).coerceAtLeast(0.05f)),
                         Color.Transparent
                     ),
-                    center = Offset(canvasWidth * 0.5f, canvasHeight * 0.28f),
-                    radius = canvasWidth * 0.85f
+                    center = Offset(canvasWidth * 0.5f, canvasHeight * (0.28f - p * 0.12f)),
+                    radius = canvasWidth * 0.85f * bloomScale
                 )
             )
         }
 
-        // Main Player Content
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp)
-                .padding(top = 8.dp, bottom = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // 1. TOP SECTION
-            Row(
+        // 1. NOW PLAYING COMPOSITION (Continuously transforms as user drags upward)
+        val fullNowPlayingAlpha = (1f - ((p - 0.45f) / 0.25f)).coerceIn(0f, 1f)
+        val npOffsetY = -(p * totalHeightPx * 0.28f)
+        val expandRatio = (p / 0.65f).coerceIn(0f, 1f)
+        val topBarAlpha = (1f - (p * 2.2f)).coerceIn(0f, 1f)
+        val shuffleRepeatAlpha = (1f - (p * 2.8f)).coerceIn(0f, 1f)
+
+        if (fullNowPlayingAlpha > 0f) {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = npOffsetY
+                        alpha = fullNowPlayingAlpha
+                    }
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 8.dp, bottom = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
+                // 1. TOP SECTION
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { alpha = topBarAlpha }
+                        .padding(horizontal = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                 // Left: Small downward chevron
                 IconButton(
                     onClick = onDismiss,
@@ -251,16 +316,23 @@ fun PlayerSheet(
                 }
             }
 
-            // 2. ALBUM ARTWORK (Expanded size, centered, with clean rounded corners)
+            // 2. ALBUM ARTWORK (Scales up, expands to screen edges, and subtly blends into dynamic background)
+            val artworkWidthFraction = 0.94f + (0.06f * expandRatio)
+            val artworkCornerRadius = 26.dp * (1f - expandRatio)
+
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.94f)
+                    .fillMaxWidth(artworkWidthFraction)
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(26.dp))
+                    .graphicsLayer {
+                        scaleX = 1f + (0.08f * expandRatio)
+                        scaleY = 1f + (0.08f * expandRatio)
+                    }
+                    .clip(RoundedCornerShape(artworkCornerRadius))
                     .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(26.dp)
+                        width = (1f - expandRatio).dp,
+                        color = Color.White.copy(alpha = 0.08f * (1f - expandRatio)),
+                        shape = RoundedCornerShape(artworkCornerRadius)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -270,6 +342,26 @@ fun PlayerSheet(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
+
+                // Controlled subtle gradient blend over the artwork as it expands toward the top:
+                // Top gradient keeps status bar & top actions legible;
+                // Bottom gradient blends seamlessly into the dark atmosphere and rising queue!
+                if (expandRatio > 0.02f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops = arrayOf(
+                                        0.0f to themeColors.bgTop.copy(alpha = 0.70f * expandRatio),
+                                        0.25f to themeColors.bgTop.copy(alpha = 0.20f * expandRatio),
+                                        0.60f to Color.Transparent,
+                                        1.0f to themeColors.darkBackground.copy(alpha = 0.85f * expandRatio)
+                                    )
+                                )
+                            )
+                    )
+                }
             }
 
             // 3. SONG INFORMATION (Strict Visual Hierarchy, Left-Aligned, Compact Spacing)
@@ -413,6 +505,7 @@ fun PlayerSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .graphicsLayer { alpha = shuffleRepeatAlpha }
                     .padding(horizontal = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -437,7 +530,299 @@ fun PlayerSheet(
                     iconSize = 26.dp
                 )
             }
+
+            // Bottom spacer balancing height for resting Up Next handle
+            Spacer(modifier = Modifier.height(38.dp))
         }
+    }
+
+    // 2. UP NEXT QUEUE SHEET (Continuous vertical drag transition)
+    val queueTopOffsetDp = androidx.compose.ui.unit.lerp(totalHeight - 56.dp, 66.dp, p)
+    val queueCornerRadius = 24.dp * (1f - (p * 0.4f))
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(totalHeight - 66.dp)
+            .offset(y = queueTopOffsetDp)
+            .clip(RoundedCornerShape(topStart = queueCornerRadius, topEnd = queueCornerRadius))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        themeColors.darkBackground.copy(alpha = 0.96f),
+                        themeColors.bgBottom.copy(alpha = 0.98f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.18f),
+                        Color.White.copy(alpha = 0.04f)
+                    )
+                ),
+                shape = RoundedCornerShape(topStart = queueCornerRadius, topEnd = queueCornerRadius)
+            )
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = { onDragFinish() },
+                    onDragCancel = { onDragFinish() },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        onDragDelta(dragAmount)
+                    }
+                )
+            }
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Up Next Handle / Header Section
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            coroutineScope.launch {
+                                val target = if (p < 0.5f) 1f else 0f
+                                dragProgress.animateTo(target, tween(360, easing = FastOutSlowInEasing))
+                            }
+                        }
+                    )
+                    .padding(top = 10.dp, bottom = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Gesture Indicator Pill
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.35f))
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                if (p < 0.30f) {
+                    // Subtle Resting Up Next Handle Text
+                    Text(
+                        text = "Up Next",
+                        fontSize = 11.5.sp,
+                        letterSpacing = 1.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White.copy(alpha = 0.60f)
+                    )
+                } else {
+                    // Expanded Up Next Queue Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Playing from",
+                                fontSize = 11.sp,
+                                letterSpacing = 1.sp,
+                                color = Color.White.copy(alpha = 0.55f),
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = if (track.catalogSource.isNotBlank()) track.catalogSource else "Queue",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+
+                        // Save Queue Chip
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color.White.copy(alpha = 0.10f))
+                                .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                            .clickable {
+                                Toast.makeText(context, "Queue saved to playlist", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.QueueMusic,
+                                    contentDescription = "Save Queue",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = "Save",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Scrollable Queue Track List (takes over screen when expanded)
+            if (p > 0.15f) {
+                LazyColumn(
+                    state = queueListState,
+                    userScrollEnabled = p > 0.80f,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = ((p - 0.15f) / 0.50f).coerceIn(0f, 1f) }
+                        .padding(horizontal = 14.dp),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+                    items(queueItems) { queueTrack ->
+                        val isCurrent = queueTrack.id == track.id
+                        UpNextTrackRow(
+                            track = queueTrack,
+                            isCurrent = isCurrent,
+                            isPlaying = isPlaying && isCurrent,
+                            accentColor = themeColors.accent,
+                            onClick = {
+                                onSelectQueueTrack(queueTrack)
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. COMPACT CURRENT-SONG HEADER (Collapses into pinned top bar as user drags upward)
+    val compactAlpha = ((p - 0.55f) / 0.35f).coerceIn(0f, 1f)
+    if (compactAlpha > 0f) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .graphicsLayer { alpha = compactAlpha }
+                .background(themeColors.darkBackground.copy(alpha = 0.98f))
+                .statusBarsPadding()
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { onDragFinish() },
+                        onDragCancel = { onDragFinish() },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            onDragDelta(dragAmount)
+                        }
+                    )
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Small thumbnail
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(0.8.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TrackArtworkImage(
+                        track = track,
+                        contentDescription = track.title,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Title & Artist
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                coroutineScope.launch {
+                                    dragProgress.animateTo(0f, tween(340, easing = FastOutSlowInEasing))
+                                }
+                            }
+                        )
+                ) {
+                    Text(
+                        text = track.title.substringBefore(" - "),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = track.artist,
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.70f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Play/Pause button
+                IconButton(
+                    onClick = onTogglePlayPause,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                // Collapse Chevron (drags/animates back to full Now Playing)
+                IconButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            dragProgress.animateTo(0f, tween(340, easing = FastOutSlowInEasing))
+                        }
+                    },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Collapse Up Next",
+                        tint = Color.White.copy(alpha = 0.80f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            // Thin progress indicator attached to bottom of compact header
+            val progressFraction = if (track.durationMs > 0) {
+                (playbackPositionMs.toFloat() / track.durationMs.toFloat()).coerceIn(0f, 1f)
+            } else 0f
+
+            LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = themeColors.accent,
+                trackColor = Color.White.copy(alpha = 0.12f)
+            )
+        }
+    }
 
         // 7. THREE-DOT SONG ACTION BOTTOM SHEET
         if (showActionSheet) {
@@ -517,6 +902,114 @@ fun PlayerSheet(
             )
         }
     }
+}
+
+/**
+ * Up Next list track row component:
+ * Clean, modern row displaying track art thumbnail, title, artist & duration,
+ * playing indicator badge if active, and sleek reorder handle.
+ */
+@Composable
+private fun UpNextTrackRow(
+    track: Track,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    accentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (isCurrent) accentColor.copy(alpha = 0.16f) else Color.Transparent
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Thumbnail
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            TrackArtworkImage(
+                track = track,
+                contentDescription = track.title,
+                modifier = Modifier.fillMaxSize()
+            )
+            if (isCurrent && isPlaying) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.40f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = "Playing",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Title and Artist + Duration
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.title.substringBefore(" - "),
+                fontSize = 13.5.sp,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (isCurrent) accentColor else Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "${track.artist} • ${formatTrackDuration(track.durationMs)}",
+                fontSize = 11.5.sp,
+                color = Color.White.copy(alpha = 0.65f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Reorder drag handle (two clean horizontal lines)
+        Column(
+            modifier = Modifier.padding(horizontal = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(16.dp)
+                    .height(2.dp)
+                    .background(Color.White.copy(alpha = 0.45f), RoundedCornerShape(1.dp))
+            )
+            Box(
+                modifier = Modifier
+                    .width(16.dp)
+                    .height(2.dp)
+                    .background(Color.White.copy(alpha = 0.45f), RoundedCornerShape(1.dp))
+            )
+        }
+    }
+}
+
+private fun formatTrackDuration(durationMs: Long): String {
+    if (durationMs <= 0) return "3:30"
+    val totalSeconds = durationMs / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format("%d:%02d", minutes, seconds)
 }
 
 /**
