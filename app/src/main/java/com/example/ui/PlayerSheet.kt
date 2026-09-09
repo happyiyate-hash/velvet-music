@@ -954,6 +954,7 @@ fun PlayerSheet(
                 onDismiss = { showLyricsSheet = false }
             )
         }
+    }
 }
 
 /**
