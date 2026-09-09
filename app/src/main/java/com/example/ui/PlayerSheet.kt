@@ -228,7 +228,7 @@ fun PlayerSheet(
         val baseTitleX = 24.dp
         val baseTitleY = baseArtY + baseArtSize + 16.dp
         val baseWaveformY = baseTitleY + 66.dp + 14.dp
-        val baseControlsY = baseWaveformY + 52.dp + 18.dp
+        val baseControlsY = baseWaveformY + 52.dp + 28.dp
         val baseShuffleY = baseControlsY + 76.dp + 22.dp
 
         // First snap: artwork reaches the very top, becomes full-width and square-edged.
@@ -241,7 +241,7 @@ fun PlayerSheet(
         val expTitleY = expArtY + expArtHeight - 82.dp
         val expTitleWidth = totalWidth - 40.dp
         val expProgressY = expArtY + expArtHeight - 3.dp
-        val expControlsY = expArtY + expArtHeight + 34.dp
+        val expControlsY = expArtY + expArtHeight + 26.dp
         val expUpNextY = expControlsY + 84.dp
 
         val compArtSize = 44.dp
@@ -456,12 +456,12 @@ fun PlayerSheet(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
                             0.00f to Color.Transparent,
-                            0.58f to Color.Transparent,
-                            0.70f to themeColors.darkBackground.copy(alpha = 0.05f),
-                            0.79f to themeColors.darkBackground.copy(alpha = 0.16f),
-                            0.87f to themeColors.darkBackground.copy(alpha = 0.38f),
-                            0.94f to themeColors.darkBackground.copy(alpha = 0.68f),
-                            1.00f to themeColors.darkBackground.copy(alpha = 0.98f)
+                            0.56f to Color.Transparent,
+                            0.68f to themeColors.bgMidLower.copy(alpha = 0.08f),
+                            0.76f to themeColors.bgMidLower.copy(alpha = 0.22f),
+                            0.84f to themeColors.bgBottom.copy(alpha = 0.44f),
+                            0.92f to themeColors.bgBottom.copy(alpha = 0.72f),
+                            1.00f to themeColors.bgBottom.copy(alpha = 0.96f)
                         )
                     )
                 )
@@ -500,7 +500,7 @@ fun PlayerSheet(
             ) {
                 IconButton(
                     onClick = onTogglePlayPause,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -549,7 +549,7 @@ fun PlayerSheet(
         // over the lower part of the artwork instead of creating a second slider.
         val progressHostY = lerp(
             baseWaveformY,
-            expArtY + (expArtHeight * 0.90f) - 36.dp,
+            expArtY + (expArtHeight * 0.90f) - 48.dp,
             p.coerceIn(0f, 1f)
         )
         val movingWaveformAlpha = (1f - (p / 0.72f)).coerceIn(0f, 1f)
@@ -598,7 +598,7 @@ fun PlayerSheet(
         // At rest the secondary controls are clearly below the primary row.
         // During the upward gesture they rise into the same row.
         val primaryOffsetY = 0.dp
-        val secondaryOffsetY = lerp(76.dp + 22.dp, 8.dp, controlT)
+        val secondaryOffsetY = lerp(76.dp + 28.dp, 6.dp, controlT)
 
         Box(
             modifier = Modifier
