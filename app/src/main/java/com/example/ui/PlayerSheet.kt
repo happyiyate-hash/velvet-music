@@ -224,7 +224,7 @@ fun PlayerSheet(
         val baseArtSize = (totalWidth - 48.dp).coerceAtMost(availableHeight * 0.44f)
         val baseArtX = (totalWidth - baseArtSize) / 2
         val baseArtY = topBarY + topBarHeight + 18.dp
-        val baseArtCorner = 32.dp
+        val baseArtCorner = 24.dp
         val baseTitleX = 24.dp
         val baseTitleY = baseArtY + baseArtSize + 16.dp
         val baseWaveformY = baseTitleY + 66.dp + 14.dp
@@ -399,7 +399,7 @@ fun PlayerSheet(
             modifier = Modifier
                 .offset(x = artX, y = artY)
                 .width(artWidth)
-                .height(artHeight + artFadeDepth)
+                .height(artHeight)
                 .border(
                     if (p < 0.98f) 1.dp else 0.dp,
                     Color.White.copy(alpha = 0.10f),
