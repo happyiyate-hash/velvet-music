@@ -394,17 +394,13 @@ fun PlayerSheet(
         // 2. SINGLE PHYSICAL ARTWORK INSTANCE.
         // The artwork keeps its normal height. Only its bottom is dissolved into the same
         // dynamic page surface, beginning around the lower 60% rather than at the hard edge.
-        val artFadeDepth = if (p <= 1f) lerp(0.dp, 96.dp, p.coerceIn(0f, 1f)) else 0.dp
+        val artFadeDepth = 0.dp
         Box(
             modifier = Modifier
                 .offset(x = artX, y = artY)
                 .width(artWidth)
                 .height(artHeight)
-                .border(
-                    if (p < 0.98f) 1.dp else 0.dp,
-                    Color.White.copy(alpha = 0.10f),
-                    RoundedCornerShape(artCorner)
-                )
+
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -455,13 +451,13 @@ fun PlayerSheet(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.54f to Color.Transparent,
-                                0.60f to Color.Transparent,
-                                0.66f to themeColors.darkBackground.copy(alpha = 0.06f),
-                                0.74f to themeColors.darkBackground.copy(alpha = 0.18f),
-                                0.82f to themeColors.darkBackground.copy(alpha = 0.38f),
-                                0.90f to themeColors.darkBackground.copy(alpha = 0.68f),
-                                0.96f to themeColors.darkBackground.copy(alpha = 0.90f),
+                                0.52f to Color.Transparent,
+                                0.58f to themeColors.darkBackground.copy(alpha = 0.06f),
+                                0.64f to themeColors.darkBackground.copy(alpha = 0.18f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.38f),
+                                0.80f to themeColors.darkBackground.copy(alpha = 0.60f),
+                                0.88f to themeColors.darkBackground.copy(alpha = 0.80f),
+                                0.95f to themeColors.darkBackground.copy(alpha = 0.94f),
                                 1.00f to themeColors.darkBackground
                             )
                         )
