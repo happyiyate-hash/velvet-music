@@ -241,8 +241,8 @@ fun PlayerSheet(
         val expTitleY = expArtY + expArtHeight - 82.dp
         val expTitleWidth = totalWidth - 40.dp
         val expProgressY = expArtY + expArtHeight - 3.dp
-        val expControlsY = expArtY + expArtHeight + 52.dp
-        val expUpNextY = expControlsY + 66.dp
+        val expControlsY = expArtY + expArtHeight + 34.dp
+        val expUpNextY = expControlsY + 84.dp
 
         val compArtSize = 44.dp
         val compArtX = 16.dp
@@ -420,12 +420,15 @@ fun PlayerSheet(
         }
 
         // 2. SINGLE PHYSICAL ARTWORK INSTANCE.
+        // Extend the artwork below its nominal edge so its lower portion can dissolve
+        // naturally into the dynamic background, matching the YouTube Music treatment.
+        val artFadeDepth = if (p <= 1f) lerp(0.dp, 76.dp, p.coerceIn(0f, 1f)) else 0.dp
         // Phase 1 is full-bleed and square-edged; only the bottom is blended into the surface.
         Box(
             modifier = Modifier
                 .offset(x = artX, y = artY)
                 .width(artWidth)
-                .height(artHeight)
+                .height(artHeight + artFadeDepth)
                 .clip(RoundedCornerShape(artCorner))
                 .border(if (p < 0.98f) 1.dp else 0.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(artCorner))
                 .clickable(
@@ -453,10 +456,11 @@ fun PlayerSheet(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
                             0.00f to Color.Transparent,
-                            0.50f to Color.Transparent,
-                            0.70f to themeColors.darkBackground.copy(alpha = 0.06f),
-                            0.82f to themeColors.darkBackground.copy(alpha = 0.30f),
-                            0.92f to themeColors.darkBackground.copy(alpha = 0.68f),
+                            0.58f to Color.Transparent,
+                            0.70f to themeColors.darkBackground.copy(alpha = 0.05f),
+                            0.79f to themeColors.darkBackground.copy(alpha = 0.16f),
+                            0.87f to themeColors.darkBackground.copy(alpha = 0.38f),
+                            0.94f to themeColors.darkBackground.copy(alpha = 0.68f),
                             1.00f to themeColors.darkBackground.copy(alpha = 0.98f)
                         )
                     )
@@ -686,7 +690,7 @@ fun PlayerSheet(
                 .offset(x = 0.dp, y = upNextY)
                 .fillMaxWidth()
                 .height(upNextHeight.coerceAtLeast(54.dp))
-                .background(themeColors.darkBackground)
+                .background(Color.Transparent)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragEnd = { onDragFinish() },
