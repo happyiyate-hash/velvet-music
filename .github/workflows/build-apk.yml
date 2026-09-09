@@ -107,3 +107,5 @@ jobs:
           files: build-apks/Velvet-Music.apk
           draft: false
           prerelease: false
+
+# Rebuild after PlayerSheet v4b cleanup so the fixed UI is compile-verified.
