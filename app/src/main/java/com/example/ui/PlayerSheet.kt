@@ -241,8 +241,8 @@ fun PlayerSheet(
         val expTitleY = expArtY + expArtHeight - 82.dp
         val expTitleWidth = totalWidth - 40.dp
         val expProgressY = expArtY + expArtHeight - 3.dp
-        val expControlsY = expArtY + expArtHeight + 26.dp
-        val expUpNextY = expControlsY + 84.dp
+        val expControlsY = expArtY + expArtHeight + 18.dp
+        val expUpNextY = expControlsY + 72.dp
 
         val compArtSize = 44.dp
         val compArtX = 16.dp
@@ -335,18 +335,7 @@ fun PlayerSheet(
             val canvasHeight = size.height
 
             // Full screen vertical gradient transitioning from top atmosphere to deep tone at bottom
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        themeColors.bgTop,
-                        themeColors.bgMidUpper,
-                        themeColors.bgMidLower,
-                        themeColors.bgBottom
-                    ),
-                    startY = 0f,
-                    endY = canvasHeight
-                )
-            )
+            drawRect(color = themeColors.darkBackground)
 
             // Soft radial ambient bloom centered behind the artwork that dynamically breathes
             val bloomScale = 1f + (p * 0.35f)
@@ -485,10 +474,10 @@ fun PlayerSheet(
                                 0.00f to Color.Transparent,
                                 0.56f to Color.Transparent,
                                 0.62f to Color.Transparent,
-                                0.70f to themeColors.darkBackground.copy(alpha = 0.16f),
-                                0.78f to themeColors.darkBackground.copy(alpha = 0.42f),
-                                0.86f to themeColors.darkBackground.copy(alpha = 0.70f),
-                                0.93f to themeColors.darkBackground.copy(alpha = 0.90f),
+                                0.68f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                0.76f to themeColors.darkBackground.copy(alpha = 0.36f),
+                                0.84f to themeColors.darkBackground.copy(alpha = 0.64f),
+                                0.91f to themeColors.darkBackground.copy(alpha = 0.86f),
                                 1.00f to themeColors.darkBackground
                             )
                         )
