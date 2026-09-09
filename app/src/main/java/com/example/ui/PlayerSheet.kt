@@ -493,30 +493,7 @@ fun PlayerSheet(
             )
         }
 
-            if (artworkFadeAlpha > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = artworkFadeAlpha }
-                        .background(
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.00f to Color.Transparent,
-                                    0.50f to Color.Transparent,
-                                    0.56f to playerBackgroundTop.copy(alpha = 0.04f),
-                                    0.62f to playerBackgroundTop.copy(alpha = 0.16f),
-                                    0.69f to playerBackgroundTop.copy(alpha = 0.36f),
-                                    0.76f to playerBackgroundTop.copy(alpha = 0.58f),
-                                    0.84f to playerBackgroundBottom.copy(alpha = 0.78f),
-                                    0.91f to playerBackgroundBottom.copy(alpha = 0.93f),
-                                    0.97f to playerBackgroundBottom.copy(alpha = 0.98f),
-                                    1.00f to playerBackgroundBottom
-                                )
-                            )
-                        )
-                )
-            }
-        }
+                    }
 
         // 3. SONG TITLE & ARTIST. The first phase keeps the long title directly over the artwork.
         Column(
