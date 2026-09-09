@@ -3,6 +3,14 @@ from pathlib import Path
 p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = p.read_text(encoding='utf-8')
 
+# Ensure the Compose animation import required by the gradient transition exists.
+import_line = 'import androidx.compose.animation.core.animateColorAsState\n'
+anchor = 'import androidx.compose.animation.core.animateFloatAsState\n'
+if import_line not in s:
+    if anchor not in s:
+        raise SystemExit('Animation import anchor not found; refusing to modify.')
+    s = s.replace(anchor, anchor + import_line, 1)
+
 old = '''        // Dynamic player surface: lift the extracted artwork color so it is not nearly black.
         // Keep the upper area brighter and let the bottom fall off slightly darker.
         val extractedBg = themeColors.darkBackground
@@ -65,6 +73,5 @@ new = '''        // Dynamic PlayerSheet background: derive a deep, rich gradient
 if old not in s:
     raise SystemExit('Expected PlayerSheet background block not found; refusing to modify.')
 s = s.replace(old, new, 1)
-
 p.write_text(s, encoding='utf-8')
 print('PlayerSheet dynamic animated deep gradient applied.')
