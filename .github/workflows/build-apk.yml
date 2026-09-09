@@ -108,4 +108,4 @@ jobs:
           draft: false
           prerelease: false
 
-# Rebuild after the corrected artwork dissolve/border treatment.
+# Rebuild against the latest PlayerSheet control-alignment and artwork-fade correction.
