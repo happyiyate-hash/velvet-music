@@ -25,13 +25,13 @@ if broken_scope in s:
 elif up_next_marker not in s:
     raise SystemExit('Up Next marker not found; refusing to modify PlayerSheet.kt')
 
-# The artwork Box opened in section 2 was missing its closing brace before section 3.
-# Close only that Box; do not alter the fade layer or any surrounding layout.
-artwork_box_marker = '''                )\n            )\n        }\n\n        // 3. SONG TITLE & ARTIST.'''
-artwork_box_fixed = '''                )\n            )\n        }\n        }\n\n        // 3. SONG TITLE & ARTIST.'''
+# Section 2 opens a Box around the moving artwork. The fade layer is nested inside
+# that Box, so one additional brace is required after the fade's closing if-block.
+artwork_box_marker = '''                    .zIndex(1f)\n            )\n        }\n\n        // 3. SONG TITLE & ARTIST.'''
+artwork_box_fixed = '''                    .zIndex(1f)\n            )\n        }\n        }\n\n        // 3. SONG TITLE & ARTIST.'''
 if artwork_box_marker in s:
     s = s.replace(artwork_box_marker, artwork_box_fixed, 1)
-elif '''        }\n        }\n\n        // 3. SONG TITLE & ARTIST.''' not in s:
+elif '''                    .zIndex(1f)\n            )\n        }\n        }\n\n        // 3. SONG TITLE & ARTIST.''' not in s:
     raise SystemExit('Artwork Box scope marker not found; refusing to modify PlayerSheet.kt')
 
 p.write_text(s, encoding='utf-8')
