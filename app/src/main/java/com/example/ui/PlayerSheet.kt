@@ -508,6 +508,7 @@ fun PlayerSheet(
                     .zIndex(1f)
             )
         }
+        }
 
         // 3. SONG TITLE & ARTIST. The first phase keeps the long title directly over the artwork.
         Column(
