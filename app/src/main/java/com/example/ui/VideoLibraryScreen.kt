@@ -53,7 +53,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,7 +88,8 @@ fun VideoLibraryScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var videos by remember { mutableStateOf<List<DeviceVideo>>(emptyList()) }
+    val coroutineScope = rememberCoroutineScope()
+    var videos by remember { mutableStateOf<List<DeviceVideo>>(DeviceMediaManager.getCachedVideos(context)) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") }
     var selectedVideoForAction by remember { mutableStateOf<DeviceVideo?>(null) }
@@ -97,7 +102,10 @@ fun VideoLibraryScreen(
         val granted = DeviceMediaManager.hasVideoPermission(context)
         hasPermission = granted
         if (granted) {
-            videos = DeviceMediaManager.loadDeviceVideos(context)
+            coroutineScope.launch(Dispatchers.IO) {
+                val loaded = DeviceMediaManager.loadDeviceVideos(context)
+                videos = loaded
+            }
         }
     }
 
@@ -105,7 +113,10 @@ fun VideoLibraryScreen(
         if (!hasPermission) {
             videoPermissionLauncher.launch(DeviceMediaManager.requiredVideoPermissions)
         } else {
-            videos = DeviceMediaManager.loadDeviceVideos(context)
+            val loaded = withContext(Dispatchers.IO) {
+                DeviceMediaManager.loadDeviceVideos(context)
+            }
+            videos = loaded
         }
     }
 

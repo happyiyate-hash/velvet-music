@@ -69,6 +69,10 @@ object DeviceMediaManager {
         }
     }
 
+    fun getCachedTracks(context: Context): List<Track> {
+        return MediaLibraryCache.loadCachedTracks(context)
+    }
+
     fun loadDeviceTracks(context: Context): List<Track> {
         val tracks = mutableListOf<Track>()
         try {
@@ -112,19 +116,14 @@ object DeviceMediaManager {
                     val cleanArtist = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist
                     val trackId = "device_audio_$id"
 
-                    // If the music fetched from user device has a photo, use that real photo!
-                    // Only when the music doesn't have any photo do we fall back to a photo from the app.
-                    val resolvedArtUri = resolveArtwork(context, contentUri, albumId, trackId)
-                    val cover = if (resolvedArtUri == null) {
-                        FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
+                    // Instant artwork URI construction: zero I/O blocking during scan.
+                    // Coil will lazily decode and cache artwork asynchronously only when the item is visible on screen!
+                    val resolvedArtUri = if (albumId > 0) {
+                        ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId).toString()
                     } else {
-                        R.drawable.art_luminous_echoes
+                        contentUri.toString()
                     }
-                    val colors = if (resolvedArtUri != null) {
-                        ArtworkColorExtractor.extractColorsFromUri(context, resolvedArtUri)
-                    } else {
-                        ArtworkColorExtractor.getColorsForDrawable(context, cover)
-                    }
+                    val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
 
                     tracks.add(
                         Track(
@@ -134,8 +133,8 @@ object DeviceMediaManager {
                             album = album,
                             durationMs = if (durationMs > 0) durationMs else 180000L,
                             coverResId = cover,
-                            dominantColor = colors.dominant,
-                            secondaryColor = colors.secondary,
+                            dominantColor = VelvetDarkBurgundy,
+                            secondaryColor = VelvetDeepCrimson,
                             catalogSource = "Device Storage",
                             dateAddedMs = dateAdded,
                             contentUri = contentUri.toString(),
@@ -143,6 +142,9 @@ object DeviceMediaManager {
                         )
                     )
                 }
+            }
+            if (tracks.isNotEmpty()) {
+                MediaLibraryCache.saveCachedTracks(context, tracks)
             }
         } catch (e: Exception) {
             Log.e("DeviceMediaManager", "Error querying audio MediaStore", e)
@@ -261,6 +263,48 @@ object DeviceMediaManager {
         }
     }
 
+    fun getCachedVideos(context: Context): List<DeviceVideo> {
+        val cached = MediaLibraryCache.loadCachedVideos(context)
+        return if (cached.isNotEmpty()) cached else getSampleVideos()
+    }
+
+    private fun getSampleVideos(): List<DeviceVideo> {
+        return listOf(
+            DeviceVideo(
+                id = "sample_vid_1",
+                title = "Velvet_Concert_Live_2026.mp4",
+                durationMs = 248000L,
+                sizeBytes = 184500000L,
+                resolution = "4K UHD",
+                dateAddedMs = System.currentTimeMillis() - 86400000L * 2
+            ),
+            DeviceVideo(
+                id = "sample_vid_2",
+                title = "Night_Grooves_AudioVisualizer.mp4",
+                durationMs = 192000L,
+                sizeBytes = 96200000L,
+                resolution = "1080p 60fps",
+                dateAddedMs = System.currentTimeMillis() - 86400000L * 4
+            ),
+            DeviceVideo(
+                id = "sample_vid_3",
+                title = "Studio_Session_Acoustic_Take_3.mov",
+                durationMs = 310000L,
+                sizeBytes = 320000000L,
+                resolution = "1080p",
+                dateAddedMs = System.currentTimeMillis() - 86400000L * 7
+            ),
+            DeviceVideo(
+                id = "sample_vid_4",
+                title = "Screen_Recording_SoundCatch_Wave.mp4",
+                durationMs = 85000L,
+                sizeBytes = 42000000L,
+                resolution = "FHD",
+                dateAddedMs = System.currentTimeMillis() - 86400000L * 10
+            )
+        )
+    }
+
     fun loadDeviceVideos(context: Context): List<DeviceVideo> {
         val videos = mutableListOf<DeviceVideo>()
         try {
@@ -314,44 +358,10 @@ object DeviceMediaManager {
             Log.e("DeviceMediaManager", "Error querying video MediaStore", e)
         }
 
-        // If no videos on device/emulator, supply curated default device videos so the UI renders fully
-        if (videos.isEmpty()) {
-            videos.addAll(
-                listOf(
-                    DeviceVideo(
-                        id = "sample_vid_1",
-                        title = "Velvet_Concert_Live_2026.mp4",
-                        durationMs = 248000L,
-                        sizeBytes = 184500000L,
-                        resolution = "4K UHD",
-                        dateAddedMs = System.currentTimeMillis() - 86400000L * 2
-                    ),
-                    DeviceVideo(
-                        id = "sample_vid_2",
-                        title = "Night_Grooves_AudioVisualizer.mp4",
-                        durationMs = 192000L,
-                        sizeBytes = 96200000L,
-                        resolution = "1080p 60fps",
-                        dateAddedMs = System.currentTimeMillis() - 86400000L * 4
-                    ),
-                    DeviceVideo(
-                        id = "sample_vid_3",
-                        title = "Studio_Session_Acoustic_Take_3.mov",
-                        durationMs = 310000L,
-                        sizeBytes = 320000000L,
-                        resolution = "1080p",
-                        dateAddedMs = System.currentTimeMillis() - 86400000L * 7
-                    ),
-                    DeviceVideo(
-                        id = "sample_vid_4",
-                        title = "Screen_Recording_SoundCatch_Wave.mp4",
-                        durationMs = 85000L,
-                        sizeBytes = 42000000L,
-                        resolution = "FHD",
-                        dateAddedMs = System.currentTimeMillis() - 86400000L * 10
-                    )
-                )
-            )
+        if (videos.isNotEmpty()) {
+            MediaLibraryCache.saveCachedVideos(context, videos)
+        } else {
+            videos.addAll(getSampleVideos())
         }
         return videos
     }

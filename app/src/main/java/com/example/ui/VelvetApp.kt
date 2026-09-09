@@ -50,6 +50,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,6 +59,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -127,18 +131,45 @@ fun VelvetApp() {
             permissions[android.Manifest.permission.READ_EXTERNAL_STORAGE] == true
         }
         if (audioGranted || DeviceMediaManager.hasAudioPermission(context)) {
-            val loaded = DeviceMediaManager.loadDeviceTracks(context)
-            if (loaded.isNotEmpty()) audioEngine.setDeviceTracks(loaded)
+            coroutineScope.launch(Dispatchers.IO) {
+                val loaded = DeviceMediaManager.loadDeviceTracks(context)
+                if (loaded.isNotEmpty()) {
+                    audioEngine.setDeviceTracks(loaded)
+                }
+            }
         }
     }
 
+    // Startup flow:
+    // 1. Immediately read cached tracks and display them (<5ms)
+    // 2. Quietly scan MediaStore in the background and update if changes exist
     LaunchedEffect(Unit) {
         audioEngine.bindMediaSession(context)
+
+        // Step 1: Instant cache load
+        val cached = withContext(Dispatchers.IO) {
+            DeviceMediaManager.getCachedTracks(context)
+        }
+        if (cached.isNotEmpty()) {
+            audioEngine.setDeviceTracks(cached)
+        }
+
+        // Step 2: Background scan
         if (DeviceMediaManager.hasAudioPermission(context)) {
-            val loaded = DeviceMediaManager.loadDeviceTracks(context)
-            if (loaded.isNotEmpty()) audioEngine.setDeviceTracks(loaded)
+            val loaded = withContext(Dispatchers.IO) {
+                DeviceMediaManager.loadDeviceTracks(context)
+            }
+            if (loaded.isNotEmpty()) {
+                audioEngine.setDeviceTracks(loaded)
+            }
         } else {
             mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions)
+        }
+    }
+
+    DisposableEffect(audioEngine) {
+        onDispose {
+            audioEngine.release()
         }
     }
 
@@ -251,6 +282,8 @@ fun VelvetApp() {
                 isRepeat = isRepeat,
                 isFavorite = favoriteTrackIds.contains(currentTrack.id),
                 isCachedOffline = offlineCachedIds.contains(currentTrack.id),
+                allTracks = allTracks,
+                onSelectTrack = { selectedTrack -> audioEngine.playTrack(selectedTrack) },
                 onTogglePlayPause = { audioEngine.togglePlayPause() },
                 onSeekTo = { pos: Long -> audioEngine.seekTo(pos) },
                 onSkipNext = { audioEngine.playNext() },

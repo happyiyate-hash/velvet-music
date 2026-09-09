@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.PI
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sin
 
 data class AudioTelemetry(
@@ -31,21 +33,36 @@ data class AudioTelemetry(
     val pipelineLatencyMs: Long = 4L
 )
 
+/**
+ * Bulletproof Velvet Audio Engine:
+ * - Reusable, persistent MediaPlayer lifecycle (avoids repeated object creation & SIGSEGV/crashes).
+ * - Serialized track transition state machine with atomic request IDs.
+ * - Thread-safe state synchronization protecting against rapid previous/next toggling.
+ * - Non-blocking asynchronous artwork color extraction off the UI thread.
+ * - Safe error handling guarding against missing files, empty playlists, and released states.
+ */
 class VelvetAudioEngine(
     private val scope: CoroutineScope
 ) {
     private var appContext: Context? = null
+
+    // Synchronization primitives
+    private val playerLock = Any()
+    private val transitionMutex = Mutex()
     private var mediaPlayer: MediaPlayer? = null
+    private var isPlayerPrepared = false
+
     private var playbackJob: Job? = null
-    private var playbackRequestId = 0L
+    private var colorExtractionJob: Job? = null
+    private val playbackRequestId = AtomicLong(0L)
 
     private val _currentTrack = MutableStateFlow<Track>(SampleData.defaultIdleTrack)
     val currentTrack: StateFlow<Track> = _currentTrack.asStateFlow()
 
-    private val _isPlaying = MutableStateFlow(true)
+    private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
-    private val _playbackPositionMs = MutableStateFlow(94000L)
+    private val _playbackPositionMs = MutableStateFlow(0L)
     val playbackPositionMs: StateFlow<Long> = _playbackPositionMs.asStateFlow()
 
     private val _telemetry = MutableStateFlow(AudioTelemetry())
@@ -109,18 +126,11 @@ class VelvetAudioEngine(
         val currentId = _currentTrack.value.id
         if ((currentId == "device_music_idle" || currentId == "idle_device_track" || currentId == "le_1" || currentId == "track_1") && tracks.isNotEmpty()) {
             val first = tracks.first()
-            val ctx = appContext
-            _currentTrack.value = if (ctx != null) {
-                val colors = if (!first.artworkUri.isNullOrBlank()) {
-                    ArtworkColorExtractor.extractColorsFromUri(ctx, first.artworkUri)
-                } else {
-                    ArtworkColorExtractor.extractColors(ctx, first)
-                }
-                first.copy(dominantColor = colors.dominant, secondaryColor = colors.secondary)
-            } else first
+            _currentTrack.value = first
             _isPlaying.value = false
             _playbackPositionMs.value = 0L
             updateMediaSession()
+            extractColorsLazily(first)
         }
     }
 
@@ -132,117 +142,186 @@ class VelvetAudioEngine(
             _isPlaying.value = false
             _playbackPositionMs.value = 0L
             updateMediaSession()
+            extractColorsLazily(track)
         }
     }
 
-    /** Plays the exact device URI supplied by DeviceMediaManager. No synthesized/fallback audio is generated. */
+    /**
+     * Serialized, bulletproof track switching:
+     * 1. Updates UI instantly (0ms latency, no blocking on artwork or bitmap decoders).
+     * 2. Atomic requestId cancels stale asynchronous player preparation.
+     * 3. Mutex + lock protects MediaPlayer from concurrent setDataSource/release race conditions.
+     */
     fun playTrack(track: Track) {
-        val ctx = appContext ?: return
-        val requestId = ++playbackRequestId
-        val themedTrack = try {
-            val colors = if (!track.artworkUri.isNullOrBlank()) {
-                ArtworkColorExtractor.extractColorsFromUri(ctx, track.artworkUri)
-            } else {
-                ArtworkColorExtractor.extractColors(ctx, track)
-            }
-            track.copy(dominantColor = colors.dominant, secondaryColor = colors.secondary)
-        } catch (_: Exception) {
-            track
-        }
+        val requestId = playbackRequestId.incrementAndGet()
 
-        _currentTrack.value = themedTrack
+        // 1. Instant UI update
+        _currentTrack.value = track
         _playbackPositionMs.value = 0L
+
         val counts = _trackPlayCounts.value.toMutableMap()
-        counts[themedTrack.id] = (counts[themedTrack.id] ?: 0) + 1
+        counts[track.id] = (counts[track.id] ?: 0) + 1
         _trackPlayCounts.value = counts
 
-        releasePlayerOnly()
-        playbackJob?.cancel()
+        updateMediaSession()
 
-        if (themedTrack.contentUri.isNullOrBlank()) {
-            Log.w("VelvetAudioEngine", "Cannot play track with empty contentUri: ${themedTrack.title}")
+        // 2. Extract colors lazily in background
+        extractColorsLazily(track)
+
+        // 3. Guard: Empty or missing contentUri
+        if (track.contentUri.isNullOrBlank()) {
+            Log.w("VelvetAudioEngine", "Cannot play track without contentUri: ${track.title}")
             _isPlaying.value = false
             updateMediaSession()
             return
         }
 
+        // 4. Serialized player preparation on IO dispatcher
         scope.launch(Dispatchers.IO) {
-            try {
-                val player = MediaPlayer()
-                player.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
-                val trackUri = Uri.parse(themedTrack.contentUri)
-                try {
-                    val pfd = ctx.contentResolver.openFileDescriptor(trackUri, "r")
-                    if (pfd != null) {
-                        player.setDataSource(pfd.fileDescriptor)
-                        pfd.close()
-                    } else {
-                        player.setDataSource(ctx, trackUri)
-                    }
-                } catch (_: Exception) {
-                    player.setDataSource(ctx, trackUri)
+            transitionMutex.withLock {
+                if (requestId != playbackRequestId.get()) {
+                    return@withLock
                 }
 
-                player.setOnPreparedListener { prepared ->
-                    if (requestId != playbackRequestId) {
-                        prepared.release()
-                        return@setOnPreparedListener
-                    }
-                    mediaPlayer = prepared
-                    _isPlaying.value = true
-                    _playbackPositionMs.value = 0L
-                    prepared.start()
-                    startPlaybackProgress()
-                    updateMediaSession()
-                }
-                player.setOnCompletionListener {
-                    if (requestId == playbackRequestId) {
-                        _isPlaying.value = false
-                        _playbackPositionMs.value = themedTrack.durationMs
-                        updateMediaSession()
-                        if (_isRepeat.value) {
-                            preparedRestart()
+                val ctx = appContext ?: return@withLock
+                val trackUri = Uri.parse(track.contentUri)
+
+                synchronized(playerLock) {
+                    try {
+                        isPlayerPrepared = false
+
+                        // Get or initialize persistent player
+                        var player = mediaPlayer
+                        if (player == null) {
+                            player = MediaPlayer()
+                            mediaPlayer = player
                         } else {
-                            playNext()
+                            try {
+                                player.reset()
+                            } catch (_: Exception) {
+                                try { player.release() } catch (_: Exception) {}
+                                player = MediaPlayer()
+                                mediaPlayer = player
+                            }
+                        }
+
+                        player.setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .build()
+                        )
+
+                        // Safely set data source via FileDescriptor or Context URI
+                        var dataSourceSet = false
+                        try {
+                            val pfd = ctx.contentResolver.openFileDescriptor(trackUri, "r")
+                            if (pfd != null) {
+                                player.setDataSource(pfd.fileDescriptor)
+                                pfd.close()
+                                dataSourceSet = true
+                            }
+                        } catch (_: Exception) {}
+
+                        if (!dataSourceSet) {
+                            player.setDataSource(ctx, trackUri)
+                        }
+
+                        player.setOnPreparedListener { prepared ->
+                            if (requestId != playbackRequestId.get()) {
+                                return@setOnPreparedListener
+                            }
+                            synchronized(playerLock) {
+                                isPlayerPrepared = true
+                                try {
+                                    prepared.start()
+                                    _isPlaying.value = true
+                                    _playbackPositionMs.value = 0L
+                                } catch (e: Exception) {
+                                    Log.e("VelvetAudioEngine", "Failed starting MediaPlayer", e)
+                                    _isPlaying.value = false
+                                }
+                            }
+                            startPlaybackProgress()
+                            updateMediaSession()
+                        }
+
+                        player.setOnCompletionListener {
+                            if (requestId == playbackRequestId.get()) {
+                                _isPlaying.value = false
+                                _playbackPositionMs.value = track.durationMs
+                                updateMediaSession()
+                                if (_isRepeat.value) {
+                                    preparedRestart()
+                                } else {
+                                    playNext()
+                                }
+                            }
+                        }
+
+                        player.setOnErrorListener { _, what, extra ->
+                            Log.e("VelvetAudioEngine", "MediaPlayer error: what=$what extra=$extra")
+                            if (requestId == playbackRequestId.get()) {
+                                synchronized(playerLock) {
+                                    isPlayerPrepared = false
+                                }
+                                _isPlaying.value = false
+                                playbackJob?.cancel()
+                                updateMediaSession()
+                            }
+                            true // Return true to prevent triggering onCompletion
+                        }
+
+                        player.prepareAsync()
+                    } catch (e: Exception) {
+                        Log.e("VelvetAudioEngine", "Error preparing track: ${track.title}", e)
+                        if (requestId == playbackRequestId.get()) {
+                            synchronized(playerLock) {
+                                isPlayerPrepared = false
+                            }
+                            _isPlaying.value = false
+                            updateMediaSession()
                         }
                     }
-                }
-                player.setOnErrorListener { _, what, extra ->
-                    Log.e("VelvetAudioEngine", "MediaPlayer error: what=$what extra=$extra")
-                    if (requestId == playbackRequestId) {
-                        _isPlaying.value = false
-                        playbackJob?.cancel()
-                        updateMediaSession()
-                    }
-                    true
-                }
-                player.prepareAsync()
-            } catch (e: Exception) {
-                Log.e("VelvetAudioEngine", "Error initializing MediaPlayer for URI: ${themedTrack.contentUri}", e)
-                if (requestId == playbackRequestId) {
-                    _isPlaying.value = false
-                    playbackJob?.cancel()
-                    updateMediaSession()
                 }
             }
         }
     }
 
+    private fun extractColorsLazily(track: Track) {
+        colorExtractionJob?.cancel()
+        colorExtractionJob = scope.launch(Dispatchers.Default) {
+            val ctx = appContext ?: return@launch
+            try {
+                val colors = if (!track.artworkUri.isNullOrBlank()) {
+                    ArtworkColorExtractor.extractColorsFromUri(ctx, track.artworkUri)
+                } else {
+                    ArtworkColorExtractor.extractColors(ctx, track)
+                }
+                if (_currentTrack.value.id == track.id) {
+                    _currentTrack.value = _currentTrack.value.copy(
+                        dominantColor = colors.dominant,
+                        secondaryColor = colors.secondary
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     private fun preparedRestart() {
-        try {
-            mediaPlayer?.seekTo(0)
-            mediaPlayer?.start()
-            _playbackPositionMs.value = 0L
-            _isPlaying.value = true
-            startPlaybackProgress()
-            updateMediaSession()
-        } catch (_: Exception) {
-            _isPlaying.value = false
+        synchronized(playerLock) {
+            try {
+                if (isPlayerPrepared) {
+                    mediaPlayer?.seekTo(0)
+                    mediaPlayer?.start()
+                    _playbackPositionMs.value = 0L
+                    _isPlaying.value = true
+                    startPlaybackProgress()
+                    updateMediaSession()
+                }
+            } catch (_: Exception) {
+                _isPlaying.value = false
+            }
         }
     }
 
@@ -265,23 +344,33 @@ class VelvetAudioEngine(
     }
 
     fun pause() {
-        try { mediaPlayer?.pause() } catch (_: Exception) {}
+        synchronized(playerLock) {
+            try {
+                if (isPlayerPrepared && mediaPlayer?.isPlaying == true) {
+                    mediaPlayer?.pause()
+                }
+            } catch (_: Exception) {}
+        }
         _isPlaying.value = false
         playbackJob?.cancel()
         updateMediaSession()
     }
 
     fun resume() {
-        val player = mediaPlayer
-        if (player != null) {
+        var resumed = false
+        synchronized(playerLock) {
             try {
-                player.start()
-                _isPlaying.value = true
-                startPlaybackProgress()
-                updateMediaSession()
-            } catch (_: Exception) {
-                _isPlaying.value = false
-            }
+                if (isPlayerPrepared) {
+                    mediaPlayer?.start()
+                    resumed = true
+                }
+            } catch (_: Exception) {}
+        }
+
+        if (resumed) {
+            _isPlaying.value = true
+            startPlaybackProgress()
+            updateMediaSession()
         } else {
             val track = _currentTrack.value
             if (!track.contentUri.isNullOrBlank()) {
@@ -296,8 +385,15 @@ class VelvetAudioEngine(
     }
 
     fun seekTo(positionMs: Long) {
-        val target = positionMs.coerceIn(0L, _currentTrack.value.durationMs)
-        try { mediaPlayer?.seekTo(target.toInt()) } catch (_: Exception) {}
+        val duration = _currentTrack.value.durationMs.coerceAtLeast(0L)
+        val target = positionMs.coerceIn(0L, if (duration > 0) duration else Long.MAX_VALUE)
+        synchronized(playerLock) {
+            try {
+                if (isPlayerPrepared) {
+                    mediaPlayer?.seekTo(target.toInt())
+                }
+            } catch (_: Exception) {}
+        }
         _playbackPositionMs.value = target
         updateMediaSession()
     }
@@ -320,10 +416,24 @@ class VelvetAudioEngine(
             return
         }
         val all = getAllAvailableTracks()
-        if (all.isEmpty()) return
+        if (all.isEmpty()) {
+            _isPlaying.value = false
+            return
+        }
         val currentIndex = all.indexOfFirst { it.id == _currentTrack.value.id }
         val nextIndex = if (currentIndex != -1 && currentIndex < all.lastIndex) currentIndex + 1 else 0
         playTrack(all[nextIndex])
+    }
+
+    fun playPrevious() {
+        val all = getAllAvailableTracks()
+        if (all.isEmpty()) {
+            _isPlaying.value = false
+            return
+        }
+        val currentIndex = all.indexOfFirst { it.id == _currentTrack.value.id }
+        val prevIndex = if (currentIndex > 0) currentIndex - 1 else all.lastIndex
+        playTrack(all[prevIndex])
     }
 
     fun getAllAvailableTracks(): List<Track> {
@@ -332,28 +442,23 @@ class VelvetAudioEngine(
             .filterNot { _deletedTrackIds.value.contains(it.id) }
     }
 
-    fun playPrevious() {
-        val all = getAllAvailableTracks()
-        if (all.isEmpty()) return
-        val currentIndex = all.indexOfFirst { it.id == _currentTrack.value.id }
-        val prevIndex = if (currentIndex > 0) currentIndex - 1 else all.lastIndex
-        playTrack(all[prevIndex])
-    }
-
     private fun startPlaybackProgress() {
         playbackJob?.cancel()
         playbackJob = scope.launch(Dispatchers.Default) {
             while (isActive && _isPlaying.value) {
                 delay(200L)
-                val player = mediaPlayer
-                if (player != null && player.isPlaying) {
+                val currentPos = synchronized(playerLock) {
                     try {
-                        val position = player.currentPosition.toLong()
-                        _playbackPositionMs.value = position
-                        updateMediaSession()
+                        if (isPlayerPrepared && mediaPlayer?.isPlaying == true) {
+                            mediaPlayer?.currentPosition?.toLong()
+                        } else null
                     } catch (_: Exception) {
-                        break
+                        null
                     }
+                }
+                if (currentPos != null) {
+                    _playbackPositionMs.value = currentPos
+                    updateMediaSession()
                 }
             }
         }
@@ -395,16 +500,16 @@ class VelvetAudioEngine(
         }
     }
 
-    private fun releasePlayerOnly() {
-        try { mediaPlayer?.stop() } catch (_: Exception) {}
-        try { mediaPlayer?.release() } catch (_: Exception) {}
-        mediaPlayer = null
-    }
-
     fun release() {
-        playbackRequestId++
+        playbackRequestId.incrementAndGet()
         playbackJob?.cancel()
-        releasePlayerOnly()
+        colorExtractionJob?.cancel()
+        synchronized(playerLock) {
+            isPlayerPrepared = false
+            try { mediaPlayer?.stop() } catch (_: Exception) {}
+            try { mediaPlayer?.release() } catch (_: Exception) {}
+            mediaPlayer = null
+        }
         _isPlaying.value = false
     }
 }
