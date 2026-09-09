@@ -1,0 +1,38 @@
+name: Apply PlayerSheet v4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/player_sheet_v4_patch.py'
+      - '.github/workflows/apply-player-sheet-v4.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply PlayerSheet v4
+        run: python3 scripts/player_sheet_v4_patch.py
+
+      - name: Commit and push safely
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/PlayerSheet.kt
+          if git diff --cached --quiet; then
+            echo "No PlayerSheet changes needed."
+            exit 0
+          fi
+          git commit -m "fix(ui): correct PlayerSheet settled and expanded transition"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
