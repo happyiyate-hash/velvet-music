@@ -101,37 +101,23 @@ new_gradient = '''            // Thick lower dissolve. It is completely absent a
             }'''
 text = text.replace(old_gradient, new_gradient, 1)
 
-# Queue remains transparent/integrated into the same page background.
+# Queue remains transparent/integrated into the same background.
 text = text.replace(
     ".height(upNextHeight.coerceAtLeast(54.dp))\n                .background(themeColors.darkBackground)",
     ".height(upNextHeight.coerceAtLeast(54.dp))\n                .background(Color.Transparent)",
     1,
 )
 
-# Make previous/play/next mathematically symmetric. The 60dp side buttons and 76dp play disc
-# have different widths, so their LEFT offsets must compensate for that width difference.
-old_controls = '''        val baseCenterSpacing = 80.dp
-        val basePlayX = centerX - 38.dp
-        val basePrevX = basePlayX - 50.dp
-        val baseNextX = basePlayX + 130.dp
-
-        val expandedCenterSpacing = 84.dp
-        val expandedPlayX = centerX - 38.dp
-        val expandedPrevX = expandedPlayX - 46.dp
-        val expandedNextX = expandedPlayX + 122.dp'''
-new_controls = '''        val basePlayX = centerX - 38.dp
+# Playback controls: all three primary controls must remain centered on the same slot while
+# moving between states. The 60dp side buttons and 76dp play disc require width compensation.
+control_blocks = [
+    ('''        val basePlayX = centerX - 38.dp
         val basePrevX = basePlayX - 42.dp
-        val baseNextX = basePlayX + 122.dp
-
-        val expandedPlayX = centerX - 38.dp
-        val expandedPrevX = expandedPlayX - 46.dp
-        val expandedNextX = expandedPlayX + 92.dp'''
-text = text.replace(old_controls, new_controls, 1)
-
-# Also repair the same block if this script is ever run against the immediately previous patch.
-text = text.replace(
-    '''        val baseCenterSpacing = 80.dp
-        val basePlayX = centerX - 38.dp
+        val baseNextX = basePlayX + 122.dp''',
+     '''        val basePlayX = centerX - 38.dp
+        val basePrevX = basePlayX - 72.dp
+        val baseNextX = basePlayX + 88.dp'''),
+    ('''        val basePlayX = centerX - 38.dp
         val basePrevX = basePlayX - 50.dp
         val baseNextX = basePlayX + 130.dp
 
@@ -139,9 +125,31 @@ text = text.replace(
         val expandedPlayX = centerX - 38.dp
         val expandedPrevX = expandedPlayX - 46.dp
         val expandedNextX = expandedPlayX + 122.dp''',
-    new_controls,
-    1,
-)
+     '''        val basePlayX = centerX - 38.dp
+        val basePrevX = basePlayX - 72.dp
+        val baseNextX = basePlayX + 88.dp
+
+        val expandedPlayX = centerX - 38.dp
+        val expandedPrevX = expandedPlayX - 76.dp
+        val expandedNextX = expandedPlayX + 92.dp'''),
+    ('''        val basePlayX = centerX - 38.dp
+        val basePrevX = basePlayX - 50.dp
+        val baseNextX = basePlayX + 130.dp
+
+        val expandedCenterSpacing = 84.dp
+        val expandedPlayX = centerX - 38.dp
+        val expandedPrevX = expandedPlayX - 46.dp
+        val expandedNextX = expandedPlayX + 122.dp''',
+     '''        val basePlayX = centerX - 38.dp
+        val basePrevX = basePlayX - 72.dp
+        val baseNextX = basePlayX + 88.dp
+
+        val expandedPlayX = centerX - 38.dp
+        val expandedPrevX = expandedPlayX - 76.dp
+        val expandedNextX = expandedPlayX + 92.dp'''),
+]
+for old, new in control_blocks:
+    text = text.replace(old, new, 1)
 
 # Fade the complete waveform/progress component by the time the queue reaches the compact state.
 old_wave_call = '''        NowPlayingWaveformProgress(
@@ -189,4 +197,4 @@ text = text.replace(
 )
 
 path.write_text(text, encoding="utf-8")
-print("PlayerSheet refinement applied: clean rest artwork, stronger expand-only dissolve, brighter dynamic background, symmetric playback controls, and fading progress.")
+print("PlayerSheet refinement applied: expand-only dissolve, brighter dynamic background, symmetric centered controls, and fading progress.")
