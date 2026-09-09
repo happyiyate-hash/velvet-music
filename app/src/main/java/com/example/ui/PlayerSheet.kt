@@ -228,13 +228,13 @@ fun PlayerSheet(
         val baseTitleX = 24.dp
         val baseTitleY = baseArtY + baseArtSize + 16.dp
         val baseWaveformY = baseTitleY + 66.dp + 14.dp
-        val baseControlsY = baseWaveformY + 52.dp + 28.dp
+        val baseControlsY = baseWaveformY + 52.dp + 44.dp
         val baseShuffleY = baseControlsY + 76.dp + 22.dp
 
         // First snap: artwork reaches the very top, becomes full-width and square-edged.
         val expArtY = 0.dp
         val expArtWidth = totalWidth
-        val expArtHeight = (totalHeight * 0.42f).coerceIn(300.dp, 410.dp)
+        val expArtHeight = baseArtSize
         val expArtX = 0.dp
         val expArtCorner = 0.dp
         val expTitleX = 20.dp
@@ -420,23 +420,28 @@ fun PlayerSheet(
         }
 
         // 2. SINGLE PHYSICAL ARTWORK INSTANCE.
-        // Extend the artwork below its nominal edge so its lower portion can dissolve
-        // naturally into the dynamic background, matching the YouTube Music treatment.
-        val artFadeDepth = if (p <= 1f) lerp(0.dp, 76.dp, p.coerceIn(0f, 1f)) else 0.dp
-        // Phase 1 is full-bleed and square-edged; only the bottom is blended into the surface.
+        // The artwork keeps its normal height. Only its bottom is dissolved into the same
+        // dynamic page surface, beginning around the lower 60% rather than at the hard edge.
+        val artFadeDepth = if (p <= 1f) lerp(0.dp, 96.dp, p.coerceIn(0f, 1f)) else 0.dp
         Box(
             modifier = Modifier
                 .offset(x = artX, y = artY)
                 .width(artWidth)
                 .height(artHeight + artFadeDepth)
-                .clip(RoundedCornerShape(artCorner))
-                .border(if (p < 0.98f) 1.dp else 0.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(artCorner))
+                .border(
+                    if (p < 0.98f) 1.dp else 0.dp,
+                    Color.White.copy(alpha = 0.10f),
+                    RoundedCornerShape(artCorner)
+                )
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = {
                         coroutineScope.launch {
-                            dragProgress.animateTo(if (p > 1.2f) 1f else if (p > 0.2f) 0f else 1f, tween(320, easing = FastOutSlowInEasing))
+                            dragProgress.animateTo(
+                                if (p > 1.2f) 1f else if (p > 0.2f) 0f else 1f,
+                                tween(320, easing = FastOutSlowInEasing)
+                            )
                         }
                     }
                 )
@@ -445,17 +450,21 @@ fun PlayerSheet(
                         detectVerticalDragGestures(
                             onDragEnd = { onDragFinish() },
                             onDragCancel = { onDragFinish() },
-                            onVerticalDrag = { change, dragAmount -> change.consume(); onDragDelta(dragAmount) }
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                onDragDelta(dragAmount)
+                            }
                         )
                     } else Modifier
                 )
         ) {
-            // Keep the real artwork at its normal height. The remaining fade depth is
-            // transparent space over the SAME dynamic background, so there is no hard edge.
+            // The picture is clipped only to its own natural rectangle/corners.
+            // The fade is deliberately OUTSIDE that picture so the background can cover it.
             Box(
                 modifier = Modifier
                     .width(artWidth)
                     .height(artHeight)
+                    .clip(RoundedCornerShape(artCorner))
             ) {
                 TrackArtworkImage(
                     track = track,
@@ -464,20 +473,26 @@ fun PlayerSheet(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+
+            // Broad shadow-like color wash: the artwork starts disappearing around 60%,
+            // then the exact page surface color becomes dominant before the nominal edge.
             Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.00f to Color.Transparent,
-                            0.54f to Color.Transparent,
-                            0.64f to Color.Transparent,
-                            0.72f to themeColors.bgMidLower.copy(alpha = 0.10f),
-                            0.80f to themeColors.bgBottom.copy(alpha = 0.30f),
-                            0.89f to themeColors.bgBottom.copy(alpha = 0.62f),
-                            1.00f to themeColors.bgBottom.copy(alpha = 0.96f)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to Color.Transparent,
+                                0.56f to Color.Transparent,
+                                0.62f to Color.Transparent,
+                                0.70f to themeColors.darkBackground.copy(alpha = 0.16f),
+                                0.78f to themeColors.darkBackground.copy(alpha = 0.42f),
+                                0.86f to themeColors.darkBackground.copy(alpha = 0.70f),
+                                0.93f to themeColors.darkBackground.copy(alpha = 0.90f),
+                                1.00f to themeColors.darkBackground
+                            )
                         )
                     )
-                )
             )
         }
 
@@ -562,7 +577,7 @@ fun PlayerSheet(
         // over the lower part of the artwork instead of creating a second slider.
         val progressHostY = lerp(
             baseWaveformY,
-            expArtY + (expArtHeight * 0.90f) - 48.dp,
+            expArtY + expArtHeight - 34.dp,
             p.coerceIn(0f, 1f)
         )
         val movingWaveformAlpha = (1f - (p / 0.72f)).coerceIn(0f, 1f)
