@@ -15,5 +15,14 @@ if start_marker in text:
 if "// Sleek progress bar in Stage 1 below the title:" in text:
     raise SystemExit("obsolete Stage-1 progress bar still present")
 
+# v4b uses Modifier.zIndex() for the compact Up Next foreground layer.
+# Keep this idempotent so the cleanup workflow can safely run more than once.
+z_import = "import androidx.compose.ui.zIndex\n"
+if z_import not in text:
+    anchor = "import androidx.compose.ui.Modifier\n"
+    if anchor not in text:
+        raise SystemExit("PlayerSheet import anchor not found")
+    text = text.replace(anchor, anchor + z_import, 1)
+
 path.write_text(text, encoding="utf-8")
-print("PlayerSheet v4b cleanup applied")
+print("PlayerSheet v4b cleanup + zIndex import applied")
