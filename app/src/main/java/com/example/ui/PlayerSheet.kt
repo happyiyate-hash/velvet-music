@@ -329,10 +329,27 @@ fun PlayerSheet(
             }
         }
 
-        // Dynamic background atmosphere: one exact surface color derived from the artwork.
-        // Do not add a separate queue/card color or a vertical tint behind the queue.
+        // Dynamic player surface: lift the extracted artwork color so it is not nearly black.
+        // Keep the upper area brighter and let the bottom fall off slightly darker.
+        val extractedBg = themeColors.darkBackground
+        val playerBackgroundTop = Color(
+            red = (extractedBg.red * 1.18f + 0.025f).coerceAtMost(1f),
+            green = (extractedBg.green * 1.18f + 0.025f).coerceAtMost(1f),
+            blue = (extractedBg.blue * 1.18f + 0.025f).coerceAtMost(1f),
+            alpha = 1f
+        )
+        val playerBackgroundBottom = Color(
+            red = (playerBackgroundTop.red * 0.88f).coerceAtLeast(0f),
+            green = (playerBackgroundTop.green * 0.88f).coerceAtLeast(0f),
+            blue = (playerBackgroundTop.blue * 0.88f).coerceAtLeast(0f),
+            alpha = 1f
+        )
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRect(color = themeColors.darkBackground)
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(playerBackgroundTop, playerBackgroundBottom)
+                )
+            )
         }
 
         // 1. TOP BAR: Collapse Chevron, Centered Pill, 3-dots Menu Button (fades away as artwork expands)
@@ -442,27 +459,36 @@ fun PlayerSheet(
                 )
             }
 
-            // Broad shadow-like color wash: the artwork starts disappearing around 60%,
-            // then the exact page surface color becomes dominant before the nominal edge.
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.00f to Color.Transparent,
-                                0.52f to Color.Transparent,
-                                0.58f to themeColors.darkBackground.copy(alpha = 0.06f),
-                                0.64f to themeColors.darkBackground.copy(alpha = 0.18f),
-                                0.72f to themeColors.darkBackground.copy(alpha = 0.38f),
-                                0.80f to themeColors.darkBackground.copy(alpha = 0.60f),
-                                0.88f to themeColors.darkBackground.copy(alpha = 0.80f),
-                                0.95f to themeColors.darkBackground.copy(alpha = 0.94f),
-                                1.00f to themeColors.darkBackground
+            // Thick lower dissolve. It is completely absent at rest and on the compact
+            // thumbnail, and appears only while opening the large artwork state.
+            val artworkFadeAlpha = if (p <= 1f) {
+                ((p - 0.08f) / 0.55f).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+            if (artworkFadeAlpha > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = artworkFadeAlpha }
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.00f to Color.Transparent,
+                                    0.50f to Color.Transparent,
+                                    0.56f to playerBackgroundTop.copy(alpha = 0.04f),
+                                    0.62f to playerBackgroundTop.copy(alpha = 0.16f),
+                                    0.69f to playerBackgroundTop.copy(alpha = 0.36f),
+                                    0.76f to playerBackgroundTop.copy(alpha = 0.58f),
+                                    0.84f to playerBackgroundBottom.copy(alpha = 0.78f),
+                                    0.91f to playerBackgroundBottom.copy(alpha = 0.93f),
+                                    0.97f to playerBackgroundBottom.copy(alpha = 0.98f),
+                                    1.00f to playerBackgroundBottom
+                                )
                             )
                         )
-                    )
-            )
+                )
+            }
         }
 
         // 3. SONG TITLE & ARTIST. The first phase keeps the long title directly over the artwork.
@@ -552,19 +578,23 @@ fun PlayerSheet(
         val movingWaveformAlpha = (1f - (p / 0.72f)).coerceIn(0f, 1f)
         val movingTimestampAlpha = (1f - (p / 0.58f)).coerceIn(0f, 1f)
 
-        NowPlayingWaveformProgress(
-            positionMs = playbackPositionMs,
-            durationMs = track.durationMs,
-            isPlaying = isPlaying,
-            telemetry = telemetry,
-            activeColor = themeColors.accent,
-            onSeekTo = onSeekTo,
-            waveformAlpha = movingWaveformAlpha,
-            timestampAlpha = movingTimestampAlpha,
-            modifier = Modifier
-                .offset(x = 16.dp, y = progressHostY)
-                .width(totalWidth - 32.dp)
-        )
+        val progressComponentAlpha = (1f - (p / 1.05f)).coerceIn(0f, 1f)
+        if (progressComponentAlpha > 0f) {
+            NowPlayingWaveformProgress(
+                positionMs = playbackPositionMs,
+                durationMs = track.durationMs,
+                isPlaying = isPlaying,
+                telemetry = telemetry,
+                activeColor = themeColors.accent,
+                onSeekTo = onSeekTo,
+                waveformAlpha = movingWaveformAlpha * progressComponentAlpha,
+                timestampAlpha = movingTimestampAlpha * progressComponentAlpha,
+                progressAlpha = progressComponentAlpha,
+                modifier = Modifier
+                    .offset(x = 16.dp, y = progressHostY)
+                    .width(totalWidth - 32.dp)
+            )
+        }
 
         // YouTube-style physical control transition v4.
         // There is ONE set of five controls. At rest: shuffle/repeat sit below the
@@ -575,14 +605,15 @@ fun PlayerSheet(
         val controlY = lerp(baseControlsY, expControlsY, controlT)
         val centerX = totalWidth / 2
 
-        val baseThreeWidth = 236.dp
-        val basePrevX = (totalWidth - baseThreeWidth) / 2
-        val basePlayX = basePrevX + 80.dp
-        val baseNextX = basePrevX + 160.dp
+        val baseCenterSpacing = 80.dp
+        val basePlayX = centerX - 38.dp
+        val basePrevX = basePlayX - 50.dp
+        val baseNextX = basePlayX + 130.dp
 
-        val expandedPrevX = centerX - 116.dp
-        val expandedPlayX = centerX - 36.dp
-        val expandedNextX = centerX + 60.dp
+        val expandedCenterSpacing = 84.dp
+        val expandedPlayX = centerX - 38.dp
+        val expandedPrevX = expandedPlayX - 46.dp
+        val expandedNextX = expandedPlayX + 122.dp
         val expandedShuffleX = 12.dp
         val expandedRepeatX = totalWidth - 64.dp
 
@@ -1024,6 +1055,7 @@ fun NowPlayingWaveformProgress(
     onSeekTo: (Long) -> Unit,
     waveformAlpha: Float = 1f,
     timestampAlpha: Float = 1f,
+    progressAlpha: Float = 1f,
     modifier: Modifier = Modifier
 ) {
     val progressFraction = if (durationMs > 0) {
@@ -1124,6 +1156,7 @@ fun NowPlayingWaveformProgress(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(8.dp)
+                .graphicsLayer { alpha = progressAlpha.coerceIn(0f, 1f) }
         ) {
             val totalWidth = size.width
             val centerY = size.height / 2f
