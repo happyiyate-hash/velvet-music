@@ -31,20 +31,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Refine PlayerSheet drag transition
-        run: |
-          python3 scripts/refine_player_sheet.py
-          if git diff --quiet -- app/src/main/java/com/example/ui/PlayerSheet.kt; then
-            echo "PlayerSheet transition already applied."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/src/main/java/com/example/ui/PlayerSheet.kt
-            git diff --cached --check
-            git commit -m "Refine PlayerSheet drag transition"
-            git push
-          fi
-
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
