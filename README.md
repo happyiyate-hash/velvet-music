@@ -1,6 +1,6 @@
 # Velvet Music 🎵
 
-An Android music player designed with rich velvet aesthetics, deep smoky ash glass, and dynamic sound reactive visuals.
+An Android music player designed with rich velvet aesthetics, deep smoky ash glass, and dynamic sound reactive visuals
 
 ## 🚀 Building & Installing the APK from GitHub
 
