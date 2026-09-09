@@ -67,7 +67,29 @@ object SampleData {
         catalogSource = "Device Audio"
     )
 
-    val starterTracks = emptyList<Track>()
+    val starterTracks = listOf(
+        Track(
+            id = "starter_velvet_echo",
+            title = "Midnight Echoes",
+            artist = "Velvet Soundscape",
+            album = "Midnight Sessions",
+            durationMs = 214000L,
+            coverResId = R.drawable.art_after_hours,
+            dominantColor = Color(0xFF5D1226),
+            secondaryColor = Color(0xFF220810),
+            catalogSource = "Velvet Music",
+            lyrics = listOf(
+                LyricLine(text = "In the quiet of the night", timeMs = 4000L),
+                LyricLine(text = "Echoes dancing in the light", timeMs = 9000L),
+                LyricLine(text = "Feel the velvet in the air", timeMs = 15000L),
+                LyricLine(text = "Lost in rhythm everywhere", timeMs = 22000L),
+                LyricLine(text = "Soundwaves drifting slow and deep", timeMs = 31000L),
+                LyricLine(text = "Promises we meant to keep", timeMs = 40000L),
+                LyricLine(text = "Midnight whispers guide the way", timeMs = 50000L),
+                LyricLine(text = "Until the breaking of the day", timeMs = 62000L)
+            )
+        )
+    )
     val allMixes = emptyList<Mix>()
     val recentlyPlayedTracks = emptyList<Track>()
     val newReleases = emptyList<Track>()

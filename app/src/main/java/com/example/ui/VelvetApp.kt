@@ -223,7 +223,10 @@ fun VelvetApp() {
                         playCounts = trackPlayCounts,
                         hasAudioPermission = DeviceMediaManager.hasAudioPermission(context),
                         onRequestPermission = { mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions) },
-                        onSelectTrack = { track -> audioEngine.playTrack(track) },
+                        onSelectTrack = { track ->
+                            audioEngine.playTrack(track)
+                            isPlayerExpanded = true
+                        },
                         onOpenSearch = { selectedTab = 1 },
                         onOpenSettings = { isSettingsOpen = true },
                         onOpenNotifications = { isProTierOpen = true },
@@ -282,8 +285,8 @@ fun VelvetApp() {
                 isRepeat = isRepeat,
                 isFavorite = favoriteTrackIds.contains(currentTrack.id),
                 isCachedOffline = offlineCachedIds.contains(currentTrack.id),
-                allTracks = allTracks,
-                onSelectTrack = { selectedTrack -> audioEngine.playTrack(selectedTrack) },
+                queueTracks = allTracks,
+                onSelectQueueTrack = { track -> audioEngine.playTrack(track) },
                 onTogglePlayPause = { audioEngine.togglePlayPause() },
                 onSeekTo = { pos: Long -> audioEngine.seekTo(pos) },
                 onSkipNext = { audioEngine.playNext() },

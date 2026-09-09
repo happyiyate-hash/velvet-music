@@ -168,10 +168,17 @@ class VelvetAudioEngine(
         // 2. Extract colors lazily in background
         extractColorsLazily(track)
 
-        // 3. Guard: Empty or missing contentUri
+        // 3. Simulated/Demo Playback if no contentUri (e.g. starter built-in tracks)
         if (track.contentUri.isNullOrBlank()) {
-            Log.w("VelvetAudioEngine", "Cannot play track without contentUri: ${track.title}")
-            _isPlaying.value = false
+            synchronized(playerLock) {
+                try {
+                    mediaPlayer?.stop()
+                    mediaPlayer?.reset()
+                } catch (_: Exception) {}
+                isPlayerPrepared = false
+            }
+            _isPlaying.value = true
+            startPlaybackProgress()
             updateMediaSession()
             return
         }
@@ -458,6 +465,16 @@ class VelvetAudioEngine(
                 }
                 if (currentPos != null) {
                     _playbackPositionMs.value = currentPos
+                    updateMediaSession()
+                } else if (!isPlayerPrepared && _isPlaying.value) {
+                    // Simulated progress for demo track
+                    val nextPos = (_playbackPositionMs.value + 200L)
+                    val dur = _currentTrack.value.durationMs.coerceAtLeast(1000L)
+                    if (nextPos >= dur) {
+                        _playbackPositionMs.value = 0L
+                    } else {
+                        _playbackPositionMs.value = nextPos
+                    }
                     updateMediaSession()
                 }
             }
