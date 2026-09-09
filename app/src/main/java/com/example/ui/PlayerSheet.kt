@@ -229,7 +229,7 @@ fun PlayerSheet(
         val baseTitleY = baseArtY + baseArtSize + 16.dp
         val baseWaveformY = baseTitleY + 66.dp + 14.dp
         val baseControlsY = baseWaveformY + 52.dp + 18.dp
-        val baseShuffleY = baseControlsY + 76.dp + 14.dp
+        val baseShuffleY = baseControlsY + 76.dp + 22.dp
 
         // First snap: artwork reaches the very top, becomes full-width and square-edged.
         val expArtY = 0.dp
@@ -241,8 +241,8 @@ fun PlayerSheet(
         val expTitleY = expArtY + expArtHeight - 82.dp
         val expTitleWidth = totalWidth - 40.dp
         val expProgressY = expArtY + expArtHeight - 3.dp
-        val expControlsY = expArtY + expArtHeight + 42.dp
-        val expUpNextY = expControlsY + 70.dp
+        val expControlsY = expArtY + expArtHeight + 52.dp
+        val expUpNextY = expControlsY + 66.dp
 
         val compArtSize = 44.dp
         val compArtX = 16.dp
@@ -303,9 +303,6 @@ fun PlayerSheet(
         val topBarAlpha = (1f - (p * 2.2f)).coerceIn(0f, 1f)
         val sourceAlpha = (1f - (p * 2f)).coerceIn(0f, 1f)
         val waveformAlpha = (1f - (p / 0.55f)).coerceIn(0f, 1f)
-        val controlsAlpha = (1f - (p / 0.72f)).coerceIn(0f, 1f)
-        val shuffleAlpha = (1f - (p / 0.72f)).coerceIn(0f, 1f)
-        val stage1ControlsAlpha = ((p - 0.52f) / 0.36f).coerceIn(0f, 1f)
         val compactControlsAlpha = ((p - 1.05f) / 0.65f).coerceIn(0f, 1f)
 
         val stage1DistancePx = with(density) { (baseUpNextY - expUpNextY).toPx().coerceAtLeast(300f) }
@@ -457,8 +454,9 @@ fun PlayerSheet(
                         colorStops = arrayOf(
                             0.00f to Color.Transparent,
                             0.50f to Color.Transparent,
-                            0.72f to themeColors.darkBackground.copy(alpha = 0.10f),
-                            0.88f to themeColors.darkBackground.copy(alpha = 0.62f),
+                            0.70f to themeColors.darkBackground.copy(alpha = 0.06f),
+                            0.82f to themeColors.darkBackground.copy(alpha = 0.30f),
+                            0.92f to themeColors.darkBackground.copy(alpha = 0.68f),
                             1.00f to themeColors.darkBackground.copy(alpha = 0.98f)
                         )
                     )
@@ -582,151 +580,144 @@ fun PlayerSheet(
             )
         }
 
-        // 5. REAL AUDIO WAVEFORM + PROGRESS BAR (Progressively fades away during stage 1)
-        if (waveformAlpha > 0f) {
-            Box(
-                modifier = Modifier
-                    .offset(x = 16.dp, y = baseWaveformY)
-                    .width(totalWidth - 32.dp)
-                    .graphicsLayer { alpha = waveformAlpha }
-            ) {
-                NowPlayingWaveformProgress(
-                    positionMs = playbackPositionMs,
-                    durationMs = track.durationMs,
-                    isPlaying = isPlaying,
-                    telemetry = telemetry,
-                    activeColor = themeColors.accent,
-                    onSeekTo = onSeekTo,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
+        // 5. ONE REAL WAVEFORM + PROGRESS COMPONENT.
+        // The component physically travels upward with the drag. Its waveform bars
+        // and timestamps fade, but the SAME progress line stays visible and lands
+        // over the lower part of the artwork instead of creating a second slider.
+        val progressHostY = lerp(
+            baseWaveformY,
+            expArtY + (expArtHeight * 0.90f) - 36.dp,
+            p.coerceIn(0f, 1f)
+        )
+        val movingWaveformAlpha = (1f - (p / 0.72f)).coerceIn(0f, 1f)
+        val movingTimestampAlpha = (1f - (p / 0.58f)).coerceIn(0f, 1f)
 
-        // YouTube-style physical control transition v3.
-        // One physical set of playback controls is used throughout phase 0 -> phase 1.
-        // They move continuously; there is no duplicate/fade-in replacement row.
+        NowPlayingWaveformProgress(
+            positionMs = playbackPositionMs,
+            durationMs = track.durationMs,
+            isPlaying = isPlaying,
+            telemetry = telemetry,
+            activeColor = themeColors.accent,
+            onSeekTo = onSeekTo,
+            waveformAlpha = movingWaveformAlpha,
+            timestampAlpha = movingTimestampAlpha,
+            modifier = Modifier
+                .offset(x = 16.dp, y = progressHostY)
+                .width(totalWidth - 32.dp)
+        )
+
+        // YouTube-style physical control transition v4.
+        // There is ONE set of five controls. At rest: shuffle/repeat sit below the
+        // previous/play/next row. As the user drags Up Next upward, those same two
+        // controls physically travel to the left/right sides of the primary row.
+        // No duplicate rail and no fade-out/fade-in replacement is used.
         val controlT = p.coerceIn(0f, 1f)
         val controlY = lerp(baseControlsY, expControlsY, controlT)
         val centerX = totalWidth / 2
 
-        // Baseline positions: the original three primary controls remain centered.
         val baseThreeWidth = 236.dp
         val basePrevX = (totalWidth - baseThreeWidth) / 2
         val basePlayX = basePrevX + 80.dp
         val baseNextX = basePrevX + 160.dp
 
-        // Expanded positions: shuffle/repeat travel horizontally into the same control rail.
-        val expandedPrevX = centerX - 120.dp
+        val expandedPrevX = centerX - 116.dp
         val expandedPlayX = centerX - 36.dp
-        val expandedNextX = centerX + 64.dp
-        val expandedShuffleX = 8.dp
-        val expandedRepeatX = totalWidth - 60.dp
+        val expandedNextX = centerX + 60.dp
+        val expandedShuffleX = 12.dp
+        val expandedRepeatX = totalWidth - 64.dp
 
-        val shuffleX = lerp(24.dp, expandedShuffleX, controlT)
-        val repeatX = lerp(totalWidth - 72.dp, expandedRepeatX, controlT)
         val prevX = lerp(basePrevX, expandedPrevX, controlT)
         val playX = lerp(basePlayX, expandedPlayX, controlT)
         val nextX = lerp(baseNextX, expandedNextX, controlT)
+        val shuffleX = lerp(24.dp, expandedShuffleX, controlT)
+        val repeatX = lerp(totalWidth - 72.dp, expandedRepeatX, controlT)
 
-        // Keep every control on the exact same vertical center line in phase 1.
-        // The center play button is larger, so its top offset is slightly smaller.
-        val shuffleY = 10.dp
-        val repeatY = 10.dp
-        val prevY = 8.dp
-        val playY = 0.dp
-        val nextY = 8.dp
+        // At rest the secondary controls are clearly below the primary row.
+        // During the upward gesture they rise into the same row.
+        val primaryOffsetY = 0.dp
+        val secondaryOffsetY = lerp(76.dp + 22.dp, 8.dp, controlT)
 
-        // During phase 2 the queue surface physically covers these controls. They are NOT
-        // interactive through the queue because the queue is drawn later with an opaque surface.
-        val primaryControlsVisible = p < 1.02f
-
-        if (primaryControlsVisible) {
-            Box(
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(170.dp)
+                .offset(y = controlY - 8.dp)
+        ) {
+            AnimatedShuffleIcon(
+                isShuffle = isShuffle,
+                activeColor = themeColors.accent,
+                onClick = onToggleShuffle,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-                    .offset(y = controlY - 8.dp)
+                    .offset(x = shuffleX, y = secondaryOffsetY)
+                    .testTag("player_shuffle_button"),
+                touchSize = 52.dp,
+                iconSize = 28.dp
+            )
+
+            IconButton(
+                onClick = onSkipPrevious,
+                modifier = Modifier
+                    .offset(x = prevX, y = primaryOffsetY)
+                    .size(60.dp)
+                    .testTag("player_previous_button")
             ) {
-                AnimatedShuffleIcon(
-                    isShuffle = isShuffle,
-                    activeColor = themeColors.accent,
-                    onClick = onToggleShuffle,
-                    modifier = Modifier
-                        .offset(x = shuffleX, y = shuffleY)
-                        .testTag("player_shuffle_button"),
-                    touchSize = 52.dp,
-                    iconSize = 28.dp
-                )
-
-                IconButton(
-                    onClick = onSkipPrevious,
-                    modifier = Modifier
-                        .offset(x = prevX, y = prevY)
-                        .size(56.dp)
-                        .testTag("player_previous_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "Previous Track",
-                        tint = Color.White.copy(alpha = 0.95f),
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .offset(x = playX, y = playY)
-                        .size(72.dp)
-                        .shadow(10.dp, CircleShape, spotColor = themeColors.accent.copy(alpha = 0.34f))
-                        .clip(CircleShape)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(themeColors.playPauseGradTop, themeColors.playPauseGradBottom)
-                            )
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onTogglePlayPause
-                        )
-                        .testTag("player_play_pause_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onSkipNext,
-                    modifier = Modifier
-                        .offset(x = nextX, y = nextY)
-                        .size(56.dp)
-                        .testTag("player_next_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Next Track",
-                        tint = Color.White.copy(alpha = 0.95f),
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-
-                AnimatedRepeatIcon(
-                    isRepeat = isRepeat,
-                    activeColor = themeColors.accent,
-                    onClick = onToggleRepeat,
-                    modifier = Modifier
-                        .offset(x = repeatX, y = repeatY)
-                        .testTag("player_repeat_button"),
-                    touchSize = 52.dp,
-                    iconSize = 28.dp
+                Icon(
+                    imageVector = Icons.Default.SkipPrevious,
+                    contentDescription = "Previous Track",
+                    tint = Color.White.copy(alpha = 0.95f),
+                    modifier = Modifier.size(42.dp)
                 )
             }
+
+            Box(
+                modifier = Modifier
+                    .offset(x = playX, y = -4.dp)
+                    .size(76.dp)
+                    .shadow(10.dp, CircleShape, spotColor = themeColors.accent.copy(alpha = 0.34f))
+                    .clip(CircleShape)
+                    .background(Brush.verticalGradient(listOf(themeColors.playPauseGradTop, themeColors.playPauseGradBottom)))
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onTogglePlayPause
+                    )
+                    .testTag("player_play_pause_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+
+            IconButton(
+                onClick = onSkipNext,
+                modifier = Modifier
+                    .offset(x = nextX, y = primaryOffsetY)
+                    .size(60.dp)
+                    .testTag("player_next_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SkipNext,
+                    contentDescription = "Next Track",
+                    tint = Color.White.copy(alpha = 0.95f),
+                    modifier = Modifier.size(42.dp)
+                )
+            }
+
+            AnimatedRepeatIcon(
+                isRepeat = isRepeat,
+                activeColor = themeColors.accent,
+                onClick = onToggleRepeat,
+                modifier = Modifier
+                    .offset(x = repeatX, y = secondaryOffsetY)
+                    .testTag("player_repeat_button"),
+                touchSize = 52.dp,
+                iconSize = 28.dp
+            )
         }
 
         // 8. UP NEXT HANDLE & CONTENT (Lives within the SAME surface, continuously positioned at upNextY)
@@ -737,6 +728,7 @@ fun PlayerSheet(
                 .fillMaxWidth()
                 .height(upNextHeight.coerceAtLeast(54.dp))
                 .background(themeColors.darkBackground)
+                .zIndex(10f)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragEnd = { onDragFinish() },
@@ -1069,6 +1061,8 @@ fun NowPlayingWaveformProgress(
     telemetry: AudioTelemetry,
     activeColor: Color,
     onSeekTo: (Long) -> Unit,
+    waveformAlpha: Float = 1f,
+    timestampAlpha: Float = 1f,
     modifier: Modifier = Modifier
 ) {
     val progressFraction = if (durationMs > 0) {
@@ -1126,6 +1120,7 @@ fun NowPlayingWaveformProgress(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp)
+                .graphicsLayer { alpha = waveformAlpha.coerceIn(0f, 1f) }
         ) {
             val totalWidth = size.width
             val barWidth = 1.3.dp.toPx()
@@ -1221,7 +1216,9 @@ fun NowPlayingWaveformProgress(
 
         // 4. Clean timestamps underneath
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { alpha = timestampAlpha.coerceIn(0f, 1f) },
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
