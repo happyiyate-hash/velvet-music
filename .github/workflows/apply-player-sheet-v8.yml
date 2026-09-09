@@ -1,0 +1,32 @@
+name: Apply PlayerSheet v8 artwork logic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/player_sheet_v8_artwork_logic.py'
+      - '.github/workflows/apply-player-sheet-v8.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply artwork and transition fixes
+        run: python3 scripts/player_sheet_v8_artwork_logic.py
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/PlayerSheet.kt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "fix(ui): refine artwork aspect ratio and collapse dissolve"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
