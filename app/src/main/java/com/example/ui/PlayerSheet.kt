@@ -234,15 +234,15 @@ fun PlayerSheet(
         // First snap: artwork reaches the very top, becomes full-width and square-edged.
         val expArtY = 0.dp
         val expArtWidth = totalWidth
-        val expArtHeight = (totalHeight * 0.56f).coerceIn(320.dp, 470.dp)
+        val expArtHeight = (totalHeight * 0.42f).coerceIn(300.dp, 410.dp)
         val expArtX = 0.dp
         val expArtCorner = 0.dp
         val expTitleX = 20.dp
-        val expTitleY = expArtY + expArtHeight - 78.dp
+        val expTitleY = expArtY + expArtHeight - 82.dp
         val expTitleWidth = totalWidth - 40.dp
         val expProgressY = expArtY + expArtHeight - 3.dp
-        val expControlsY = expArtY + expArtHeight + 24.dp
-        val expUpNextY = expControlsY + 86.dp
+        val expControlsY = expArtY + expArtHeight + 26.dp
+        val expUpNextY = expControlsY + 82.dp
 
         val compArtSize = 44.dp
         val compArtX = 16.dp
@@ -602,141 +602,78 @@ fun PlayerSheet(
             }
         }
 
-        // 6. PRIMARY PLAYBACK CONTROLS: Prev, Play/Pause, Next (Progressively fades during stage 1)
-        if (controlsAlpha > 0f) {
-            Row(
+        // YouTube-style physical control transition v2.
+        // These are the SAME five control composables for the entire transition. Nothing
+        // cross-fades into a duplicate row: every button physically travels to its new place.
+        val controlT = p.coerceIn(0f, 1f)
+        val controlY = lerp(baseControlsY, expControlsY, controlT)
+        val centerX = totalWidth / 2
+        val baseThreeWidth = 236.dp
+        val basePrevX = (totalWidth - baseThreeWidth) / 2
+        val basePlayX = basePrevX + 80.dp
+        val baseNextX = basePrevX + 160.dp
+        val expandedPrevX = centerX - 108.dp
+        val expandedPlayX = centerX - 32.dp
+        val expandedNextX = centerX + 56.dp
+        val expandedShuffleX = 10.dp
+        val expandedRepeatX = totalWidth - 58.dp
+        val shuffleX = lerp(24.dp, expandedShuffleX, controlT)
+        val repeatX = lerp(totalWidth - 72.dp, expandedRepeatX, controlT)
+        val prevX = lerp(basePrevX, expandedPrevX, controlT)
+        val playX = lerp(basePlayX, expandedPlayX, controlT)
+        val nextX = lerp(baseNextX, expandedNextX, controlT)
+        val shuffleY = lerp(baseShuffleY - baseControlsY, 0.dp, controlT)
+        val repeatY = lerp(baseShuffleY - baseControlsY, 0.dp, controlT)
+
+        // 6. PRIMARY PLAYBACK CONTROLS — one physical set, continuously repositioned.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(132.dp)
+                .offset(y = controlY - 10.dp)
+        ) {
+            AnimatedShuffleIcon(
+                isShuffle = isShuffle,
+                activeColor = themeColors.accent,
+                onClick = onToggleShuffle,
+                modifier = Modifier.offset(x = shuffleX, y = shuffleY).testTag("player_shuffle_button"),
+                touchSize = 48.dp,
+                iconSize = 26.dp
+            )
+            IconButton(
+                onClick = onSkipPrevious,
+                modifier = Modifier.offset(x = prevX, y = 10.dp).size(52.dp).testTag("player_previous_button")
+            ) {
+                Icon(Icons.Default.SkipPrevious, "Previous Track", tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(36.dp))
+            }
+            Box(
                 modifier = Modifier
-                    .offset(x = 16.dp, y = baseControlsY)
-                    .width(totalWidth - 32.dp)
-                    .graphicsLayer { alpha = controlsAlpha },
-                horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
+                    .offset(x = playX, y = 4.dp)
+                    .size(64.dp)
+                    .shadow(10.dp, CircleShape, spotColor = themeColors.accent.copy(alpha = 0.34f))
+                    .clip(CircleShape)
+                    .background(Brush.verticalGradient(listOf(themeColors.playPauseGradTop, themeColors.playPauseGradBottom)))
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTogglePlayPause)
+                    .testTag("player_play_pause_button"),
+                contentAlignment = Alignment.Center
             ) {
-                IconButton(
-                    onClick = onSkipPrevious,
-                    modifier = Modifier
-                        .size(56.dp)
-                        .testTag("player_previous_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "Previous Track",
-                        tint = Color.White.copy(alpha = 0.95f),
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(76.dp)
-                        .shadow(
-                            elevation = 12.dp,
-                            shape = CircleShape,
-                            spotColor = themeColors.accent.copy(alpha = 0.40f),
-                            ambientColor = themeColors.darkBackground
-                        )
-                        .clip(CircleShape)
-                        .background(
-                            brush = Brush.verticalGradient(
-                                listOf(
-                                    themeColors.playPauseGradTop,
-                                    themeColors.playPauseGradBottom
-                                )
-                            )
-                        )
-                        .border(
-                            width = 1.5.dp,
-                            brush = Brush.verticalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.45f),
-                                    themeColors.accent.copy(alpha = 0.32f),
-                                    Color.White.copy(alpha = 0.12f)
-                                )
-                            ),
-                            shape = CircleShape
-                        )
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onTogglePlayPause
-                        )
-                        .testTag("player_play_pause_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(38.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onSkipNext,
-                    modifier = Modifier
-                        .size(56.dp)
-                        .testTag("player_next_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Next Track",
-                        tint = Color.White.copy(alpha = 0.95f),
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
+                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", tint = Color.White, modifier = Modifier.size(32.dp))
             }
-        }
-
-        // 7. SHUFFLE AND REPEAT CONTROLS (Progressively fades during stage 1)
-        if (shuffleAlpha > 0f) {
-            Row(
-                modifier = Modifier
-                    .offset(x = 24.dp, y = baseShuffleY)
-                    .width(totalWidth - 48.dp)
-                    .graphicsLayer { alpha = shuffleAlpha },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            IconButton(
+                onClick = onSkipNext,
+                modifier = Modifier.offset(x = nextX, y = 10.dp).size(52.dp).testTag("player_next_button")
             ) {
-                AnimatedShuffleIcon(
-                    isShuffle = isShuffle,
-                    activeColor = themeColors.accent,
-                    onClick = onToggleShuffle,
-                    modifier = Modifier.testTag("player_shuffle_button"),
-                    touchSize = 48.dp,
-                    iconSize = 26.dp
-                )
-
-                AnimatedRepeatIcon(
-                    isRepeat = isRepeat,
-                    activeColor = themeColors.accent,
-                    onClick = onToggleRepeat,
-                    modifier = Modifier.testTag("player_repeat_button"),
-                    touchSize = 48.dp,
-                    iconSize = 26.dp
-                )
+                Icon(Icons.Default.SkipNext, "Next Track", tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(36.dp))
             }
-        }
-
-
-        // 7A. FIRST-PHASE CONTROL RAIL: shuffle / previous / play / next / repeat on one line.
-        if (stage1ControlsAlpha > 0f) {
-            Row(
-                modifier = Modifier.offset(x = 10.dp, y = expControlsY).width(totalWidth - 20.dp).graphicsLayer { alpha = stage1ControlsAlpha },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AnimatedShuffleIcon(isShuffle = isShuffle, activeColor = themeColors.accent, onClick = onToggleShuffle, touchSize = 48.dp, iconSize = 24.dp)
-                IconButton(onClick = onSkipPrevious, modifier = Modifier.size(52.dp)) { Icon(Icons.Default.SkipPrevious, "Previous Track", tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(36.dp)) }
-                Box(
-                    modifier = Modifier.size(64.dp).shadow(10.dp, CircleShape, spotColor = themeColors.accent.copy(alpha = 0.34f)).clip(CircleShape)
-                        .background(Brush.verticalGradient(listOf(themeColors.playPauseGradTop, themeColors.playPauseGradBottom)))
-                        .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTogglePlayPause),
-                    contentAlignment = Alignment.Center
-                ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", tint = Color.White, modifier = Modifier.size(32.dp)) }
-                IconButton(onClick = onSkipNext, modifier = Modifier.size(52.dp)) { Icon(Icons.Default.SkipNext, "Next Track", tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(36.dp)) }
-                AnimatedRepeatIcon(isRepeat = isRepeat, activeColor = themeColors.accent, onClick = onToggleRepeat, touchSize = 48.dp, iconSize = 24.dp)
-            }
+            AnimatedRepeatIcon(
+                isRepeat = isRepeat,
+                activeColor = themeColors.accent,
+                onClick = onToggleRepeat,
+                modifier = Modifier.offset(x = repeatX, y = repeatY).testTag("player_repeat_button"),
+                touchSize = 48.dp,
+                iconSize = 26.dp
+            )
         }
 
         // 8. UP NEXT HANDLE & CONTENT (Lives within the SAME surface, continuously positioned at upNextY)
