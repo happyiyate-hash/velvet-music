@@ -13,10 +13,7 @@ new_intrinsic = '''        // painterResource must be invoked directly from comp
 if old_intrinsic in s:
     s = s.replace(old_intrinsic, new_intrinsic, 1)
 
-# PlayerSheet contains an outer BoxWithConstraints. The closing brace immediately
-# before the Up Next helper must close that BoxWithConstraints, while the following
-# brace closes PlayerSheet itself. Add the missing BoxWithConstraints brace only when
-# the file is in the known broken state; keep sections 7-10 inside PlayerSheet.
+# Keep the PlayerSheet/BoxWithConstraints scope correct at the end of the main sheet.
 up_next_marker = '''\n/**
  * Up Next list track row component:'''
 broken_scope = '''\n        }\n}\n\n/**
@@ -27,6 +24,15 @@ if broken_scope in s:
     s = s.replace(broken_scope, fixed_scope, 1)
 elif up_next_marker not in s:
     raise SystemExit('Up Next marker not found; refusing to modify PlayerSheet.kt')
+
+# The artwork Box opened in section 2 was missing its closing brace before section 3.
+# Close only that Box; do not alter the fade layer or any surrounding layout.
+artwork_box_marker = '''                )\n            )\n        }\n\n        // 3. SONG TITLE & ARTIST.'''
+artwork_box_fixed = '''                )\n            )\n        }\n        }\n\n        // 3. SONG TITLE & ARTIST.'''
+if artwork_box_marker in s:
+    s = s.replace(artwork_box_marker, artwork_box_fixed, 1)
+elif '''        }\n        }\n\n        // 3. SONG TITLE & ARTIST.''' not in s:
+    raise SystemExit('Artwork Box scope marker not found; refusing to modify PlayerSheet.kt')
 
 p.write_text(s, encoding='utf-8')
 print('PlayerSheet compile scope fix applied.')
