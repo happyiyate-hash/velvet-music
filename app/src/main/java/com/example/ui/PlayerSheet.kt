@@ -606,8 +606,8 @@ fun PlayerSheet(
         val centerX = totalWidth / 2
 
         val basePlayX = centerX - 38.dp
-        val basePrevX = basePlayX - 42.dp
-        val baseNextX = basePlayX + 122.dp
+        val basePrevX = basePlayX - 72.dp
+        val baseNextX = basePlayX + 88.dp
 
         val expandedPlayX = centerX - 38.dp
         val expandedPrevX = expandedPlayX - 46.dp
