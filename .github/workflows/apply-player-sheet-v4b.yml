@@ -1,32 +1,32 @@
-name: Apply PlayerSheet v4b cleanup
+name: Apply PlayerSheet v5 refinement
 
 on:
   push:
     branches: [main]
     paths:
-      - 'scripts/player_sheet_v4b_cleanup.py'
+      - 'scripts/player_sheet_v5_fix.py'
       - '.github/workflows/apply-player-sheet-v4b.yml'
 
 permissions:
   contents: write
 
 jobs:
-  cleanup:
+  refine:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-      - name: Remove duplicate expanded progress bar
-        run: python3 scripts/player_sheet_v4b_cleanup.py
+      - name: Apply PlayerSheet v5 refinement
+        run: python3 scripts/player_sheet_v5_fix.py
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/example/ui/PlayerSheet.kt
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "fix(ui): remove duplicate expanded progress bar"
+          git commit -m "fix(ui): refine player artwork dissolve and centered controls"
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
