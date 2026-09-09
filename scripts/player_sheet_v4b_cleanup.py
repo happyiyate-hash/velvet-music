@@ -4,11 +4,7 @@ path = Path("app/src/main/java/com/example/ui/PlayerSheet.kt")
 text = path.read_text(encoding="utf-8")
 
 # Keep artwork at its measured/natural height. Never create an artificial shadow block below it.
-text = text.replace(
-    "val artFadeDepth = if (p <= 1f) lerp(0.dp, 96.dp, p.coerceIn(0f, 1f)) else 0.dp",
-    "val artFadeDepth = 0.dp",
-    1,
-)
+text = text.replace("val artFadeDepth = if (p <= 1f) lerp(0.dp, 96.dp, p.coerceIn(0f, 1f)) else 0.dp", "val artFadeDepth = 0.dp", 1)
 text = text.replace(".height(artHeight + artFadeDepth)", ".height(artHeight)", 1)
 
 # No decorative outline around the album artwork.
@@ -18,11 +14,9 @@ border_block = '''                .border(
                     RoundedCornerShape(artCorner)
                 )'''
 text = text.replace(border_block, "", 1)
-
-# Normal artwork should have a clean, moderate rounded corner treatment.
 text = text.replace("val baseArtCorner = 32.dp", "val baseArtCorner = 24.dp", 1)
 
-# Brighten the dynamic player surface without changing the extracted palette itself.
+# Brighten the dynamic player surface, with a subtly darker lower end.
 old_bg = '''        // Dynamic background atmosphere: one exact surface color derived from the artwork.
         // Do not add a separate queue/card color or a vertical tint behind the queue.
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -52,9 +46,8 @@ new_bg = '''        // Dynamic player surface: lift the extracted artwork color 
         }'''
 text = text.replace(old_bg, new_bg, 1)
 
-# Use the same dynamic background colors for the artwork dissolve. Crucially, the dissolve is
-# invisible at rest and on the compact thumbnail; it only appears as the artwork is dragged into
-# the large expanded state.
+# The artwork has NO dissolve at rest or as the compact thumbnail. The dissolve only appears
+# during the 0->1 opening transition and is intentionally thicker than the previous version.
 old_gradient = '''            // Broad shadow-like color wash: the artwork starts disappearing around 60%,
             // then the exact page surface color becomes dominant before the nominal edge.
             Box(
@@ -108,44 +101,49 @@ new_gradient = '''            // Thick lower dissolve. It is completely absent a
             }'''
 text = text.replace(old_gradient, new_gradient, 1)
 
-# The queue is integrated into the same background; no separate surface/card.
+# Queue remains transparent/integrated into the same page background.
 text = text.replace(
     ".height(upNextHeight.coerceAtLeast(54.dp))\n                .background(themeColors.darkBackground)",
     ".height(upNextHeight.coerceAtLeast(54.dp))\n                .background(Color.Transparent)",
     1,
 )
 
-# Make the previous/play/next centers mathematically symmetric at rest and in the expanded row.
-# IconButton is 60dp wide while the play disc is 76dp, so use equal center-to-center spacing.
-old_controls = '''        val baseThreeWidth = 236.dp
-        val basePrevX = (totalWidth - baseThreeWidth) / 2
-        val basePlayX = basePrevX + 80.dp
-        val baseNextX = basePrevX + 160.dp
-
-        val expandedPrevX = centerX - 116.dp
-        val expandedPlayX = centerX - 36.dp
-        val expandedNextX = centerX + 60.dp'''
-new_controls = '''        val baseCenterSpacing = 80.dp
+# Make previous/play/next mathematically symmetric. The 60dp side buttons and 76dp play disc
+# have different widths, so their LEFT offsets must compensate for that width difference.
+old_controls = '''        val baseCenterSpacing = 80.dp
         val basePlayX = centerX - 38.dp
         val basePrevX = basePlayX - 50.dp
         val baseNextX = basePlayX + 130.dp
 
         val expandedCenterSpacing = 84.dp
         val expandedPlayX = centerX - 38.dp
-        val expandedPrevX = expandedPlayX - (expandedCenterSpacing - 8.dp)
-        val expandedNextX = expandedPlayX + (expandedCenterSpacing + 8.dp)'''
+        val expandedPrevX = expandedPlayX - 46.dp
+        val expandedNextX = expandedPlayX + 122.dp'''
+new_controls = '''        val basePlayX = centerX - 38.dp
+        val basePrevX = basePlayX - 42.dp
+        val baseNextX = basePlayX + 122.dp
+
+        val expandedPlayX = centerX - 38.dp
+        val expandedPrevX = expandedPlayX - 46.dp
+        val expandedNextX = expandedPlayX + 92.dp'''
 text = text.replace(old_controls, new_controls, 1)
 
-# Keep the moving control group internally centered. The slightly different 60dp/76dp widths are
-# accounted for above so the visual centers do not drift left or right while dragging back down.
+# Also repair the same block if this script is ever run against the immediately previous patch.
 text = text.replace(
-    "val expandedPrevX = expandedPlayX - (expandedCenterSpacing - 8.dp)\n        val expandedNextX = expandedPlayX + (expandedCenterSpacing + 8.dp)",
-    "val expandedPrevX = expandedPlayX - 46.dp\n        val expandedNextX = expandedPlayX + 122.dp",
+    '''        val baseCenterSpacing = 80.dp
+        val basePlayX = centerX - 38.dp
+        val basePrevX = basePlayX - 50.dp
+        val baseNextX = basePlayX + 130.dp
+
+        val expandedCenterSpacing = 84.dp
+        val expandedPlayX = centerX - 38.dp
+        val expandedPrevX = expandedPlayX - 46.dp
+        val expandedNextX = expandedPlayX + 122.dp''',
+    new_controls,
     1,
 )
 
-# Fade the one real waveform/progress component completely by the time the queue is fully open.
-# The progress line itself must disappear too, not only the waveform bars/timestamps.
+# Fade the complete waveform/progress component by the time the queue reaches the compact state.
 old_wave_call = '''        NowPlayingWaveformProgress(
             positionMs = playbackPositionMs,
             durationMs = track.durationMs,
@@ -178,7 +176,7 @@ new_wave_call = '''        val progressComponentAlpha = (1f - (p / 1.05f)).coerc
         }'''
 text = text.replace(old_wave_call, new_wave_call, 1)
 
-# Extend the existing component with a single alpha for the actual progress line as well.
+# The actual progress line is inside the existing component, so give that Canvas its own alpha.
 text = text.replace(
     "    timestampAlpha: Float = 1f,\n    modifier: Modifier = Modifier",
     "    timestampAlpha: Float = 1f,\n    progressAlpha: Float = 1f,\n    modifier: Modifier = Modifier",
@@ -191,4 +189,4 @@ text = text.replace(
 )
 
 path.write_text(text, encoding="utf-8")
-print("PlayerSheet refined: rest artwork is clean, expanded dissolve is stronger, background is brighter, controls are centered, and progress fades with the queue.")
+print("PlayerSheet refinement applied: clean rest artwork, stronger expand-only dissolve, brighter dynamic background, symmetric playback controls, and fading progress.")
