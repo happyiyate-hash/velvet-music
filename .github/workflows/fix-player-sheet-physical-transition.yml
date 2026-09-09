@@ -25,27 +25,11 @@ jobs:
               print('Physical transition already applied.')
               raise SystemExit(0)
 
-          # Make the first artwork phase shorter, like the compact YouTube Music-style player.
-          s = s.replace(
-              'val expArtHeight = (totalHeight * 0.56f).coerceIn(320.dp, 470.dp)',
-              'val expArtHeight = (totalHeight * 0.42f).coerceIn(300.dp, 410.dp)'
-          )
-          s = s.replace(
-              'val expTitleY = expArtY + expArtHeight - 78.dp',
-              'val expTitleY = expArtY + expArtHeight - 82.dp'
-          )
-          s = s.replace(
-              'val expControlsY = expArtY + expArtHeight + 24.dp',
-              'val expControlsY = expArtY + expArtHeight + 26.dp'
-          )
-          s = s.replace(
-              'val expUpNextY = expControlsY + 86.dp',
-              'val expUpNextY = expControlsY + 82.dp'
-          )
+          s = s.replace('val expArtHeight = (totalHeight * 0.56f).coerceIn(320.dp, 470.dp)', 'val expArtHeight = (totalHeight * 0.42f).coerceIn(300.dp, 410.dp)')
+          s = s.replace('val expTitleY = expArtY + expArtHeight - 78.dp', 'val expTitleY = expArtY + expArtHeight - 82.dp')
+          s = s.replace('val expControlsY = expArtY + expArtHeight + 24.dp', 'val expControlsY = expArtY + expArtHeight + 26.dp')
+          s = s.replace('val expUpNextY = expControlsY + 86.dp', 'val expUpNextY = expControlsY + 82.dp')
 
-          # The old implementation faded the 3-button row out and then drew a second
-          # 5-button row. Replace both with one set of composables whose positions move
-          # continuously from their resting locations into the first-phase rail.
           physical = r'''        // YouTube-style physical control transition v2.
           // These are the SAME five control composables for the entire transition. Nothing
           // cross-fades into a duplicate row: every button physically travels to its new place.
@@ -68,7 +52,6 @@ jobs:
           val nextX = lerp(baseNextX, expandedNextX, controlT)
           val shuffleY = lerp(baseShuffleY - baseControlsY, 0.dp, controlT)
           val repeatY = lerp(baseShuffleY - baseControlsY, 0.dp, controlT)
-          val controlAlpha = 1f
 
           // 6. PRIMARY PLAYBACK CONTROLS — one physical set, continuously repositioned.
           Box(
@@ -81,93 +64,41 @@ jobs:
                   isShuffle = isShuffle,
                   activeColor = themeColors.accent,
                   onClick = onToggleShuffle,
-                  modifier = Modifier
-                      .offset(x = shuffleX, y = shuffleY)
-                      .graphicsLayer { alpha = controlAlpha }
-                      .testTag("player_shuffle_button"),
+                  modifier = Modifier.offset(x = shuffleX, y = shuffleY).testTag("player_shuffle_button"),
                   touchSize = 48.dp,
                   iconSize = 26.dp
               )
-
-              IconButton(
-                  onClick = onSkipPrevious,
-                  modifier = Modifier
-                      .offset(x = prevX, y = 10.dp)
-                      .size(52.dp)
-                      .testTag("player_previous_button")
-              ) {
-                  Icon(
-                      imageVector = Icons.Default.SkipPrevious,
-                      contentDescription = "Previous Track",
-                      tint = Color.White.copy(alpha = 0.95f),
-                      modifier = Modifier.size(36.dp)
-                  )
+              IconButton(onClick = onSkipPrevious, modifier = Modifier.offset(x = prevX, y = 10.dp).size(52.dp).testTag("player_previous_button")) {
+                  Icon(Icons.Default.SkipPrevious, "Previous Track", tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(36.dp))
               }
-
               Box(
-                  modifier = Modifier
-                      .offset(x = playX, y = 4.dp)
-                      .size(64.dp)
+                  modifier = Modifier.offset(x = playX, y = 4.dp).size(64.dp)
                       .shadow(10.dp, CircleShape, spotColor = themeColors.accent.copy(alpha = 0.34f))
                       .clip(CircleShape)
-                      .background(
-                          Brush.verticalGradient(
-                              listOf(themeColors.playPauseGradTop, themeColors.playPauseGradBottom)
-                          )
-                      )
+                      .background(Brush.verticalGradient(listOf(themeColors.playPauseGradTop, themeColors.playPauseGradBottom)))
                       .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-                      .clickable(
-                          interactionSource = remember { MutableInteractionSource() },
-                          indication = null,
-                          onClick = onTogglePlayPause
-                      )
+                      .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTogglePlayPause)
                       .testTag("player_play_pause_button"),
                   contentAlignment = Alignment.Center
               ) {
-                  Icon(
-                      imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                      contentDescription = if (isPlaying) "Pause" else "Play",
-                      tint = Color.White,
-                      modifier = Modifier.size(32.dp)
-                  )
+                  Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", tint = Color.White, modifier = Modifier.size(32.dp))
               }
-
-              IconButton(
-                  onClick = onSkipNext,
-                  modifier = Modifier
-                      .offset(x = nextX, y = 10.dp)
-                      .size(52.dp)
-                      .testTag("player_next_button")
-              ) {
-                  Icon(
-                      imageVector = Icons.Default.SkipNext,
-                      contentDescription = "Next Track",
-                      tint = Color.White.copy(alpha = 0.95f),
-                      modifier = Modifier.size(36.dp)
-                  )
+              IconButton(onClick = onSkipNext, modifier = Modifier.offset(x = nextX, y = 10.dp).size(52.dp).testTag("player_next_button")) {
+                  Icon(Icons.Default.SkipNext, "Next Track", tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(36.dp))
               }
-
               AnimatedRepeatIcon(
                   isRepeat = isRepeat,
                   activeColor = themeColors.accent,
                   onClick = onToggleRepeat,
-                  modifier = Modifier
-                      .offset(x = repeatX, y = repeatY)
-                      .graphicsLayer { alpha = controlAlpha }
-                      .testTag("player_repeat_button"),
+                  modifier = Modifier.offset(x = repeatX, y = repeatY).testTag("player_repeat_button"),
                   touchSize = 48.dp,
                   iconSize = 26.dp
               )
           }
 
 '''
-          # Replace the whole old 6 / 7 / 7A control area.
-          pattern = r'        // 6\. PRIMARY PLAYBACK CONTROLS:.*?        // 8\. UP NEXT HANDLE & CONTENT'
-          s, n = re.subn(pattern, physical + '        // 8. UP NEXT HANDLE & CONTENT', s, count=1, flags=re.S)
+          s, n = re.subn(r'        // 6\. PRIMARY PLAYBACK CONTROLS:.*?        // 8\. UP NEXT HANDLE & CONTENT', physical + '        // 8. UP NEXT HANDLE & CONTENT', s, count=1, flags=re.S)
           assert n == 1, 'old control blocks not found'
-
-          # Prevent the first-phase queue from visually competing with the controls: it starts
-          # immediately below the rail, while retaining the existing queue implementation.
           path.write_text(s)
           print('Physical PlayerSheet transition patch applied.')
           PY
@@ -183,3 +114,5 @@ jobs:
           git add app/src/main/java/com/example/ui/PlayerSheet.kt
           git commit -m 'Fix PlayerSheet physical control transition'
           git push
+
+# v2 physical-control patch trigger
