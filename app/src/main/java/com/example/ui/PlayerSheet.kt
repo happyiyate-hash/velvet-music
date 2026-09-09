@@ -216,9 +216,10 @@ fun PlayerSheet(
         // the normal player geometry; portrait/tall artwork is allowed to use its natural
         // height instead of being forced into a 1:1 box. Intrinsic dimensions are available
         // immediately for bundled artwork, so this does not delay the first render.
-        val artworkIntrinsicSize = remember(track.coverResId) {
-            painterResource(track.coverResId).intrinsicSize
-        }
+        // v10 retrigger: painterResource must be invoked directly from composition.
+        // Reading its intrinsic size is immediate and does not block the first render.
+        val artworkPainter = painterResource(track.coverResId)
+        val artworkIntrinsicSize = artworkPainter.intrinsicSize
         val artworkAspectRatio = if (artworkIntrinsicSize.width > 0f && artworkIntrinsicSize.height > 0f) {
             artworkIntrinsicSize.width / artworkIntrinsicSize.height
         } else 1f
