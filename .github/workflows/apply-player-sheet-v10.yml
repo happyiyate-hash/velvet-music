@@ -1,0 +1,25 @@
+name: Apply PlayerSheet v10 compile fix
+
+on:
+  push:
+    paths:
+      - 'scripts/player_sheet_v10_compile_fix.py'
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply compile fix
+        run: python3 scripts/player_sheet_v10_compile_fix.py
+      - name: Commit compile fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example/ui/PlayerSheet.kt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix PlayerSheet composable intrinsic size lookup'
+          git push
