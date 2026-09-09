@@ -212,6 +212,18 @@ fun PlayerSheet(
         val totalWidth = maxWidth
         val density = LocalDensity.current
 
+        // Artwork framing is based on the actual drawable dimensions. Square artwork keeps
+        // the normal player geometry; portrait/tall artwork is allowed to use its natural
+        // height instead of being forced into a 1:1 box. Intrinsic dimensions are available
+        // immediately for bundled artwork, so this does not delay the first render.
+        val artworkIntrinsicSize = remember(track.coverResId) {
+            painterResource(track.coverResId).intrinsicSize
+        }
+        val artworkAspectRatio = if (artworkIntrinsicSize.width > 0f && artworkIntrinsicSize.height > 0f) {
+            artworkIntrinsicSize.width / artworkIntrinsicSize.height
+        } else 1f
+        val isTallArtwork = artworkAspectRatio < 0.94f
+
         // Safe insets
         val insetsTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         val insetsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -232,10 +244,17 @@ fun PlayerSheet(
         val baseControlsY = baseWaveformY + 52.dp + 44.dp
         val baseShuffleY = baseControlsY + 76.dp + 22.dp
 
-        // First snap: artwork reaches the very top, becomes full-width and square-edged.
+        // First snap: artwork reaches the very top and becomes truly edge-to-edge.
+        // Do not force portrait artwork into the square height. Its natural aspect ratio
+        // determines the expanded image height, capped to a sensible player region.
         val expArtY = 0.dp
         val expArtWidth = totalWidth
-        val expArtHeight = baseArtSize
+        val naturalExpandedHeight = if (isTallArtwork) {
+            (totalWidth / artworkAspectRatio).coerceAtLeast(baseArtSize)
+        } else {
+            baseArtSize
+        }
+        val expArtHeight = naturalExpandedHeight.coerceAtMost(totalHeight * 0.78f)
         val expArtX = 0.dp
         val expArtCorner = 0.dp
         val expTitleX = 20.dp
@@ -455,7 +474,7 @@ fun PlayerSheet(
                 TrackArtworkImage(
                     track = track,
                     contentDescription = track.title,
-                    contentScale = ContentScale.Fit,
+                    contentScale = if (isTallArtwork) ContentScale.FillHeight else ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -465,16 +484,19 @@ fun PlayerSheet(
         // strength near the expanded state, and remains painted in that same place while
         // the artwork moves back toward the compact thumbnail.
         val artworkFadeAlpha = when {
-            p < 0.35f -> 0f
-            p < 0.78f -> ((p - 0.35f) / 0.43f).coerceIn(0f, 1f)
+            // Clean resting state: no dissolve.
+            p < 0.30f -> 0f
+            // Fade in as the artwork first opens.
+            p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)
+            // Once established, keep the shadow stable through the entire collapse.
             else -> 1f
         }
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
-                    .offset(x = 0.dp, y = expArtY + (expArtHeight * 0.50f))
+                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.48f))
                     .width(expArtWidth)
-                    .height(expArtHeight * 0.50f)
+                    .height(expArtHeight * 0.52f)
                     .graphicsLayer { alpha = artworkFadeAlpha }
                     .background(
                         Brush.verticalGradient(
@@ -616,13 +638,18 @@ fun PlayerSheet(
         val playCenterX = centerX
         val sideButtonCenterSpacing = 96.dp
 
-        val basePlayX = playCenterX - 38.dp
-        val basePrevX = playCenterX - sideButtonCenterSpacing - 30.dp
-        val baseNextX = playCenterX + sideButtonCenterSpacing - 30.dp
+        // These are LEFT offsets for equal-sized 60dp buttons, calculated from the same
+        // center axis. The three primary controls therefore cannot drift horizontally.
+        val playLeft = playCenterX - 38.dp
+        val prevLeft = playCenterX - sideButtonCenterSpacing - 30.dp
+        val nextLeft = playCenterX + sideButtonCenterSpacing - 30.dp
 
-        val expandedPlayX = playCenterX - 38.dp
-        val expandedPrevX = playCenterX - sideButtonCenterSpacing - 30.dp
-        val expandedNextX = playCenterX + sideButtonCenterSpacing - 30.dp
+        val basePlayX = playLeft
+        val basePrevX = prevLeft
+        val baseNextX = nextLeft
+        val expandedPlayX = playLeft
+        val expandedPrevX = prevLeft
+        val expandedNextX = nextLeft
         val expandedShuffleX = 12.dp
         val expandedRepeatX = totalWidth - 64.dp
 
