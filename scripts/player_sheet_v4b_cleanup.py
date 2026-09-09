@@ -3,52 +3,88 @@ from pathlib import Path
 path = Path("app/src/main/java/com/example/ui/PlayerSheet.kt")
 text = path.read_text(encoding="utf-8")
 
-# Queue is one continuous surface with the artwork-derived page background.
+# v7: keep the artwork at the same height used by the normal player. The expanded
+# state may widen the artwork, but must never make it taller just because the sheet expands.
 text = text.replace(
-    ".height(upNextHeight.coerceAtLeast(54.dp))\n                .background(themeColors.darkBackground)",
-    ".height(upNextHeight.coerceAtLeast(54.dp))\n                .background(Color.Transparent)",
-    1,
+    'val expArtHeight = (totalHeight * 0.42f).coerceIn(300.dp, 410.dp)',
+    'val expArtHeight = baseArtSize'
 )
 
-# Make the artwork fade into the page instead of stretching the image itself.
-# The outer box supplies the fade depth; the actual image keeps its intended
-# aspect/crop and ends underneath the transparent-to-background gradient.
-if "val artFadeDepth" not in text:
-    text = text.replace(
-        "        // 2. SINGLE PHYSICAL ARTWORK INSTANCE.\n",
-        "        // 2. SINGLE PHYSICAL ARTWORK INSTANCE.\n"
-        "        val artFadeDepth = if (p <= 1f) lerp(0.dp, 92.dp, p.coerceIn(0f, 1f)) else 0.dp\n",
-        1,
-    )
-
+# Give the expanded controls a little more breathing room from the artwork/gesture handle,
+# while keeping the resting controls slightly lower as requested.
 text = text.replace(
-    ".height(artHeight + artFadeDepth)\n                .clip(RoundedCornerShape(artCorner))",
-    ".height(artHeight + artFadeDepth)\n                .clip(RoundedCornerShape(artCorner))",
-    1,
+    'val baseControlsY = baseWaveformY + 52.dp + 28.dp',
+    'val baseControlsY = baseWaveformY + 52.dp + 44.dp'
+)
+text = text.replace(
+    'val expControlsY = expArtY + expArtHeight + 42.dp',
+    'val expControlsY = expArtY + expArtHeight + 18.dp'
+)
+text = text.replace(
+    'val expUpNextY = expControlsY + 70.dp',
+    'val expUpNextY = expControlsY + 72.dp'
 )
 
-old_art_content = '''            TrackArtworkImage(track = track, contentDescription = track.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.00f to Color.Transparent,
-                            0.56f to Color.Transparent,
-                            0.68f to themeColors.bgMidLower.copy(alpha = 0.08f),
-                            0.76f to themeColors.bgMidLower.copy(alpha = 0.22f),
-                            0.84f to themeColors.bgBottom.copy(alpha = 0.44f),
-                            0.92f to themeColors.bgBottom.copy(alpha = 0.72f),
-                            1.00f to themeColors.bgBottom.copy(alpha = 0.96f)
-                        )
-                    )
+# The page is one dynamic surface. Do not give Up Next a separate black/card background.
+text = text.replace(
+    '.height(upNextHeight.coerceAtLeast(54.dp))\n                .background(themeColors.darkBackground)',
+    '.height(upNextHeight.coerceAtLeast(54.dp))\n                .background(Color.Transparent)',
+    1
+)
+
+# Replace the old artwork container with a real bottom dissolve. The image itself ends at
+# artHeight, while a separate overlay extends below it and paints the artwork away using the
+# exact same page surface color. This creates the requested "background covering the picture"
+# effect instead of a hard rectangular image edge.
+start = text.find('        // 2. SINGLE PHYSICAL ARTWORK INSTANCE.')
+end = text.find('        // 3. SONG TITLE & ARTIST.', start)
+if start != -1 and end != -1:
+    new_art = '''        // 2. SINGLE PHYSICAL ARTWORK INSTANCE.
+        // The artwork keeps its normal height. Only its bottom is dissolved into the same
+        // dynamic page surface, beginning around the lower 60% rather than at the hard edge.
+        val artFadeDepth = if (p <= 1f) lerp(0.dp, 96.dp, p.coerceIn(0f, 1f)) else 0.dp
+        Box(
+            modifier = Modifier
+                .offset(x = artX, y = artY)
+                .width(artWidth)
+                .height(artHeight + artFadeDepth)
+                .border(
+                    if (p < 0.98f) 1.dp else 0.dp,
+                    Color.White.copy(alpha = 0.10f),
+                    RoundedCornerShape(artCorner)
                 )
-            )'''
-new_art_content = '''            // Keep the real artwork at its normal height. The remaining fade depth is
-            // transparent space over the SAME dynamic background, so there is no hard edge.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        coroutineScope.launch {
+                            dragProgress.animateTo(
+                                if (p > 1.2f) 1f else if (p > 0.2f) 0f else 1f,
+                                tween(320, easing = FastOutSlowInEasing)
+                            )
+                        }
+                    }
+                )
+                .then(
+                    if (p < 1.65f) Modifier.pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = { onDragFinish() },
+                            onDragCancel = { onDragFinish() },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                onDragDelta(dragAmount)
+                            }
+                        )
+                    } else Modifier
+                )
+        ) {
+            // The picture is clipped only to its own natural rectangle/corners.
+            // The fade is deliberately OUTSIDE that picture so the background can cover it.
             Box(
                 modifier = Modifier
                     .width(artWidth)
                     .height(artHeight)
+                    .clip(RoundedCornerShape(artCorner))
             ) {
                 TrackArtworkImage(
                     track = track,
@@ -57,76 +93,53 @@ new_art_content = '''            // Keep the real artwork at its normal height. 
                     modifier = Modifier.fillMaxSize()
                 )
             }
+
+            // Broad shadow-like color wash: the artwork starts disappearing around 60%,
+            // then the exact page surface color becomes dominant before the nominal edge.
             Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.00f to Color.Transparent,
-                            0.54f to Color.Transparent,
-                            0.64f to Color.Transparent,
-                            0.72f to themeColors.bgMidLower.copy(alpha = 0.10f),
-                            0.80f to themeColors.bgBottom.copy(alpha = 0.30f),
-                            0.89f to themeColors.bgBottom.copy(alpha = 0.62f),
-                            1.00f to themeColors.bgBottom.copy(alpha = 0.96f)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to Color.Transparent,
+                                0.56f to Color.Transparent,
+                                0.62f to Color.Transparent,
+                                0.70f to themeColors.darkBackground.copy(alpha = 0.16f),
+                                0.78f to themeColors.darkBackground.copy(alpha = 0.42f),
+                                0.86f to themeColors.darkBackground.copy(alpha = 0.70f),
+                                0.93f to themeColors.darkBackground.copy(alpha = 0.90f),
+                                1.00f to themeColors.darkBackground
+                            )
                         )
                     )
-                )
-            )'''
-if old_art_content in text:
-    text = text.replace(old_art_content, new_art_content, 1)
+            )
+        }
 
-# Keep the SAME waveform/progress component and place its line slightly inside
-# the artwork's lower fade area. No second progress bar is introduced.
-text = text.replace(
-    "expArtY + (expArtHeight * 0.90f) - 48.dp,",
-    "expArtY + (expArtHeight * 0.90f) - 48.dp,",
-    1,
-)
+'''
+    text = text[:start] + new_art + text[end:]
+else:
+    raise SystemExit('Artwork section not found; refusing to patch unknown layout.')
 
-# Resting state: move primary controls slightly down. Expanded state: move the
-# physical five-control rail upward so the gesture handle has breathing room.
+# Put the single existing waveform/progress line about 10% inside the artwork in expanded state.
+# Waveform/timestamps still fade away; this does NOT add another progress bar.
 text = text.replace(
-    "val baseControlsY = baseWaveformY + 52.dp + 18.dp",
-    "val baseControlsY = baseWaveformY + 52.dp + 28.dp",
-    1,
-)
-text = text.replace(
-    "val expControlsY = expArtY + expArtHeight + 34.dp",
-    "val expControlsY = expArtY + expArtHeight + 26.dp",
-    1,
-)
-text = text.replace(
-    "val secondaryOffsetY = lerp(76.dp + 22.dp, 8.dp, controlT)",
-    "val secondaryOffsetY = lerp(76.dp + 28.dp, 6.dp, controlT)",
-    1,
+    'expArtY + (expArtHeight * 0.90f) - 48.dp,',
+    'expArtY + expArtHeight - 34.dp,',
+    1
 )
 
-# Increase the primary previous/next visual size and the central play/pause
-# button while keeping the same physical controls and hit areas.
+# Keep the compact queue surface transparent too, so the same artwork-derived page atmosphere
+# remains visible behind the queue content.
 text = text.replace(
-    ".size(56.dp)\n                    .testTag(\"player_previous_button\")",
-    ".size(60.dp)\n                    .testTag(\"player_previous_button\")",
-    1,
-)
-text = text.replace(
-    ".size(72.dp)\n                    .shadow(10.dp, CircleShape",
-    ".size(80.dp)\n                    .shadow(10.dp, CircleShape",
-    1,
-)
-text = text.replace(
-    "modifier = Modifier.size(36.dp)\n                )",
-    "modifier = Modifier.size(40.dp)\n                )",
-    1,
-)
-text = text.replace(
-    ".size(56.dp)\n                    .testTag(\"player_next_button\")",
-    ".size(60.dp)\n                    .testTag(\"player_next_button\")",
-    1,
+    '.background(Color.Transparent)\n                .pointerInput(Unit)',
+    '.background(Color.Transparent)\n                .pointerInput(Unit)',
+    1
 )
 
-# Remove any stale zIndex workaround from earlier iterations.
-text = text.replace("import androidx.compose.ui.zIndex\n", "")
-text = text.replace("                .zIndex(10f)\n", "")
+# Remove stale zIndex workarounds if they are still present.
+text = text.replace('import androidx.compose.ui.zIndex\n', '')
+text = text.replace('                .zIndex(10f)\n', '')
 
 path.write_text(text, encoding="utf-8")
-print("PlayerSheet v6 artwork fade and control geometry patch applied.")
+print("PlayerSheet v7 artwork blend and control geometry patch applied.")
