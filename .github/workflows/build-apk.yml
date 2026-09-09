@@ -59,6 +59,7 @@ jobs:
               touch .env
             fi
             echo "Prepared .env configuration file."
+          fi
 
       - name: Build Debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
