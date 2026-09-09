@@ -4,6 +4,11 @@ import re
 path = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = path.read_text()
 
+# Idempotent: the build workflow can run on the follow-up commit created by this script.
+if '// Stage geometry: the first snap is a true edge-to-edge artwork takeover.' in s:
+    print('PlayerSheet transition already applied.')
+    raise SystemExit(0)
+
 # This script is intentionally marker-based so it changes only the transition/layout region.
 geometry = r'''        // Stage geometry: the first snap is a true edge-to-edge artwork takeover.
         // 0f = normal player, 1f = expanded artwork, 2f = compact player + queue.
