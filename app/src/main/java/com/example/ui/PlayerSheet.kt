@@ -108,6 +108,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
 import com.example.audio.AudioTelemetry
 import com.example.media.ArtworkColorExtractor
@@ -333,15 +334,15 @@ fun PlayerSheet(
         // Keep the upper area brighter and let the bottom fall off slightly darker.
         val extractedBg = themeColors.darkBackground
         val playerBackgroundTop = Color(
-            red = (extractedBg.red * 1.18f + 0.025f).coerceAtMost(1f),
-            green = (extractedBg.green * 1.18f + 0.025f).coerceAtMost(1f),
-            blue = (extractedBg.blue * 1.18f + 0.025f).coerceAtMost(1f),
+            red = (extractedBg.red * 1.30f + 0.035f).coerceAtMost(1f),
+            green = (extractedBg.green * 1.30f + 0.035f).coerceAtMost(1f),
+            blue = (extractedBg.blue * 1.30f + 0.035f).coerceAtMost(1f),
             alpha = 1f
         )
         val playerBackgroundBottom = Color(
-            red = (playerBackgroundTop.red * 0.88f).coerceAtLeast(0f),
-            green = (playerBackgroundTop.green * 0.88f).coerceAtLeast(0f),
-            blue = (playerBackgroundTop.blue * 0.88f).coerceAtLeast(0f),
+            red = (playerBackgroundTop.red * 0.90f).coerceAtLeast(0f),
+            green = (playerBackgroundTop.green * 0.90f).coerceAtLeast(0f),
+            blue = (playerBackgroundTop.blue * 0.90f).coerceAtLeast(0f),
             alpha = 1f
         )
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -454,18 +455,44 @@ fun PlayerSheet(
                 TrackArtworkImage(
                     track = track,
                     contentDescription = track.title,
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
                 )
             }
 
-            // Thick lower dissolve. It is completely absent at rest and on the compact
-            // thumbnail, and appears only while opening the large artwork state.
-            val artworkFadeAlpha = if (p <= 1f) {
-                ((p - 0.08f) / 0.55f).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
+        // Fixed expanded-state dissolve. The fade is not attached to the shrinking image.
+        // It starts only once the user has meaningfully opened the artwork, reaches full
+        // strength near the expanded state, and remains painted in that same place while
+        // the artwork moves back toward the compact thumbnail.
+        val artworkFadeAlpha = when {
+            p < 0.35f -> 0f
+            p < 0.78f -> ((p - 0.35f) / 0.43f).coerceIn(0f, 1f)
+            else -> 1f
+        }
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = 0.dp, y = expArtY + (expArtHeight * 0.50f))
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.50f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to Color.Transparent,
+                                0.10f to playerBackgroundTop.copy(alpha = 0.05f),
+                                0.24f to playerBackgroundTop.copy(alpha = 0.16f),
+                                0.40f to playerBackgroundTop.copy(alpha = 0.38f),
+                                0.56f to playerBackgroundTop.copy(alpha = 0.62f),
+                                0.72f to playerBackgroundBottom.copy(alpha = 0.82f),
+                                0.86f to playerBackgroundBottom.copy(alpha = 0.95f),
+                                1.00f to playerBackgroundBottom
+                            )
+                        )
+                    )
+            )
+        }
+
             if (artworkFadeAlpha > 0f) {
                 Box(
                     modifier = Modifier
@@ -575,10 +602,14 @@ fun PlayerSheet(
             expArtY + expArtHeight - 34.dp,
             p.coerceIn(0f, 1f)
         )
-        val movingWaveformAlpha = (1f - (p / 0.72f)).coerceIn(0f, 1f)
-        val movingTimestampAlpha = (1f - (p / 0.58f)).coerceIn(0f, 1f)
+        val movingWaveformAlpha = if (p <= 1f) 1f else (1f - ((p - 1f) / 0.60f)).coerceIn(0f, 1f)
+        val movingTimestampAlpha = if (p <= 1f) 1f else (1f - ((p - 1f) / 0.60f)).coerceIn(0f, 1f)
 
-        val progressComponentAlpha = (1f - (p / 1.05f)).coerceIn(0f, 1f)
+        val progressComponentAlpha = if (p <= 1f) {
+            1f
+        } else {
+            (1f - ((p - 1f) / 0.60f)).coerceIn(0f, 1f)
+        }
         if (progressComponentAlpha > 0f) {
             NowPlayingWaveformProgress(
                 positionMs = playbackPositionMs,
@@ -605,13 +636,16 @@ fun PlayerSheet(
         val controlY = lerp(baseControlsY, expControlsY, controlT)
         val centerX = totalWidth / 2
 
-        val basePlayX = centerX - 38.dp
-        val basePrevX = basePlayX - 72.dp
-        val baseNextX = basePlayX + 88.dp
+        val playCenterX = centerX
+        val sideButtonCenterSpacing = 96.dp
 
-        val expandedPlayX = centerX - 38.dp
-        val expandedPrevX = expandedPlayX - 46.dp
-        val expandedNextX = expandedPlayX + 92.dp
+        val basePlayX = playCenterX - 38.dp
+        val basePrevX = playCenterX - sideButtonCenterSpacing - 30.dp
+        val baseNextX = playCenterX + sideButtonCenterSpacing - 30.dp
+
+        val expandedPlayX = playCenterX - 38.dp
+        val expandedPrevX = playCenterX - sideButtonCenterSpacing - 30.dp
+        val expandedNextX = playCenterX + sideButtonCenterSpacing - 30.dp
         val expandedShuffleX = 12.dp
         val expandedRepeatX = totalWidth - 64.dp
 
@@ -1155,6 +1189,7 @@ fun NowPlayingWaveformProgress(
                 .fillMaxWidth()
                 .height(8.dp)
                 .graphicsLayer { alpha = progressAlpha.coerceIn(0f, 1f) }
+                .zIndex(2f)
         ) {
             val totalWidth = size.width
             val centerY = size.height / 2f
