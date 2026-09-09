@@ -59,7 +59,6 @@ jobs:
               touch .env
             fi
             echo "Prepared .env configuration file."
-          fi
 
       - name: Build Debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
@@ -108,4 +107,4 @@ jobs:
           draft: false
           prerelease: false
 
-# Rebuild after PlayerSheet v4b cleanup so the fixed UI is compile-verified.
+# Rebuild after the corrected artwork dissolve/border treatment.
