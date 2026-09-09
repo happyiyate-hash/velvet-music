@@ -31,6 +31,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Refine PlayerSheet drag transition
+        run: |
+          python3 scripts/refine_player_sheet.py
+          if git diff --quiet -- app/src/main/java/com/example/ui/PlayerSheet.kt; then
+            echo "PlayerSheet transition already applied."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/example/ui/PlayerSheet.kt
+            git diff --cached --check
+            git commit -m "Refine PlayerSheet drag transition"
+            git push
+          fi
+
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
@@ -43,20 +57,15 @@ jobs:
       - name: Prepare Signing and Configuration
         run: |
           chmod +x gradlew
-
-          # Ensure debug.keystore exists for debugConfig signing
           if [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore
             echo "Restored debug.keystore from base64."
           fi
-
           if [ ! -f "debug.keystore" ]; then
             echo "debug.keystore not found. Generating standard debug keystore using keytool..."
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
             echo "Generated debug.keystore successfully."
           fi
-
-          # Ensure .env exists for Secrets Gradle Plugin
           if [ ! -f ".env" ]; then
             if [ -f ".env.example" ]; then
               cp .env.example .env
@@ -94,7 +103,6 @@ jobs:
             RELEASE_TAG="build-${GITHUB_RUN_NUMBER}"
             RELEASE_NAME="Velvet Music (Build #${GITHUB_RUN_NUMBER})"
           fi
-
           echo "tag_name=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
           echo "release_name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
 
@@ -106,7 +114,6 @@ jobs:
           name: ${{ steps.release_metadata.outputs.release_name }}
           body: |
             ### Velvet Music Android APK
-
             Install directly on your Android device:
             1. Download `Velvet-Music.apk` below directly to your Android device.
             2. Tap the downloaded file and select **Install**.
