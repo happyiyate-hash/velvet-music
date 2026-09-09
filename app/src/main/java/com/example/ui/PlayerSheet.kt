@@ -241,8 +241,8 @@ fun PlayerSheet(
         val expTitleY = expArtY + expArtHeight - 82.dp
         val expTitleWidth = totalWidth - 40.dp
         val expProgressY = expArtY + expArtHeight - 3.dp
-        val expControlsY = expArtY + expArtHeight + 18.dp
-        val expUpNextY = expControlsY + 72.dp
+        val expControlsY = expArtY + expArtHeight + 42.dp
+        val expUpNextY = expControlsY + 78.dp
 
         val compArtSize = 44.dp
         val compArtX = 16.dp
@@ -329,27 +329,10 @@ fun PlayerSheet(
             }
         }
 
-        // Dynamic background atmosphere: full-screen atmospheric gradient preserving artwork hue from top to bottom
+        // Dynamic background atmosphere: one exact surface color derived from the artwork.
+        // Do not add a separate queue/card color or a vertical tint behind the queue.
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val canvasWidth = size.width
-            val canvasHeight = size.height
-
-            // Full screen vertical gradient transitioning from top atmosphere to deep tone at bottom
             drawRect(color = themeColors.darkBackground)
-
-            // Soft radial ambient bloom centered behind the artwork that dynamically breathes
-            val bloomScale = 1f + (p * 0.35f)
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        themeColors.atmosphericBloom.copy(alpha = (0.35f * (1f - p * 0.2f)).coerceAtLeast(0.15f)),
-                        themeColors.atmosphericBloom.copy(alpha = (0.12f * (1f - p * 0.2f)).coerceAtLeast(0.05f)),
-                        Color.Transparent
-                    ),
-                    center = Offset(canvasWidth * 0.5f, canvasHeight * (0.28f - p * 0.12f)),
-                    radius = canvasWidth * 0.85f * bloomScale
-                )
-            )
         }
 
         // 1. TOP BAR: Collapse Chevron, Centered Pill, 3-dots Menu Button (fades away as artwork expands)
@@ -472,12 +455,13 @@ fun PlayerSheet(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.56f to Color.Transparent,
-                                0.62f to Color.Transparent,
-                                0.68f to themeColors.darkBackground.copy(alpha = 0.12f),
-                                0.76f to themeColors.darkBackground.copy(alpha = 0.36f),
-                                0.84f to themeColors.darkBackground.copy(alpha = 0.64f),
-                                0.91f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.54f to Color.Transparent,
+                                0.60f to Color.Transparent,
+                                0.66f to themeColors.darkBackground.copy(alpha = 0.06f),
+                                0.74f to themeColors.darkBackground.copy(alpha = 0.18f),
+                                0.82f to themeColors.darkBackground.copy(alpha = 0.38f),
+                                0.90f to themeColors.darkBackground.copy(alpha = 0.68f),
+                                0.96f to themeColors.darkBackground.copy(alpha = 0.90f),
                                 1.00f to themeColors.darkBackground
                             )
                         )
@@ -616,12 +600,14 @@ fun PlayerSheet(
         // During the upward gesture they rise into the same row.
         val primaryOffsetY = 0.dp
         val secondaryOffsetY = lerp(76.dp + 28.dp, 6.dp, controlT)
+        val expandedControlsFade = (1f - ((p - 1f) / 0.45f)).coerceIn(0f, 1f)
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(170.dp)
                 .offset(y = controlY - 8.dp)
+                .graphicsLayer { alpha = expandedControlsFade }
         ) {
             AnimatedShuffleIcon(
                 isShuffle = isShuffle,
