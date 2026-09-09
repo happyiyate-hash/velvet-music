@@ -450,17 +450,30 @@ fun PlayerSheet(
                     } else Modifier
                 )
         ) {
-            TrackArtworkImage(track = track, contentDescription = track.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            // Keep the real artwork at its normal height. The remaining fade depth is
+            // transparent space over the SAME dynamic background, so there is no hard edge.
+            Box(
+                modifier = Modifier
+                    .width(artWidth)
+                    .height(artHeight)
+            ) {
+                TrackArtworkImage(
+                    track = track,
+                    contentDescription = track.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             Box(
                 modifier = Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
                             0.00f to Color.Transparent,
-                            0.56f to Color.Transparent,
-                            0.68f to themeColors.bgMidLower.copy(alpha = 0.08f),
-                            0.76f to themeColors.bgMidLower.copy(alpha = 0.22f),
-                            0.84f to themeColors.bgBottom.copy(alpha = 0.44f),
-                            0.92f to themeColors.bgBottom.copy(alpha = 0.72f),
+                            0.54f to Color.Transparent,
+                            0.64f to Color.Transparent,
+                            0.72f to themeColors.bgMidLower.copy(alpha = 0.10f),
+                            0.80f to themeColors.bgBottom.copy(alpha = 0.30f),
+                            0.89f to themeColors.bgBottom.copy(alpha = 0.62f),
                             1.00f to themeColors.bgBottom.copy(alpha = 0.96f)
                         )
                     )
