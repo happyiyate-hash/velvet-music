@@ -18,12 +18,8 @@ new = '''        val baseArtWidth = (totalWidth - 48.dp).coerceAtLeast(180.dp)
 if old not in s:
     raise SystemExit('base artwork geometry not found')
 s = s.replace(old, new, 1)
-
-# Anything positioned below the artwork must use the actual rectangular height.
 s = s.replace('val baseTitleY = baseArtY + baseArtSize + 16.dp', 'val baseTitleY = baseArtY + baseArtHeight + 16.dp', 1)
 
-# Expanded square/landscape artwork uses the same natural aspect ratio. A tall image can
-# still be capped so it does not consume the entire player below the intended artwork area.
 old = '''        val naturalExpandedHeight = if (isTallArtwork) {
             (totalWidth / artworkAspectRatio).coerceAtLeast(baseArtSize)
         } else {
@@ -36,7 +32,6 @@ if old not in s:
     raise SystemExit('expanded artwork geometry not found')
 s = s.replace(old, new, 1)
 
-# Interpolate the actual rectangular width/height from rest to expanded state.
 old = '''            artWidth = lerp(baseArtSize, expArtWidth, t)
             artHeight = lerp(baseArtSize, expArtHeight, t)'''
 new = '''            artWidth = lerp(baseArtWidth, expArtWidth, t)
@@ -45,8 +40,8 @@ if old not in s:
     raise SystemExit('artwork interpolation not found')
 s = s.replace(old, new, 1)
 
-# The fade must be a sibling of the artwork, not a child of the moving artwork box. This
-# keeps it anchored to the expanded screen position while the picture moves during collapse.
+# Move the fade outside the moving artwork container so it stays anchored to the expanded
+# screen position while the image itself moves during collapse.
 start = s.find('        // 2. SINGLE PHYSICAL ARTWORK INSTANCE.')
 if start < 0:
     raise SystemExit('artwork section not found')
@@ -57,14 +52,12 @@ section = s[start:fade_marker]
 old_fade_start = section.find('        // Fixed expanded-state dissolve.')
 if old_fade_start < 0:
     raise SystemExit('old fade block not found')
-# Keep only the physical artwork box, then add the fixed sibling fade after it.
 art_section = section[:old_fade_start]
-# Remove the temporary unused fade-depth declaration if present.
 art_section = art_section.replace('        val artFadeDepth = 0.dp\n', '')
 new_fade = '''        // Fixed expanded-state dissolve. It is deliberately OUTSIDE the moving artwork
         // box, so during collapse the picture leaves this area while the fade remains stable.
-        // Resting/mini states have no fade. When expanded, the final ~20-24% of the artwork
-        // dissolves strongly into the player background without changing image height.
+        // Resting/mini states have no fade. In expanded mode, the final ~24% dissolves
+        // strongly into the player background without changing image height.
         val artworkFadeAlpha = when {
             p < 0.30f -> 0f
             p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)
@@ -94,11 +87,8 @@ new_fade = '''        // Fixed expanded-state dissolve. It is deliberately OUTSI
         }
 
 '''
-# Ensure the fade is inserted outside the artwork Box but still inside BoxWithConstraints.
-# The existing art_section ends immediately after the artwork container's closing brace.
 s = s[:start] + art_section + new_fade + s[fade_marker:]
 
-# Put the moving waveform/progress above the fade so the scrubber remains crisp in expanded mode.
 old = '''                modifier = Modifier
                     .offset(x = 16.dp, y = progressHostY)
                     .width(totalWidth - 32.dp)'''
@@ -110,7 +100,6 @@ if old not in s:
     raise SystemExit('progress modifier not found')
 s = s.replace(old, new, 1)
 
-# Slightly brighter, still hue-preserving dynamic background.
 old = '''            red = (extractedBg.red * 1.30f + 0.035f).coerceAtMost(1f),
             green = (extractedBg.green * 1.30f + 0.035f).coerceAtMost(1f),
             blue = (extractedBg.blue * 1.30f + 0.035f).coerceAtMost(1f),'''
