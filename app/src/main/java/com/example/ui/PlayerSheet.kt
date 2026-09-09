@@ -605,15 +605,13 @@ fun PlayerSheet(
         val controlY = lerp(baseControlsY, expControlsY, controlT)
         val centerX = totalWidth / 2
 
-        val baseCenterSpacing = 80.dp
         val basePlayX = centerX - 38.dp
-        val basePrevX = basePlayX - 50.dp
-        val baseNextX = basePlayX + 130.dp
+        val basePrevX = basePlayX - 42.dp
+        val baseNextX = basePlayX + 122.dp
 
-        val expandedCenterSpacing = 84.dp
         val expandedPlayX = centerX - 38.dp
         val expandedPrevX = expandedPlayX - 46.dp
-        val expandedNextX = expandedPlayX + 122.dp
+        val expandedNextX = expandedPlayX + 92.dp
         val expandedShuffleX = 12.dp
         val expandedRepeatX = totalWidth - 64.dp
 
