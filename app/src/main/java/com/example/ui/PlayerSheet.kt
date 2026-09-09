@@ -876,7 +876,6 @@ fun PlayerSheet(
                 }
             }
         }
-    }
 
         // 7. THREE-DOT SONG ACTION BOTTOM SHEET
         if (showActionSheet) {
