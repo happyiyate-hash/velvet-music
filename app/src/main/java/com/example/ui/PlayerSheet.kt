@@ -203,10 +203,20 @@ fun PlayerSheet(
 
     val queueListState = rememberLazyListState()
 
+    // Pure dynamic artwork color for the entire PlayerSheet surface.
+    // This is a direct 1.0-alpha color assignment: no Material surface, white/gray tint,
+    // darkBackground blend, or translucent layer is placed underneath it.
+    val targetPlayerBackground = themeColors.accent
+    val animatedPlayerBackground by animateColorAsState(
+        targetValue = targetPlayerBackground,
+        animationSpec = tween(650, easing = FastOutSlowInEasing),
+        label = "player_background_color"
+    )
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(themeColors.darkBackground)
+            .background(animatedPlayerBackground)
             .testTag("full_player_sheet")
     ) {
         val totalHeight = maxHeight
@@ -349,39 +359,6 @@ fun PlayerSheet(
             }
         }
 
-        // Dynamic PlayerSheet background: derive a deep, rich gradient directly from
-        // the artwork-extracted palette. The color is animated when the track/artwork changes
-        // so the surface never snaps back to a neutral Material background.
-        val extractedBg = themeColors.darkBackground
-        val targetBackgroundTop = Color(
-            red = (extractedBg.red * 0.72f).coerceIn(0f, 1f),
-            green = (extractedBg.green * 0.72f).coerceIn(0f, 1f),
-            blue = (extractedBg.blue * 0.72f).coerceIn(0f, 1f),
-            alpha = 1f
-        )
-        val targetBackgroundBottom = Color(
-            red = (targetBackgroundTop.red * 0.28f).coerceIn(0f, 1f),
-            green = (targetBackgroundTop.green * 0.28f).coerceIn(0f, 1f),
-            blue = (targetBackgroundTop.blue * 0.28f).coerceIn(0f, 1f),
-            alpha = 1f
-        )
-        val animatedBackgroundTop by animateColorAsState(
-            targetValue = targetBackgroundTop,
-            animationSpec = tween(650, easing = FastOutSlowInEasing),
-            label = "player_background_top"
-        )
-        val animatedBackgroundBottom by animateColorAsState(
-            targetValue = targetBackgroundBottom,
-            animationSpec = tween(750, easing = FastOutSlowInEasing),
-            label = "player_background_bottom"
-        )
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(animatedBackgroundTop, animatedBackgroundBottom)
-                )
-            )
-        }
 
         // 1. TOP BAR: Collapse Chevron, Centered Pill, 3-dots Menu Button (fades away as artwork expands)
         if (topBarAlpha > 0f) {
