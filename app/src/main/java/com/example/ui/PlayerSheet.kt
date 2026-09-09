@@ -485,47 +485,6 @@ fun PlayerSheet(
             }
         }
 
-        // Sleek progress bar in Stage 1 below the title:
-        if (p in 0.55f..1.45f) {
-            val progAlpha = if (p <= 1.0f) ((p - 0.55f) / 0.35f).coerceIn(0f, 1f) else ((1.45f - p) / 0.35f).coerceIn(0f, 1f)
-            val progressFraction = if (track.durationMs > 0) {
-                (playbackPositionMs.toFloat() / track.durationMs.toFloat()).coerceIn(0f, 1f)
-            } else 0f
-
-            Column(
-                modifier = Modifier
-                    .offset(x = 0.dp, y = expProgressY)
-                    .width(totalWidth)
-                    .graphicsLayer { alpha = progAlpha }
-            ) {
-                LinearProgressIndicator(
-                    progress = { progressFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(1.5.dp)),
-                    color = themeColors.accent,
-                    trackColor = Color.White.copy(alpha = 0.12f)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = formatTrackDuration(playbackPositionMs),
-                        fontSize = 10.5.sp,
-                        color = Color.White.copy(alpha = 0.55f)
-                    )
-                    Text(
-                        text = formatTrackDuration(track.durationMs),
-                        fontSize = 10.5.sp,
-                        color = Color.White.copy(alpha = 0.55f)
-                    )
-                }
-            }
-        }
-
         // 4. COMPACT CONTROLS IN STAGE 2 (Play/Pause & Collapse chevron next to compact header)
         if (compactControlsAlpha > 0f) {
             Row(
