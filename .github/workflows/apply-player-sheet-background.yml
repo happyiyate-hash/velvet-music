@@ -1,0 +1,25 @@
+name: Apply PlayerSheet background gradient
+
+on:
+  push:
+    paths:
+      - 'scripts/player_sheet_background_gradient.py'
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply background patch
+        run: python3 scripts/player_sheet_background_gradient.py
+      - name: Commit background patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example/ui/PlayerSheet.kt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Bind PlayerSheet to animated dynamic artwork gradient'
+          git push
