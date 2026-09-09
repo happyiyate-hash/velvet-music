@@ -234,12 +234,14 @@ fun PlayerSheet(
         val topBarHeight = 44.dp
         val baseUpNextY = totalHeight - insetsBottom - 46.dp
         val availableHeight = (baseUpNextY - (topBarY + topBarHeight)).coerceAtLeast(400.dp)
-        val baseArtSize = (totalWidth - 48.dp).coerceAtMost(availableHeight * 0.44f)
-        val baseArtX = (totalWidth - baseArtSize) / 2
+        val baseArtWidth = (totalWidth - 48.dp).coerceAtLeast(180.dp)
+        val naturalBaseArtHeight = baseArtWidth / artworkAspectRatio
+        val baseArtHeight = naturalBaseArtHeight.coerceAtMost(availableHeight * 0.52f)
+        val baseArtX = (totalWidth - baseArtWidth) / 2
         val baseArtY = topBarY + topBarHeight + 18.dp
-        val baseArtCorner = 24.dp
+        val baseArtCorner = 14.dp
         val baseTitleX = 24.dp
-        val baseTitleY = baseArtY + baseArtSize + 16.dp
+        val baseTitleY = baseArtY + baseArtHeight + 16.dp
         val baseWaveformY = baseTitleY + 66.dp + 14.dp
         val baseControlsY = baseWaveformY + 52.dp + 44.dp
         val baseShuffleY = baseControlsY + 76.dp + 22.dp
@@ -249,11 +251,7 @@ fun PlayerSheet(
         // determines the expanded image height, capped to a sensible player region.
         val expArtY = 0.dp
         val expArtWidth = totalWidth
-        val naturalExpandedHeight = if (isTallArtwork) {
-            (totalWidth / artworkAspectRatio).coerceAtLeast(baseArtSize)
-        } else {
-            baseArtSize
-        }
+        val naturalExpandedHeight = totalWidth / artworkAspectRatio
         val expArtHeight = naturalExpandedHeight.coerceAtMost(totalHeight * 0.78f)
         val expArtX = 0.dp
         val expArtCorner = 0.dp
@@ -279,8 +277,8 @@ fun PlayerSheet(
         val artCorner: androidx.compose.ui.unit.Dp
         if (p <= 1f) {
             val t = p.coerceIn(0f, 1f)
-            artWidth = lerp(baseArtSize, expArtWidth, t)
-            artHeight = lerp(baseArtSize, expArtHeight, t)
+            artWidth = lerp(baseArtWidth, expArtWidth, t)
+            artHeight = lerp(baseArtHeight, expArtHeight, t)
             artX = lerp(baseArtX, expArtX, t)
             artY = lerp(baseArtY, expArtY, t)
             artCorner = lerp(baseArtCorner, expArtCorner, t)
@@ -353,9 +351,9 @@ fun PlayerSheet(
         // Keep the upper area brighter and let the bottom fall off slightly darker.
         val extractedBg = themeColors.darkBackground
         val playerBackgroundTop = Color(
-            red = (extractedBg.red * 1.30f + 0.035f).coerceAtMost(1f),
-            green = (extractedBg.green * 1.30f + 0.035f).coerceAtMost(1f),
-            blue = (extractedBg.blue * 1.30f + 0.035f).coerceAtMost(1f),
+            red = (extractedBg.red + (1f - extractedBg.red) * 0.12f).coerceAtMost(1f),
+            green = (extractedBg.green + (1f - extractedBg.green) * 0.12f).coerceAtMost(1f),
+            blue = (extractedBg.blue + (1f - extractedBg.blue) * 0.12f).coerceAtMost(1f),
             alpha = 1f
         )
         val playerBackgroundBottom = Color(
@@ -431,7 +429,6 @@ fun PlayerSheet(
         // 2. SINGLE PHYSICAL ARTWORK INSTANCE.
         // The artwork keeps its normal height. Only its bottom is dissolved into the same
         // dynamic page surface, beginning around the lower 60% rather than at the hard edge.
-        val artFadeDepth = 0.dp
         Box(
             modifier = Modifier
                 .offset(x = artX, y = artY)
@@ -479,43 +476,37 @@ fun PlayerSheet(
                 )
             }
 
-        // Fixed expanded-state dissolve. The fade is not attached to the shrinking image.
-        // It starts only once the user has meaningfully opened the artwork, reaches full
-        // strength near the expanded state, and remains painted in that same place while
-        // the artwork moves back toward the compact thumbnail.
+        // Fixed expanded-state dissolve. It is deliberately OUTSIDE the moving artwork
+        // box, so during collapse the picture leaves this area while the fade remains stable.
+        // Resting/mini states have no fade. In expanded mode, the final ~24% dissolves
+        // strongly into the player background without changing image height.
         val artworkFadeAlpha = when {
-            // Clean resting state: no dissolve.
             p < 0.30f -> 0f
-            // Fade in as the artwork first opens.
             p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)
-            // Once established, keep the shadow stable through the entire collapse.
             else -> 1f
         }
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
-                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.48f))
+                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
                     .width(expArtWidth)
-                    .height(expArtHeight * 0.52f)
+                    .height(expArtHeight * 0.24f)
                     .graphicsLayer { alpha = artworkFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.10f to playerBackgroundTop.copy(alpha = 0.05f),
-                                0.24f to playerBackgroundTop.copy(alpha = 0.16f),
-                                0.40f to playerBackgroundTop.copy(alpha = 0.38f),
-                                0.56f to playerBackgroundTop.copy(alpha = 0.62f),
-                                0.72f to playerBackgroundBottom.copy(alpha = 0.82f),
-                                0.86f to playerBackgroundBottom.copy(alpha = 0.95f),
+                                0.16f to playerBackgroundTop.copy(alpha = 0.12f),
+                                0.34f to playerBackgroundTop.copy(alpha = 0.34f),
+                                0.52f to playerBackgroundBottom.copy(alpha = 0.62f),
+                                0.72f to playerBackgroundBottom.copy(alpha = 0.86f),
                                 1.00f to playerBackgroundBottom
                             )
                         )
                     )
+                    .zIndex(1f)
             )
         }
-
-                    }
 
         // 3. SONG TITLE & ARTIST. The first phase keeps the long title directly over the artwork.
         Column(
@@ -623,6 +614,7 @@ fun PlayerSheet(
                 modifier = Modifier
                     .offset(x = 16.dp, y = progressHostY)
                     .width(totalWidth - 32.dp)
+                    .zIndex(2f)
             )
         }
 
