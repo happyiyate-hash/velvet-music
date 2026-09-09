@@ -108,4 +108,4 @@ jobs:
           draft: false
           prerelease: false
 
-# Rebuild against the latest PlayerSheet control-alignment and artwork-fade correction.
+# Rebuild against the latest PlayerSheet v7 transition cleanup.
