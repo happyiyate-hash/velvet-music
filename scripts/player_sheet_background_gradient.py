@@ -1,18 +1,15 @@
 from pathlib import Path
-import re
 import subprocess
 
 p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 reference = '64168ed5a67d52f116197def0f1873d065f51305'
 
-# Always start from the known-good PlayerSheet so this workflow changes only the requested
-# background/brush behavior and does not accumulate previous patch attempts.
+# Start from the known-good PlayerSheet every time so this automation never stacks old patches.
 subprocess.run(['git', 'checkout', reference, '--', str(p)], check=True)
 s = p.read_text(encoding='utf-8')
 
-# Velvet now uses ONE artwork-derived surface color from the top of PlayerSheet to the bottom.
-# ArtworkColorExtractor supplies that same color through bgTop/bgMidUpper/bgMidLower/bgBottom.
-# Repeating the same value here removes every top-to-bottom brightness shift.
+# Use one artwork-derived surface color from top to bottom. ArtworkColorExtractor now exposes
+# that same surface through all four background fields and darkBackground.
 old_gradient = '''Brush.verticalGradient(
                     colors = listOf(
                         themeColors.bgTop,
@@ -33,34 +30,24 @@ new_gradient = '''Brush.verticalGradient(
                     startY = 0f,
                     endY = canvasHeight
                 )'''
-
 if old_gradient not in s:
     raise SystemExit('Expected PlayerSheet background gradient was not found; refusing to modify the file.')
 s = s.replace(old_gradient, new_gradient, 1)
 
-# Remove the extra atmospheric bloom from the page surface. Even a subtle bloom would create a
-# second brightness/color layer, defeating the purpose of a completely uniform background.
-radial_pattern = re.compile(
-    r'''\n            drawRect\(\n                brush = Brush\.radialGradient\(.*?\n                \)\n            \)''',
-    re.DOTALL,
-)
-s, removed = radial_pattern.subn('', s, count=1)
-if removed != 1:
-    raise SystemExit('Expected atmospheric radial background layer was not found; refusing to modify the file.')
+# Disable the separate atmospheric bloom so the page surface is genuinely uniform in brightness.
+# Keep the renderer structure intact, but make every bloom stop transparent.
+bloom_opaque = 'themeColors.atmosphericBloom.copy(alpha = 0.35f)'
+bloom_soft = 'themeColors.atmosphericBloom.copy(alpha = 0.12f)'
+if bloom_opaque not in s or bloom_soft not in s:
+    raise SystemExit('Expected atmospheric bloom stops were not found; refusing to modify the file.')
+s = s.replace(bloom_opaque, 'Color.Transparent', 1)
+s = s.replace(bloom_soft, 'Color.Transparent', 1)
 
-# The artwork fade/brush must use the same surface color too. Keep the existing fade geometry,
-# but replace every independent bgBottom reference in the artwork fade with darkBackground.
-fade_marker = 'val artworkFadeAlpha = when {'
-fade_start = s.find(fade_marker)
-if fade_start == -1:
-    raise SystemExit('Artwork fade section was not found; refusing to modify the file.')
-
-# Only replace references after the fade starts so unrelated controls/colors are untouched.
-fade_tail = s[fade_start:]
-if 'themeColors.bgBottom' not in fade_tail:
-    raise SystemExit('Expected artwork fade color reference was not found; refusing to modify the file.')
-fade_tail = fade_tail.replace('themeColors.bgBottom', 'themeColors.darkBackground')
-s = s[:fade_start] + fade_tail
+# The artwork brush must use the exact same surface color as the page. Because the page is now
+# uniform, its fade can safely use darkBackground at every stop without creating a dark strip.
+if 'themeColors.bgBottom' not in s:
+    raise SystemExit('Expected artwork brush color reference was not found; refusing to modify the file.')
+s = s.replace('themeColors.bgBottom', 'themeColors.darkBackground')
 
 p.write_text(s, encoding='utf-8')
 print('Applied uniform artwork-derived PlayerSheet background and matching artwork brush.')
