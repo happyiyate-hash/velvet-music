@@ -7,6 +7,7 @@ on:
       - 'scripts/player_sheet_queue_patch.py'
       - 'scripts/player_sheet_queue_drag_patch.py'
       - 'scripts/player_sheet_swipe_action_patch.py'
+      - 'scripts/fix_swipe_action_source.py'
       - 'scripts/queue_drag_trigger.py'
       - 'scripts/fix_queue_drag_brace.py'
       - 'scripts/fix_queue_drag_compile.py'
@@ -28,6 +29,7 @@ jobs:
           python3 scripts/fix_queue_drag_brace.py
           python3 scripts/fix_queue_drag_compile.py
           python3 scripts/player_sheet_swipe_action_patch.py
+          python3 scripts/fix_swipe_action_source.py
       - name: Commit PlayerSheet patches
         run: |
           git config user.name 'github-actions[bot]'
