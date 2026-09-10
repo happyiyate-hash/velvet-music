@@ -499,7 +499,7 @@ fun PlayerSheet(
 
         // Fixed expanded-state dissolve. It is deliberately OUTSIDE the moving artwork
         // box, so during collapse the picture leaves this area while the fade remains stable.
-        // Resting/mini states have no fade. In expanded mode, the final ~24% dissolves
+        // Resting/mini states have no fade. In expanded mode, the final ~35% dissolves
         // strongly into the player background without changing image height.
         val artworkFadeAlpha = when {
             p < 0.30f -> 0f
@@ -509,18 +509,17 @@ fun PlayerSheet(
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
-                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
+                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.65f))
                     .width(expArtWidth)
-                    .height(expArtHeight * 0.24f)
+                    .height(expArtHeight * 0.35f)
                     .graphicsLayer { alpha = artworkFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.16f to themeColors.bgBottom.copy(alpha = 0.12f),
-                                0.34f to themeColors.bgBottom.copy(alpha = 0.34f),
-                                0.52f to themeColors.bgBottom.copy(alpha = 0.62f),
-                                0.72f to themeColors.bgBottom.copy(alpha = 0.86f),
+                                0.35f to themeColors.bgBottom.copy(alpha = 0.25f),
+                                0.60f to themeColors.bgBottom.copy(alpha = 0.50f),
+                                0.82f to themeColors.bgBottom.copy(alpha = 0.85f),
                                 1.00f to themeColors.bgBottom
                             )
                         )
