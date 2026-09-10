@@ -49,5 +49,38 @@ if 'themeColors.bgBottom' not in s:
     raise SystemExit('Expected artwork brush color reference was not found; refusing to modify the file.')
 s = s.replace('themeColors.bgBottom', 'themeColors.darkBackground')
 
+# Add a vertically flipped copy of the existing artwork brush at the absolute top of the screen.
+# The fully opaque/end color is at y=0 (status-bar edge), then it fades downward into the artwork.
+# This mirrors the existing bottom brush without changing any artwork geometry or controls.
+anchor = '''        if (artworkFadeAlpha > 0f) {'''
+if anchor not in s:
+    raise SystemExit('Expected bottom artwork brush block was not found; refusing to modify the file.')
+
+top_brush = '''        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
+'''
+s = s.replace(anchor, top_brush + anchor, 1)
+
 p.write_text(s, encoding='utf-8')
-print('Applied uniform artwork-derived PlayerSheet background and matching artwork brush.')
+print('Applied uniform artwork-derived PlayerSheet background, matching bottom brush, and mirrored top brush.')
