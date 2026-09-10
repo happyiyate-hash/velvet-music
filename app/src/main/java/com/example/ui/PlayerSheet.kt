@@ -517,11 +517,9 @@ fun PlayerSheet(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.30f to themeColors.bgBottom.copy(alpha = 0.22f),
-                                0.50f to themeColors.bgBottom.copy(alpha = 0.50f),
-                                0.70f to themeColors.bgBottom.copy(alpha = 0.80f),
-                                0.88f to themeColors.bgBottom.copy(alpha = 0.96f),
-                                0.95f to themeColors.bgBottom,
+                                0.35f to themeColors.bgBottom.copy(alpha = 0.25f),
+                                0.60f to themeColors.bgBottom.copy(alpha = 0.50f),
+                                0.82f to themeColors.bgBottom.copy(alpha = 0.85f),
                                 1.00f to themeColors.bgBottom
                             )
                         )
