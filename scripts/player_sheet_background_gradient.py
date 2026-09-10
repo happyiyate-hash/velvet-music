@@ -62,4 +62,4 @@ if '0.86f to themeColors.darkBackground.copy(alpha = 0.86f)' not in s:
     s = s.replace(anchor, top_brush + anchor, 1)
 
 p.write_text(s, encoding='utf-8')
-print('Applied uniform artwork-derived background and mirrored top brush.')
+print('Applied uniform artwork-derived background and mirrored top brush; workflow trigger for queue patch.')
