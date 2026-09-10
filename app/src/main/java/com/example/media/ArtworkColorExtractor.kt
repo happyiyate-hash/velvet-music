@@ -9,7 +9,6 @@ import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import com.example.model.Track
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -18,14 +17,17 @@ data class TrackThemeColors(
     val secondary: Color,
     val accent: Color,
     val glow: Color,
+    // One uniform artwork-derived surface color is used by the PlayerSheet from top to bottom.
+    // Keeping this as a named surface color prevents the artwork fade/brush from becoming a
+    // separate darker layer during drag.
     val darkBackground: Color = Color(0xFF14080D),
-    val atmosphericBloom: Color = Color(0xFF42101C),
+    val atmosphericBloom: Color = Color.Transparent,
     val playPauseCircle: Color = Color(0xFF5A1422),
     val playPauseBorder: Color = Color(0xFF8C1E34).copy(alpha = 0.40f),
-    val bgTop: Color = Color(0xFF38101A),
-    val bgMidUpper: Color = Color(0xFF280B13),
+    val bgTop: Color = Color(0xFF1C070D),
+    val bgMidUpper: Color = Color(0xFF1C070D),
     val bgMidLower: Color = Color(0xFF1C070D),
-    val bgBottom: Color = Color(0xFF130509),
+    val bgBottom: Color = Color(0xFF1C070D),
     val playPauseGradTop: Color = Color(0xFF5E1B2C),
     val playPauseGradBottom: Color = Color(0xFF2E0C15)
 )
@@ -35,7 +37,7 @@ object ArtworkColorExtractor {
     /**
      * Dynamically samples the artwork of a track (from drawable resource or content URI)
      * and extracts the dominant color palette so the background automatically reflects
-     * the exact color of the song's picture (e.g., vibrant blue for blue artwork, crimson for red, etc.).
+     * the color of the song's picture.
      */
     fun extractColors(context: Context, track: Track): TrackThemeColors {
         val bitmap = loadThumbnailBitmap(context, track)
@@ -45,7 +47,6 @@ object ArtworkColorExtractor {
                 return generateThemePalette(sampled)
             }
         }
-        // Fallback to track's pre-configured dominant color
         return generateThemePalette(track.dominantColor)
     }
 
@@ -104,23 +105,17 @@ object ArtworkColorExtractor {
                     retriever.setDataSource(context, uri)
                     val raw = retriever.embeddedPicture
                     if (raw != null) {
-                        val options = BitmapFactory.Options().apply {
-                            inSampleSize = 4
-                        }
+                        val options = BitmapFactory.Options().apply { inSampleSize = 4 }
                         return BitmapFactory.decodeByteArray(raw, 0, raw.size, options)
                     }
                 } finally {
                     retriever.release()
                 }
             } else if (track.coverResId != 0) {
-                val options = BitmapFactory.Options().apply {
-                    inSampleSize = 8
-                }
+                val options = BitmapFactory.Options().apply { inSampleSize = 8 }
                 return BitmapFactory.decodeResource(context.resources, track.coverResId, options)
             }
-        } catch (_: Exception) {
-            // Graceful fallback
-        }
+        } catch (_: Exception) {}
         return null
     }
 
@@ -138,7 +133,6 @@ object ArtworkColorExtractor {
             var maxVibrancy = -1f
             var vibrantColor: Color? = null
 
-            // Sample across a grid
             val stepX = max(1, width / 12)
             val stepY = max(1, height / 12)
 
@@ -152,7 +146,6 @@ object ArtworkColorExtractor {
                     val g = (pixel shr 8) and 0xFF
                     val b = pixel and 0xFF
 
-                    // Ignore extreme near-blacks and near-whites for dominant chromatic extraction
                     val brightness = (r * 0.299f + g * 0.587f + b * 0.114f)
                     if (brightness in 35.0..225.0) {
                         totalR += r
@@ -160,7 +153,6 @@ object ArtworkColorExtractor {
                         totalB += b
                         sampleCount++
 
-                        // Measure chromatic saturation (vibrancy)
                         val maxC = max(r, max(g, b)).toFloat()
                         val minC = min(r, min(g, b)).toFloat()
                         val saturation = if (maxC > 0) (maxC - minC) / maxC else 0f
@@ -172,9 +164,7 @@ object ArtworkColorExtractor {
                 }
             }
 
-            if (vibrantColor != null && maxVibrancy > 0.28f) {
-                return vibrantColor
-            }
+            if (vibrantColor != null && maxVibrancy > 0.28f) return vibrantColor
 
             if (sampleCount > 0) {
                 val avgR = (totalR / sampleCount).toInt().coerceIn(0, 255)
@@ -182,9 +172,7 @@ object ArtworkColorExtractor {
                 val avgB = (totalB / sampleCount).toInt().coerceIn(0, 255)
                 return Color(avgR, avgG, avgB)
             }
-        } catch (_: Exception) {
-            // Fallback
-        }
+        } catch (_: Exception) {}
         return null
     }
 
@@ -194,25 +182,27 @@ object ArtworkColorExtractor {
         val hue = hsv[0]
         val sat = hsv[1].coerceIn(0.45f, 0.95f)
 
-        // Dominant rich color
         val dominant = Color.hsv(hue, sat, 0.75f)
-        // Deep secondary moody tone
         val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
-        // Vivid luminous accent for active waveform bars, progress bead, and active shuffle/repeat
         val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
-        // Ambient soft glow
         val glow = Color.hsv(hue, sat, 0.88f)
 
-        // Atmosphere gradient: top warm atmosphere -> deep warm tone -> dark burnt-hue tone -> very dark hue tone (visibly preserving hue all the way down, never pure black)
-        val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0.40f, 0.82f), 0.32f)
-        val bgMidUpper = Color.hsv(hue, (sat * 0.65f).coerceIn(0.36f, 0.76f), 0.22f)
-        val bgMidLower = Color.hsv(hue, (sat * 0.60f).coerceIn(0.32f, 0.70f), 0.15f)
-        val bgBottom = Color.hsv(hue, (sat * 0.55f).coerceIn(0.28f, 0.65f), 0.09f)
+        // Single uniform artwork-derived background surface.
+        // This is the old mid-lower mood/tone, chosen as the stable full-screen surface so
+        // there is no top-to-bottom brightness shift and no darker bottom endpoint.
+        val backgroundSurface = Color.hsv(
+            hue,
+            (sat * 0.60f).coerceIn(0.32f, 0.70f),
+            0.15f
+        )
 
-        val darkBackground = bgBottom
-        val atmosphericBloom = Color.hsv(hue, (sat * 0.78f).coerceIn(0.45f, 0.88f), 0.40f)
+        val bgTop = backgroundSurface
+        val bgMidUpper = backgroundSurface
+        val bgMidLower = backgroundSurface
+        val bgBottom = backgroundSurface
+        val darkBackground = backgroundSurface
+        val atmosphericBloom = Color.Transparent
 
-        // Premium gradient circle matching the atmospheric background tones with clean glassmorphic depth
         val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
         val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
         val playPauseCircle = playPauseGradTop
