@@ -37,18 +37,24 @@ if 'val compactBrushFadeAlpha = when' not in s:
         raise SystemExit('Artwork fade anchor not found')
     s = s.replace(brush_anchor, brush_new, 1)
 
-# All fixed brush layers use artworkFadeAlpha. Multiply by the stage-2 fade so every
-# stacked brush layer disappears together without changing the artwork itself.
 s = s.replace(
     '.graphicsLayer { alpha = artworkFadeAlpha }',
     '.graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }',
 )
 
-# Repair the exact queue-row tail corruption introduced by the swipe patch. Do not use a
-# broad regex: remove only the known orphaned fragment before AnimatedPlayingBars.
+# Repair only the known malformed queue-row comment/annotation boundary. This is deliberately
+# exact rather than regex-based so unrelated source cannot be rewritten.
+for bad in ('* Cl@Composable', '* duratio@Composable'):
+    s = s.replace(
+        bad + '\nprivate fun UpNextTrackRow',
+        '*/\n@Composable\nprivate fun UpNextTrackRow',
+        1,
+    )
+
+# Repair the exact orphaned fragment before AnimatedPlayingBars if an earlier patch left it.
 orphan = '''\nound(Color.White.copy(alpha = .92f)))\n            }\n        }\n    }\n}\n\n@Composable\nprivate fun AnimatedPlayingBars'''
 if orphan in s:
     s = s.replace(orphan, '\n@Composable\nprivate fun AnimatedPlayingBars', 1)
 
 p.write_text(s, encoding='utf-8')
-print('Fixed queue swipe/drag compile errors, repaired queue-row tail, and added compact-state brush fade.')
+print('Fixed queue swipe/drag compile errors, repaired queue-row annotation/tail, and added compact-state brush fade.')
