@@ -140,21 +140,14 @@ fun VelvetApp() {
         }
     }
 
-    // Startup flow:
-    // 1. Immediately read cached tracks and display them (<5ms)
-    // 2. Quietly scan MediaStore in the background and update if changes exist
     LaunchedEffect(Unit) {
         audioEngine.bindMediaSession(context)
-
-        // Step 1: Instant cache load
         val cached = withContext(Dispatchers.IO) {
             DeviceMediaManager.getCachedTracks(context)
         }
         if (cached.isNotEmpty()) {
             audioEngine.setDeviceTracks(cached)
         }
-
-        // Step 2: Background scan
         if (DeviceMediaManager.hasAudioPermission(context)) {
             val loaded = withContext(Dispatchers.IO) {
                 DeviceMediaManager.loadDeviceTracks(context)
@@ -287,6 +280,9 @@ fun VelvetApp() {
                 isCachedOffline = offlineCachedIds.contains(currentTrack.id),
                 queueTracks = allTracks,
                 onSelectQueueTrack = { track -> audioEngine.playTrack(track) },
+                onPlayNextTrack = { track ->
+                    audioEngine.queueNext(track)
+                },
                 onTogglePlayPause = { audioEngine.togglePlayPause() },
                 onSeekTo = { pos: Long -> audioEngine.seekTo(pos) },
                 onSkipNext = { audioEngine.playNext() },
