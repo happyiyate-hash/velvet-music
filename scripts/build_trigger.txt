@@ -1,1 +1,2 @@
 PlayerSheet stabilization verified; trigger a clean release build after the safe repair commit.
+Visualizer compile fix applied; run release build.
