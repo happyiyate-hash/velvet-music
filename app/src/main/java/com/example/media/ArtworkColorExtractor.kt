@@ -147,7 +147,6 @@ object ArtworkColorExtractor {
                     val b = pixel and 0xFF
                     val brightness = r * 0.299f + g * 0.587f + b * 0.114f
                     if (brightness < 18f || brightness > 245f) continue
-
                     val qr = r shr 4
                     val qg = g shr 4
                     val qb = b shr 4
@@ -159,7 +158,6 @@ object ArtworkColorExtractor {
                 }
             }
             if (bins.isEmpty()) return null
-
             val bestKey = bins.keys.maxWithOrNull(
                 compareBy<Int> { bins[it] ?: 0L }
                     .thenBy { key ->
@@ -172,7 +170,6 @@ object ArtworkColorExtractor {
                         if (maxC > 0f) (maxC - minC) / maxC else 0f
                     }
             ) ?: return null
-
             val count = bins[bestKey] ?: return null
             return Color(
                 (sumR[bestKey]!! / count).toInt().coerceIn(0, 255),
@@ -193,24 +190,24 @@ object ArtworkColorExtractor {
         // Dominant rich color
         val dominant = Color.hsv(hue, sat, 0.75f)
         // Deep secondary moody tone
-        val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
+        val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0f, 1f), 0.16f)
         // Vivid luminous accent for active waveform bars, progress bead, and active shuffle/repeat
-        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
+        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0f, 1f), 0.98f)
         // Ambient soft glow
         val glow = Color.hsv(hue, sat, 0.88f)
 
         // Atmosphere gradient: top warm atmosphere -> deep warm tone -> dark burnt-hue tone -> very dark hue tone (visibly preserving hue all the way down, never pure black)
-        val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0.40f, 0.82f), 0.32f)
-        val bgMidUpper = Color.hsv(hue, (sat * 0.65f).coerceIn(0.36f, 0.76f), 0.22f)
-        val bgMidLower = Color.hsv(hue, (sat * 0.60f).coerceIn(0.32f, 0.70f), 0.15f)
-        val bgBottom = Color.hsv(hue, (sat * 0.55f).coerceIn(0.28f, 0.65f), 0.09f)
+        val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0f, 1f), 0.32f)
+        val bgMidUpper = Color.hsv(hue, (sat * 0.65f).coerceIn(0f, 1f), 0.22f)
+        val bgMidLower = Color.hsv(hue, (sat * 0.60f).coerceIn(0f, 1f), 0.15f)
+        val bgBottom = Color.hsv(hue, (sat * 0.55f).coerceIn(0f, 1f), 0.09f)
 
         val darkBackground = bgBottom
-        val atmosphericBloom = Color.hsv(hue, (sat * 0.78f).coerceIn(0.45f, 0.88f), 0.40f)
+        val atmosphericBloom = Color.hsv(hue, (sat * 0.78f).coerceIn(0f, 1f), 0.40f)
 
         // Premium gradient circle matching the atmospheric background tones with clean glassmorphic depth
-        val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
-        val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
+        val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0f, 1f), 0.48f)
+        val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0f, 1f), 0.24f)
         val playPauseCircle = playPauseGradTop
         val playPauseBorder = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.40f)
 
