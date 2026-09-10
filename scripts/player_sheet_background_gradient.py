@@ -6,7 +6,6 @@ reference = '64168ed5a67d52f116197def0f1873d065f51305'
 subprocess.run(['git', 'checkout', reference, '--', str(p)], check=True)
 s = p.read_text(encoding='utf-8')
 
-# Keep the already-validated uniform artwork-derived background and mirrored top brush.
 old_gradient = '''Brush.verticalGradient(
                     colors = listOf(
                         themeColors.bgTop,
@@ -68,7 +67,6 @@ top_brush = '''        if (artworkFadeAlpha > 0f) {
 '''
 s = s.replace(anchor, top_brush + anchor, 1)
 
-# Queue interaction imports.
 s = s.replace(
     'import androidx.compose.foundation.gestures.detectHorizontalDragGestures\n',
     'import androidx.compose.foundation.gestures.detectHorizontalDragGestures\nimport androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress\n'
@@ -79,13 +77,13 @@ s = s.replace(
 )
 s = s.replace('import kotlin.math.sin\n', 'import kotlin.math.sin\nimport kotlin.math.roundToInt\n')
 
-# Selected queue item can be explicitly sent to the real audio engine as Play Next.
 s = s.replace(
     '    onSelectQueueTrack: (Track) -> Unit = {},\n',
     '    onSelectQueueTrack: (Track) -> Unit = {},\n    onPlayNextTrack: (Track) -> Unit = {},\n'
 )
 
-# Preserve queue position when a track is tapped, while allowing local reorder actions.
+# Keep the queue's physical order independent of which track is currently playing.
+# This prevents a tapped track from jumping to the first row when currentTrack changes.
 old_queue_state = '''    val queueItems = remember(queueTracks, track) {
         if (queueTracks.isNotEmpty()) {
             val otherTracks = queueTracks.filter { it.id != track.id }
@@ -96,13 +94,9 @@ old_queue_state = '''    val queueItems = remember(queueTracks, track) {
     }
 
     val queueListState = rememberLazyListState()'''
-new_queue_state = '''    val queueItems = remember(queueTracks, track) {
-        if (queueTracks.isNotEmpty()) {
-            val otherTracks = queueTracks.filter { it.id != track.id }
-            listOf(track) + otherTracks
-        } else {
-            listOf(track) + com.example.model.SampleData.starterTracks.filter { it.id != track.id }
-        }
+new_queue_state = '''    val queueItems = remember(queueTracks) {
+        if (queueTracks.isNotEmpty()) queueTracks.distinctBy { it.id }
+        else com.example.model.SampleData.starterTracks.distinctBy { it.id }
     }
     var orderedQueueItems by remember(queueItems) { mutableStateOf(queueItems) }
     val queueListState = rememberLazyListState()'''
@@ -138,10 +132,12 @@ new_items = '''                    items(
                             onPlayNext = {
                                 onPlayNextTrack(queueTrack)
                                 val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
-                                if (currentIndex > 1) {
+                                val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
+                                if (currentIndex >= 0 && playingIndex >= 0 && currentIndex != playingIndex + 1) {
                                     orderedQueueItems = orderedQueueItems.toMutableList().apply {
                                         val moved = removeAt(currentIndex)
-                                        add(1, moved)
+                                        val destination = orderedQueueItems.indexOfFirst { it.id == track.id } + 1
+                                        add(destination.coerceAtMost(size), moved)
                                     }
                                 }
                             },
@@ -166,7 +162,6 @@ if old_items not in s:
     raise SystemExit('Expected queue items block was not found.')
 s = s.replace(old_items, new_items, 1)
 
-# Replace the old heavy card row with a compact, flat, gesture-driven queue row.
 start = s.index('@Composable\nprivate fun UpNextTrackRow(')
 end = s.index('\nprivate fun formatTrackDuration', start)
 new_row = r'''@Composable
@@ -183,7 +178,6 @@ private fun UpNextTrackRow(
     modifier: Modifier = Modifier
 ) {
     var swipeOffset by remember(track.id) { mutableFloatStateOf(0f) }
-    var swipeDragging by remember(track.id) { mutableStateOf(false) }
     var reordering by remember(track.id) { mutableStateOf(false) }
     val maxSwipe = 132f
     val density = LocalDensity.current
@@ -231,13 +225,9 @@ private fun UpNextTrackRow(
                 .background(if (isCurrent) accentColor.copy(alpha = 0.07f) else Color.Transparent)
                 .pointerInput(track.id) {
                     detectHorizontalDragGestures(
-                        onDragStart = { swipeDragging = true },
-                        onDragCancel = {
-                            swipeDragging = false
-                            swipeOffset = 0f
-                        },
+                        onDragStart = { },
+                        onDragCancel = { swipeOffset = 0f },
                         onDragEnd = {
-                            swipeDragging = false
                             when {
                                 swipeOffset <= -92f -> {
                                     onDelete()
@@ -252,9 +242,7 @@ private fun UpNextTrackRow(
                         },
                         onHorizontalDrag = { change, amount ->
                             change.consume()
-                            if (!reordering) {
-                                swipeOffset = (swipeOffset + amount).coerceIn(-maxSwipe, maxSwipe)
-                            }
+                            if (!reordering) swipeOffset = (swipeOffset + amount).coerceIn(-maxSwipe, maxSwipe)
                         }
                     )
                 }
@@ -285,10 +273,7 @@ private fun UpNextTrackRow(
                             .background(Color.Black.copy(alpha = 0.28f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        AnimatedPlayingBars(
-                            color = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        AnimatedPlayingBars(color = Color.White, modifier = Modifier.size(24.dp))
                     }
                 }
             }
@@ -322,10 +307,7 @@ private fun UpNextTrackRow(
                     .size(38.dp)
                     .pointerInput(track.id) {
                         detectDragGesturesAfterLongPress(
-                            onDragStart = {
-                                reordering = true
-                                swipeOffset = 0f
-                            },
+                            onDragStart = { reordering = true; swipeOffset = 0f },
                             onDragEnd = { reordering = false },
                             onDragCancel = { reordering = false },
                             onDrag = { change, dragAmount ->
@@ -388,7 +370,7 @@ private fun AnimatedPlayingBars(
         targetValue = 0.95f,
         animationSpec = androidx.compose.animation.core.infiniteRepeatable(
             animation = tween(360, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.Reverse
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
         ),
         label = "bar3"
     )
@@ -405,4 +387,4 @@ private fun AnimatedPlayingBars(
 '''
 s = s[:start] + new_row + s[end:]
 p.write_text(s, encoding='utf-8')
-print('Applied queue redesign: compact rows, white handles, tap-in-place playback, animated playing indicator, long-press reorder, swipe delete/play-next.')
+print('Applied queue redesign: compact flat rows, tighter spacing, larger sharper artwork, white handles, stable queue positions, animated playing indicator, long-press reorder, swipe delete/play-next.')
