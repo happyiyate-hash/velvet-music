@@ -108,4 +108,4 @@ jobs:
           draft: false
           prerelease: false
 
-# Clean-build trigger for the corrected pure dynamic PlayerSheet background.
+# Verification build: compile the exact restored PlayerSheet reference components and corrected artwork color extractor.
