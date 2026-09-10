@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 
+# Keep this repair pass after the generated swipe patch so the Kotlin source boundaries stay valid.
 p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = p.read_text(encoding='utf-8')
 
