@@ -41,6 +41,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Prepare Signing and Configuration
+        shell: bash
         run: |
           chmod +x gradlew
           if [ ! -f ".env" ]; then
@@ -49,27 +50,46 @@ jobs:
             else
               touch .env
             fi
-            echo "Prepared .env configuration file."
           fi
 
+          # CI signing key. This is intentionally generated for the CI APK;
+          # production Play/App signing should use a protected repository secret.
+          keytool -genkeypair -v \
+            -keystore my-upload-key.jks \
+            -storepass android \
+            -keypass android \
+            -alias upload \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Velvet Music,O=Release,C=US"
+
+          echo "Release keystore prepared."
+
       - name: Build Optimized Release APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
         run: ./gradlew clean :app:assembleRelease --stacktrace
 
-      - name: Generate and Sign Release APK
+      - name: Prepare Signed Release APK
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p build-apks
-          
-          # Find the compiled release APK
-          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          
-          # Generate a release keystore for signing
-          keytool -genkey -v -keystore release.keystore -storepass android -alias releasekey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Velvet Music,O=Release,C=US"
-          
-          # Sign the release APK using apksigner from Android SDK
-          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
-          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:android --ks-key-alias releasekey --key-pass pass:android --out build-apks/Velvet-Music.apk $RELEASE_APK
-          
-          echo "Signed Release APK generated: build-apks/Velvet-Music.apk"
+          RELEASE_APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
+          if [ -z "${RELEASE_APK}" ]; then
+            echo "Release APK was not produced."
+            exit 1
+          fi
+
+          # Gradle has already signed the release APK with the CI keystore.
+          # Verify the signature and copy it to the stable artifact name.
+          BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose "$RELEASE_APK"
+          cp "$RELEASE_APK" build-apks/Velvet-Music.apk
+          echo "Signed Release APK prepared: build-apks/Velvet-Music.apk"
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
@@ -108,4 +128,3 @@ jobs:
           files: build-apks/Velvet-Music.apk
           draft: false
           prerelease: false
-          
