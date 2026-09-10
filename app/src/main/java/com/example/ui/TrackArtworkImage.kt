@@ -34,7 +34,7 @@ fun TrackArtworkImage(
             .data(artUri)
             .crossfade(crossfade)
             .apply {
-                thumbnailSizePx?.let { size(it) }
+                thumbnailSizePx?.let { size(it, it) }
             }
             .build()
         AsyncImage(
