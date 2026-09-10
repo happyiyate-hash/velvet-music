@@ -130,69 +130,65 @@ object ArtworkColorExtractor {
             val height = bitmap.height
             if (width <= 0 || height <= 0) return null
 
-            var totalR = 0L
-            var totalG = 0L
-            var totalB = 0L
-            var sampleCount = 0
-
-            var maxVibrancy = -1f
-            var vibrantColor: Color? = null
-
-            // Sample across a grid
-            val stepX = max(1, width / 12)
-            val stepY = max(1, height / 12)
+            val bins = HashMap<Int, Long>()
+            val sumR = HashMap<Int, Long>()
+            val sumG = HashMap<Int, Long>()
+            val sumB = HashMap<Int, Long>()
+            val stepX = max(1, width / 24)
+            val stepY = max(1, height / 24)
 
             for (x in 0 until width step stepX) {
                 for (y in 0 until height step stepY) {
                     val pixel = bitmap.getPixel(x, y)
-                    val a = (pixel shr 24) and 0xFF
+                    val a = (pixel ushr 24) and 0xFF
                     if (a < 128) continue
-
-                    val r = (pixel shr 16) and 0xFF
-                    val g = (pixel shr 8) and 0xFF
+                    val r = (pixel ushr 16) and 0xFF
+                    val g = (pixel ushr 8) and 0xFF
                     val b = pixel and 0xFF
+                    val brightness = r * 0.299f + g * 0.587f + b * 0.114f
+                    if (brightness < 18f || brightness > 245f) continue
 
-                    // Ignore extreme near-blacks and near-whites for dominant chromatic extraction
-                    val brightness = (r * 0.299f + g * 0.587f + b * 0.114f)
-                    if (brightness in 35.0..225.0) {
-                        totalR += r
-                        totalG += g
-                        totalB += b
-                        sampleCount++
-
-                        // Measure chromatic saturation (vibrancy)
-                        val maxC = max(r, max(g, b)).toFloat()
-                        val minC = min(r, min(g, b)).toFloat()
-                        val saturation = if (maxC > 0) (maxC - minC) / maxC else 0f
-                        if (saturation > maxVibrancy && saturation > 0.22f) {
-                            maxVibrancy = saturation
-                            vibrantColor = Color(r, g, b)
-                        }
-                    }
+                    val qr = r shr 4
+                    val qg = g shr 4
+                    val qb = b shr 4
+                    val key = (qr shl 8) or (qg shl 4) or qb
+                    bins[key] = (bins[key] ?: 0L) + 1L
+                    sumR[key] = (sumR[key] ?: 0L) + r
+                    sumG[key] = (sumG[key] ?: 0L) + g
+                    sumB[key] = (sumB[key] ?: 0L) + b
                 }
             }
+            if (bins.isEmpty()) return null
 
-            if (vibrantColor != null && maxVibrancy > 0.28f) {
-                return vibrantColor
-            }
+            val bestKey = bins.keys.maxWithOrNull(
+                compareBy<Int> { bins[it] ?: 0L }
+                    .thenBy { key ->
+                        val count = bins[key] ?: 1L
+                        val r = (sumR[key] ?: 0L).toFloat() / count
+                        val g = (sumG[key] ?: 0L).toFloat() / count
+                        val b = (sumB[key] ?: 0L).toFloat() / count
+                        val maxC = max(r, max(g, b))
+                        val minC = min(r, min(g, b))
+                        if (maxC > 0f) (maxC - minC) / maxC else 0f
+                    }
+            ) ?: return null
 
-            if (sampleCount > 0) {
-                val avgR = (totalR / sampleCount).toInt().coerceIn(0, 255)
-                val avgG = (totalG / sampleCount).toInt().coerceIn(0, 255)
-                val avgB = (totalB / sampleCount).toInt().coerceIn(0, 255)
-                return Color(avgR, avgG, avgB)
-            }
+            val count = bins[bestKey] ?: return null
+            return Color(
+                (sumR[bestKey]!! / count).toInt().coerceIn(0, 255),
+                (sumG[bestKey]!! / count).toInt().coerceIn(0, 255),
+                (sumB[bestKey]!! / count).toInt().coerceIn(0, 255)
+            )
         } catch (_: Exception) {
-            // Fallback
+            return null
         }
-        return null
     }
 
     fun generateThemePalette(baseColor: Color): TrackThemeColors {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(baseColor.toArgb(), hsv)
         val hue = hsv[0]
-        val sat = hsv[1].coerceIn(0.45f, 0.95f)
+        val sat = hsv[1].coerceIn(0f, 1f)
 
         // Dominant rich color
         val dominant = Color.hsv(hue, sat, 0.75f)

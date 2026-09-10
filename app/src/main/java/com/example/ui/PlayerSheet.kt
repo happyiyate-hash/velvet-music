@@ -8,7 +8,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -203,22 +202,40 @@ fun PlayerSheet(
 
     val queueListState = rememberLazyListState()
 
-    // Pure dynamic artwork color for the entire PlayerSheet surface.
-    // This is a direct 1.0-alpha color assignment: no Material surface, white/gray tint,
-    // darkBackground blend, or translucent layer is placed underneath it.
-    val targetPlayerBackground = themeColors.accent
-    val animatedPlayerBackground by animateColorAsState(
-        targetValue = targetPlayerBackground,
-        animationSpec = tween(650, easing = FastOutSlowInEasing),
-        label = "player_background_color"
-    )
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(animatedPlayerBackground)
+            .background(themeColors.darkBackground)
             .testTag("full_player_sheet")
     ) {
+        // Reference background rendering restored from commit 80b5ec8.
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val canvasWidth = size.width
+            val canvasHeight = size.height
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        themeColors.bgTop,
+                        themeColors.bgMidUpper,
+                        themeColors.bgMidLower,
+                        themeColors.bgBottom
+                    ),
+                    startY = 0f,
+                    endY = canvasHeight
+                )
+            )
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        themeColors.atmosphericBloom.copy(alpha = 0.35f),
+                        themeColors.atmosphericBloom.copy(alpha = 0.12f),
+                        Color.Transparent
+                    ),
+                    center = Offset(canvasWidth * 0.5f, canvasHeight * 0.28f),
+                    radius = canvasWidth * 0.85f
+                )
+            )
+        }
         val totalHeight = maxHeight
         val totalWidth = maxWidth
         val density = LocalDensity.current
@@ -461,7 +478,7 @@ fun PlayerSheet(
                 TrackArtworkImage(
                     track = track,
                     contentDescription = track.title,
-                    contentScale = if (isTallArtwork) ContentScale.FillHeight else ContentScale.Fit,
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -684,11 +701,33 @@ fun PlayerSheet(
             Box(
                 modifier = Modifier
                     .offset(x = playX, y = -4.dp)
-                    .size(76.dp)
-                    .shadow(10.dp, CircleShape, spotColor = themeColors.accent.copy(alpha = 0.34f))
+                    .size(78.dp)
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = CircleShape,
+                        spotColor = themeColors.accent.copy(alpha = 0.40f),
+                        ambientColor = themeColors.darkBackground
+                    )
                     .clip(CircleShape)
-                    .background(Brush.verticalGradient(listOf(themeColors.playPauseGradTop, themeColors.playPauseGradBottom)))
-                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                themeColors.playPauseGradTop,
+                                themeColors.playPauseGradBottom
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.5.dp,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.45f),
+                                themeColors.accent.copy(alpha = 0.32f),
+                                Color.White.copy(alpha = 0.12f)
+                            )
+                        ),
+                        shape = CircleShape
+                    )
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -701,7 +740,7 @@ fun PlayerSheet(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
                     tint = Color.White,
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(40.dp)
                 )
             }
 
