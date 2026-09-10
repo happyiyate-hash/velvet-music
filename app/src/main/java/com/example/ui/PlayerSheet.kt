@@ -202,6 +202,43 @@ fun PlayerSheet(
     var orderedQueueItems by remember(queueItems) { mutableStateOf(queueItems) }
     val queueListState = rememberLazyListState()
 
+    var activeQueueDragId by remember { mutableStateOf<String?>(null) }
+    var activeQueueDragIndex by remember { mutableIntStateOf(-1) }
+    var queueDragOffsetY by remember { mutableFloatStateOf(0f) }
+    var queueDragTargetIndex by remember { mutableIntStateOf(-1) }
+
+    fun beginQueueDrag(id: String, index: Int, canDrag: Boolean) {
+        if (!canDrag || index <= 0 || activeQueueDragId != null) return
+        activeQueueDragId = id
+        activeQueueDragIndex = index
+        queueDragOffsetY = 0f
+        queueDragTargetIndex = index
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    fun updateQueueDrag(deltaY: Float) {
+        if (activeQueueDragId == null || activeQueueDragIndex < 0) return
+        queueDragOffsetY += deltaY
+        val step = with(LocalDensity.current) { 60.dp.toPx() }
+        val raw = activeQueueDragIndex + (queueDragOffsetY / step).roundToInt()
+        queueDragTargetIndex = raw.coerceIn(1, orderedQueueItems.lastIndex.coerceAtLeast(1))
+    }
+
+    fun finishQueueDrag() {
+        val from = activeQueueDragIndex
+        val to = queueDragTargetIndex
+        if (activeQueueDragId != null && from >= 1 && to >= 1 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
+            orderedQueueItems = orderedQueueItems.toMutableList().apply {
+                val moved = removeAt(from)
+                add(to, moved)
+            }
+        }
+        activeQueueDragId = null
+        activeQueueDragIndex = -1
+        queueDragOffsetY = 0f
+        queueDragTargetIndex = -1
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -492,6 +529,29 @@ fun PlayerSheet(
             p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)
             else -> 1f
         }
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
@@ -941,6 +1001,7 @@ fun PlayerSheet(
                     ) { queueTrack ->
                         val isCurrent = queueTrack.id == track.id
                         val queueIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
+                        val isDragging = activeQueueDragId == queueTrack.id
                         UpNextTrackRow(
                             track = queueTrack,
                             isCurrent = isCurrent,
@@ -960,19 +1021,23 @@ fun PlayerSheet(
                                 }
                             },
                             onDelete = {
-                                if (!isCurrent) orderedQueueItems = orderedQueueItems.filterNot { it.id == queueTrack.id }
+                                if (!isCurrent && activeQueueDragId == null) orderedQueueItems = orderedQueueItems.filterNot { it.id == queueTrack.id }
                             },
-                            onMove = { from, direction ->
-                                val target = from + direction
-                                if (target in orderedQueueItems.indices && from != 0 && target != 0) {
-                                    orderedQueueItems = orderedQueueItems.toMutableList().apply {
-                                        add(target, removeAt(from))
-                                    }
-                                }
+                            onDragStart = { beginQueueDrag(queueTrack.id, queueIndex, !isCurrent) },
+                            onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
+                            onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
+                            isDragging = isDragging,
+                            dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
+                            virtualDisplacementY = when {
+                                activeQueueDragId == null || isDragging -> 0f
+                                activeQueueDragIndex < queueDragTargetIndex && queueIndex > activeQueueDragIndex && queueIndex <= queueDragTargetIndex -> -with(LocalDensity.current) { 60.dp.toPx() }
+                                activeQueueDragIndex > queueDragTargetIndex && queueIndex >= queueDragTargetIndex && queueIndex < activeQueueDragIndex -> with(LocalDensity.current) { 60.dp.toPx() }
+                                else -> 0f
                             },
-                            index = queueIndex
+                            isDropTarget = activeQueueDragId != null && !isDragging && queueIndex == queueDragTargetIndex
                         )
                         Spacer(modifier = Modifier.height(2.dp))
+                    }
                     }
                 }
             }
@@ -1065,148 +1130,81 @@ fun PlayerSheet(
  */
 @Composable
 private fun UpNextTrackRow(
-    track: Track,
-    isCurrent: Boolean,
-    isPlaying: Boolean,
-    accentColor: Color,
-    onClick: () -> Unit,
-    onPlayNext: () -> Unit,
-    onDelete: () -> Unit,
-    onMove: (Int, Int) -> Unit,
-    index: Int,
-    modifier: Modifier = Modifier
+    track: Track, isCurrent: Boolean, isPlaying: Boolean, accentColor: Color,
+    onClick: () -> Unit, onPlayNext: () -> Unit, onDelete: () -> Unit,
+    onDragStart: () -> Unit, onDragBy: (Float) -> Unit, onDragEnd: () -> Unit,
+    isDragging: Boolean, dragOffsetY: Float, virtualDisplacementY: Float,
+    isDropTarget: Boolean, modifier: Modifier = Modifier
 ) {
     var swipeOffset by remember(track.id) { mutableFloatStateOf(0f) }
-    var reordering by remember(track.id) { mutableStateOf(false) }
-    var reorderAccumulatedY by remember(track.id) { mutableFloatStateOf(0f) }
     val maxSwipe = 132f
-    val density = LocalDensity.current
+    val displacement by animateFloatAsState(
+        targetValue = virtualDisplacementY,
+        animationSpec = spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow, dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy),
+        label = "queue_virtual_displacement"
+    )
+    val scale by animateFloatAsState(if (isDragging) 1.02f else 1f, tween(120), label = "queue_drag_scale")
+    val elevation by animateFloatAsState(if (isDragging) 14f else 0f, tween(120), label = "queue_drag_elevation")
 
-    Box(modifier = modifier.fillMaxWidth().height(58.dp)) {
-        if (swipeOffset != 0f) {
-            val isDelete = swipeOffset < 0f
-            Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
-                horizontalArrangement = if (isDelete) Arrangement.Start else Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(92.dp)
-                        .height(50.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (isDelete) Color.White.copy(alpha = 0.07f) else accentColor.copy(alpha = 0.16f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isDelete) Icons.Default.Delete else Icons.Default.SkipNext,
-                        contentDescription = if (isDelete) "Delete from queue" else "Play next",
-                        tint = Color.White.copy(alpha = (abs(swipeOffset) / maxSwipe).coerceIn(0.35f, 1f)),
-                        modifier = Modifier.size(24.dp)
-                    )
+    Box(
+        modifier = modifier.fillMaxWidth().height(58.dp)
+            .graphicsLayer { translationY = if (isDragging) dragOffsetY else displacement; scaleX = scale; scaleY = scale }
+            .zIndex(if (isDragging) 10f else 0f)
+            .shadow(elevation.dp, RoundedCornerShape(9.dp), clip = false)
+    ) {
+        if (swipeOffset != 0f && !isDragging) {
+            val deleting = swipeOffset < 0f
+            Row(Modifier.fillMaxSize().padding(horizontal = 4.dp), horizontalArrangement = if (deleting) Arrangement.Start else Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(92.dp).height(50.dp).clip(RoundedCornerShape(10.dp)).background(if (deleting) Color.White.copy(alpha = .07f) else accentColor.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
+                    Icon(if (deleting) Icons.Default.Delete else Icons.Default.SkipNext, if (deleting) "Delete from queue" else "Play next", tint = Color.White.copy(alpha = (abs(swipeOffset) / maxSwipe).coerceIn(.35f, 1f)), modifier = Modifier.size(24.dp))
                 }
             }
         }
 
         Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset(swipeOffset.roundToInt(), 0) }
-                .clip(RoundedCornerShape(9.dp))
-                .background(if (isCurrent) accentColor.copy(alpha = 0.07f) else Color.Transparent)
+            Modifier.fillMaxSize().offset { IntOffset(swipeOffset.roundToInt(), 0) }.clip(RoundedCornerShape(9.dp))
+                .background(when { isDragging -> accentColor.copy(alpha = .13f); isDropTarget -> accentColor.copy(alpha = .06f); isCurrent -> accentColor.copy(alpha = .07f); else -> Color.Transparent })
                 .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {},
                         onDragCancel = { swipeOffset = 0f },
                         onDragEnd = {
-                            when {
+                            if (!isDragging) when {
                                 swipeOffset <= -92f -> { onDelete(); swipeOffset = 0f }
                                 swipeOffset >= 92f -> { onPlayNext(); swipeOffset = 0f }
                                 else -> swipeOffset = 0f
                             }
                         },
-                        onHorizontalDrag = { change, amount ->
-                            change.consume()
-                            if (!reordering) swipeOffset = (swipeOffset + amount).coerceIn(-maxSwipe, maxSwipe)
-                        }
+                        onHorizontalDrag = { change, amount -> change.consume(); if (!isDragging) swipeOffset = (swipeOffset + amount).coerceIn(-maxSwipe, maxSwipe) }
                     )
                 }
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onClick
-                )
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .border(0.7.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(7.dp)),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.size(48.dp).clip(RoundedCornerShape(7.dp)).border(.7.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
                 TrackArtworkImage(track = track, contentDescription = track.title, modifier = Modifier.fillMaxSize())
-                if (isCurrent && isPlaying) {
-                    Box(
-                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AnimatedPlayingBars(color = Color.White, modifier = Modifier.size(24.dp))
-                    }
-                }
+                if (isCurrent && isPlaying) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)), contentAlignment = Alignment.Center) { AnimatedPlayingBars(Color.White, Modifier.size(24.dp)) }
             }
-
-            Spacer(modifier = Modifier.width(9.dp))
-
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                Text(
-                    text = track.title.substringBefore(" - "),
-                    fontSize = 14.sp,
-                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
-                    color = if (isCurrent) accentColor else Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(1.dp))
-                Text(
-                    text = "${track.artist} • ${formatTrackDuration(track.durationMs)}",
-                    fontSize = 11.5.sp,
-                    color = Color.White.copy(alpha = 0.58f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Text(track.title.substringBefore(" - "), fontSize = 14.sp, fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold, color = if (isCurrent) accentColor else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(1.dp))
+                Text("${track.artist} • ${formatTrackDuration(track.durationMs)}", fontSize = 11.5.sp, color = Color.White.copy(alpha = .58f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-
             Column(
-                modifier = Modifier
-                    .size(38.dp)
-                    .pointerInput(track.id) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = {
-                                reordering = true
-                                reorderAccumulatedY = 0f
-                                swipeOffset = 0f
-                            },
-                            onDragEnd = { reordering = false; reorderAccumulatedY = 0f },
-                            onDragCancel = { reordering = false; reorderAccumulatedY = 0f },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                reorderAccumulatedY += dragAmount.y
-                                val threshold = with(density) { 28.dp.toPx() }
-                                if (abs(reorderAccumulatedY) >= threshold) {
-                                    val direction = if (reorderAccumulatedY < 0f) -1 else 1
-                                    onMove(index, direction)
-                                    reorderAccumulatedY = 0f
-                                }
-                            }
-                        )
-                    },
+                Modifier.size(38.dp).pointerInput(track.id) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { swipeOffset = 0f; onDragStart() },
+                        onDragEnd = onDragEnd, onDragCancel = onDragEnd,
+                        onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }
+                    )
+                },
                 verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = 0.88f)))
-                Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = 0.88f)))
+                Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = .92f)))
+                Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = .92f)))
             }
         }
     }
@@ -1215,34 +1213,10 @@ private fun UpNextTrackRow(
 @Composable
 private fun AnimatedPlayingBars(color: Color, modifier: Modifier = Modifier) {
     val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "queue_playing")
-    val a by infinite.animateFloat(
-        initialValue = 0.30f,
-        targetValue = 1f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = tween(420, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "bar1"
-    )
-    val b by infinite.animateFloat(
-        initialValue = 0.75f,
-        targetValue = 0.25f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = tween(520, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "bar2"
-    )
-    val c by infinite.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 0.95f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = tween(360, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "bar3"
-    )
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+    val a by androidx.compose.animation.core.animateFloat(.30f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar1")
+    val b by androidx.compose.animation.core.animateFloat(.75f, .25f, androidx.compose.animation.core.infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar2")
+    val c by androidx.compose.animation.core.animateFloat(.45f, .95f, androidx.compose.animation.core.infiniteRepeatable(tween(360, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar3")
+    Row(modifier, Arrangement.spacedBy(2.dp), Alignment.CenterVertically) {
         Box(Modifier.width(3.dp).height((18f * a).dp).clip(RoundedCornerShape(2.dp)).background(color))
         Box(Modifier.width(3.dp).height((18f * b).dp).clip(RoundedCornerShape(2.dp)).background(color))
         Box(Modifier.width(3.dp).height((18f * c).dp).clip(RoundedCornerShape(2.dp)).background(color))
