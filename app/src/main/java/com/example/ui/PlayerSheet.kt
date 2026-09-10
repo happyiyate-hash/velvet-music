@@ -694,6 +694,29 @@ fun PlayerSheet(
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
                     .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
@@ -1218,7 +1241,7 @@ fun PlayerSheet(
 
 /**
  * Up Next list track row component:
- * Clean, modern row displaying track art thumbnail, title, artist & duratio@Composable
+ * Cl@Composable
 private fun UpNextTrackRow(
     track: Track, isCurrent: Boolean, isPlaying: Boolean, accentColor: Color,
     surfaceColor: Color,
@@ -1439,12 +1462,6 @@ private fun UpNextTrackRow(
             ) {
                 Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = .92f)))
                 Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = .92f)))
-            }
-        }
-    }
-}
-
-ound(Color.White.copy(alpha = .92f)))
             }
         }
     }
