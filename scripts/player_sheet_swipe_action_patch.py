@@ -1,14 +1,12 @@
 from pathlib import Path
 
-# Velvet queue swipe actions: two-stage reveal with an underlay action surface.
+# Velvet queue swipe actions: two-stage reveal with an edge-to-edge action surface.
 p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = p.read_text(encoding='utf-8')
 
 start = s.index('@Composable\nprivate fun UpNextTrackRow(')
 end = s.index('@Composable\nprivate fun AnimatedPlayingBars', start)
 
-# Keep the queue row visually blended with Velvet's dynamic player background while the
-# action surface remains physically underneath the card and only appears when revealed.
 needle = '                            accentColor = themeColors.accent,\n                            onClick = { onSelectQueueTrack(queueTrack) },'
 replacement = '                            accentColor = themeColors.accent,\n                            surfaceColor = themeColors.darkBackground,\n                            onClick = { onSelectQueueTrack(queueTrack) },'
 if needle in s and 'surfaceColor = themeColors.darkBackground' not in s:
@@ -82,25 +80,22 @@ private fun UpNextTrackRow(
                 scaleY = scale
             }
             .zIndex(if (isDragging) 10f else 0f)
-            .shadow(elevation.dp, RoundedCornerShape(9.dp), clip = false)
     ) {
-        // UNDERLAY: action background and icon live strictly behind the song card.
-        // The card exposes more of this surface as it moves horizontally.
+        // EDGE-TO-EDGE UNDERLAY: no Card, no clipping, no rounded container.
+        // The action slot spans the complete queue row width and remains physically behind it.
         if (swipingLeft || swipingRight) {
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .width(132.dp)
-                    .align(if (swipingLeft) Alignment.CenterEnd else Alignment.CenterStart)
-                    .clip(RoundedCornerShape(9.dp))
+                    .fillMaxSize()
                     .background(actionColorAnimated),
-                contentAlignment = Alignment.Center
+                contentAlignment = if (swipingLeft) Alignment.CenterEnd else Alignment.CenterStart
             ) {
                 Icon(
                     imageVector = if (swipingLeft) Icons.Default.Delete else Icons.Default.SkipNext,
                     contentDescription = if (swipingLeft) "Delete from queue" else "Play next",
                     tint = Color.White.copy(alpha = actionAlphaAnimated),
                     modifier = Modifier
+                        .padding(horizontal = 24.dp)
                         .size(24.dp)
                         .graphicsLayer {
                             scaleX = actionScaleAnimated
@@ -110,12 +105,12 @@ private fun UpNextTrackRow(
             }
         }
 
-        // TOP CARD: this is the only horizontal-moving layer. The action surface never floats above it.
+        // FOREGROUND ROW: full-width rectangular slice matching the queue surface.
+        // Only the artwork thumbnail keeps its own small radius.
         Row(
             Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
-                .clip(RoundedCornerShape(9.dp))
                 .background(surfaceColor)
                 .background(
                     when {
@@ -127,9 +122,7 @@ private fun UpNextTrackRow(
                 )
                 .pointerInput(track.id, isDragging) {
                     detectHorizontalDragGestures(
-                        onDragStart = {
-                            thresholdLatched = false
-                        },
+                        onDragStart = { thresholdLatched = false },
                         onDragCancel = {
                             scope.launch {
                                 swipeSettle.snapTo(swipeOffset)
@@ -183,12 +176,12 @@ private fun UpNextTrackRow(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick
-                )
-                .padding(horizontal = 4.dp),
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 Modifier
+                    .padding(start = 4.dp)
                     .size(48.dp)
                     .clip(RoundedCornerShape(7.dp))
                     .border(.7.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(7.dp)),
@@ -222,14 +215,17 @@ private fun UpNextTrackRow(
                 )
             }
             Column(
-                Modifier.size(38.dp).pointerInput(track.id) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = { swipeOffset = 0f; onDragStart() },
-                        onDragEnd = onDragEnd,
-                        onDragCancel = onDragEnd,
-                        onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }
-                    )
-                },
+                Modifier
+                    .padding(end = 4.dp)
+                    .size(38.dp)
+                    .pointerInput(track.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { swipeOffset = 0f; onDragStart() },
+                            onDragEnd = onDragEnd,
+                            onDragCancel = onDragEnd,
+                            onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }
+                        )
+                    },
                 verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
