@@ -75,6 +75,7 @@ object DeviceMediaManager {
 
     fun loadDeviceTracks(context: Context): List<Track> {
         val tracks = mutableListOf<Track>()
+        var fallbackIndex = 0
         try {
             val projection = arrayOf(
                 MediaStore.Audio.Media._ID,
@@ -116,14 +117,22 @@ object DeviceMediaManager {
                     val cleanArtist = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist
                     val trackId = "device_audio_$id"
 
-                    // Instant artwork URI construction: zero I/O blocking during scan.
-                    // Coil will lazily decode and cache artwork asynchronously only when the item is visible on screen!
-                    val resolvedArtUri = if (albumId > 0) {
-                        ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId).toString()
+                    // Artwork belongs to this individual track. Never use the audio content URI
+                    // itself as an image URI. Resolve real artwork first; only a null result gets
+                    // an app-owned fallback drawable.
+                    val resolvedArtUri = resolveArtwork(
+                        context = context,
+                        contentUri = contentUri,
+                        albumId = albumId,
+                        trackId = trackId
+                    )
+                    val cover = if (resolvedArtUri == null) {
+                        FallbackArtworkPool.getPhotoForIndex(fallbackIndex++)
                     } else {
-                        contentUri.toString()
+                        // coverResId is only a safety fallback for an artwork load failure.
+                        // The real artworkUri remains authoritative.
+                        FallbackArtworkPool.getPhotoForIndex(fallbackIndex)
                     }
-                    val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
 
                     tracks.add(
                         Track(
@@ -158,20 +167,8 @@ object DeviceMediaManager {
         albumId: Long,
         trackId: String
     ): String? {
-        // 1. Try MediaStore album art URI if albumId exists
-        if (albumId > 0) {
-            val albumArtUri = ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
-            try {
-                context.contentResolver.openInputStream(albumArtUri)?.use { stream ->
-                    val b = stream.read()
-                    if (b != -1) {
-                        return albumArtUri.toString()
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-
-        // 2. Try embedded picture from ID3 tag in audio file
+        // 1. Prefer artwork embedded in this exact audio file. This prevents an album-art
+        // provider from accidentally replacing track-specific ID3 artwork.
         try {
             val retriever = MediaMetadataRetriever()
             try {
@@ -188,10 +185,30 @@ object DeviceMediaManager {
             }
         } catch (_: Exception) {}
 
-        // 3. Android 10+ (Q) loadThumbnail from contentResolver
+        // 2. If there is no embedded image, accept MediaStore's album artwork only when the
+        // provider actually exposes a readable image. It is never used as a raw audio URI.
+        if (albumId > 0) {
+            val albumArtUri = ContentUris.withAppendedId(
+                Uri.parse("content://media/external/audio/albumart"),
+                albumId
+            )
+            try {
+                context.contentResolver.openInputStream(albumArtUri)?.use { stream ->
+                    if (stream.read() != -1) {
+                        return albumArtUri.toString()
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 3. Android 10+ thumbnail fallback. This is still tied to this track's content URI.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
-                val bmp = context.contentResolver.loadThumbnail(contentUri, android.util.Size(512, 512), null)
+                val bmp = context.contentResolver.loadThumbnail(
+                    contentUri,
+                    android.util.Size(512, 512),
+                    null
+                )
                 val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
                 val artFile = File(cacheDir, "art_${trackId}.jpg")
                 artFile.outputStream().use { out ->
