@@ -9,14 +9,18 @@ s = s.replace(
     'import androidx.compose.animation.animateColorAsState'
 )
 
-# Keep the artwork fade as a separate visual layer, but make its colors come from the
-# same pure dynamic background state. There must be no stale references to the removed
-# darkened/neutral gradient variables.
-s = s.replace('playerBackgroundTop', 'animatedPlayerBackground')
-s = s.replace('playerBackgroundBottom', 'animatedPlayerBackground')
+# The restored reference PlayerSheet owns the background palette as bgTop/bgMidUpper/
+# bgMidLower/bgBottom. The artwork fade must use the restored bottom color, not the
+# newer animatedPlayerBackground state that no longer exists in this reference layout.
+s = s.replace('animatedPlayerBackground.copy(', 'themeColors.bgBottom.copy(')
 
-# If an older generated gradient block is still present, remove it. The actual sheet
-# background is the opaque root .background(animatedPlayerBackground) assignment.
+# Remove any stale direct references left by the previous patch.
+s = s.replace('playerBackgroundTop', 'themeColors.bgBottom')
+s = s.replace('playerBackgroundBottom', 'themeColors.bgBottom')
+s = s.replace('animatedPlayerBackground', 'themeColors.bgBottom')
+
+# If an obsolete generated gradient block is still present, remove it. The restored
+# reference background Canvas below is the authoritative PlayerSheet background.
 old_gradient_start = '        // Dynamic player surface: lift the extracted artwork color so it is not nearly black.'
 if old_gradient_start in s:
     start = s.index(old_gradient_start)
@@ -37,12 +41,16 @@ for line in lines:
     out.append(line)
 s = ''.join(out)
 
-if 'import androidx.compose.animation.animateColorAsState' not in s:
-    raise SystemExit('Valid animateColorAsState import is missing; refusing to commit.')
-if 'playerBackgroundTop' in s or 'playerBackgroundBottom' in s:
-    raise SystemExit('Stale background variable reference remains; refusing to commit.')
-if '.background(animatedPlayerBackground)' not in s:
-    raise SystemExit('Pure dynamic PlayerSheet root background binding is missing; refusing to commit.')
+# The restored reference background is intentionally left intact.
+if 'import androidx.compose.animation.animateColorAsState' in s:
+    # animateColorAsState is not used by the restored reference after this cleanup;
+    # remove the import so Kotlin does not carry dead code from the failed patch.
+    s = s.replace('import androidx.compose.animation.animateColorAsState\n', '')
+
+if 'playerBackgroundTop' in s or 'playerBackgroundBottom' in s or 'animatedPlayerBackground' in s:
+    raise SystemExit('Stale PlayerSheet background variable reference remains; refusing to commit.')
+if 'themeColors.bgTop' not in s or 'themeColors.bgMidUpper' not in s or 'themeColors.bgMidLower' not in s or 'themeColors.bgBottom' not in s:
+    raise SystemExit('Restored reference background palette is missing; refusing to commit.')
 
 p.write_text(s, encoding='utf-8')
-print('Fixed PlayerSheet animation import and stale background references; pure dynamic root binding preserved.')
+print('Removed stale animated background references and preserved the restored reference background palette.')
