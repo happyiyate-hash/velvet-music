@@ -130,84 +130,91 @@ object ArtworkColorExtractor {
             val height = bitmap.height
             if (width <= 0 || height <= 0) return null
 
-            val bins = HashMap<Int, Long>()
-            val sumR = HashMap<Int, Long>()
-            val sumG = HashMap<Int, Long>()
-            val sumB = HashMap<Int, Long>()
-            val stepX = max(1, width / 24)
-            val stepY = max(1, height / 24)
+            var totalR = 0L
+            var totalG = 0L
+            var totalB = 0L
+            var sampleCount = 0
+
+            var maxVibrancy = -1f
+            var vibrantColor: Color? = null
+
+            // Sample across a grid
+            val stepX = max(1, width / 12)
+            val stepY = max(1, height / 12)
 
             for (x in 0 until width step stepX) {
                 for (y in 0 until height step stepY) {
                     val pixel = bitmap.getPixel(x, y)
-                    val a = (pixel ushr 24) and 0xFF
+                    val a = (pixel shr 24) and 0xFF
                     if (a < 128) continue
-                    val r = (pixel ushr 16) and 0xFF
-                    val g = (pixel ushr 8) and 0xFF
+
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
                     val b = pixel and 0xFF
-                    val brightness = r * 0.299f + g * 0.587f + b * 0.114f
-                    if (brightness < 18f || brightness > 245f) continue
-                    val qr = r shr 4
-                    val qg = g shr 4
-                    val qb = b shr 4
-                    val key = (qr shl 8) or (qg shl 4) or qb
-                    bins[key] = (bins[key] ?: 0L) + 1L
-                    sumR[key] = (sumR[key] ?: 0L) + r
-                    sumG[key] = (sumG[key] ?: 0L) + g
-                    sumB[key] = (sumB[key] ?: 0L) + b
+
+                    // Ignore extreme near-blacks and near-whites for dominant chromatic extraction
+                    val brightness = (r * 0.299f + g * 0.587f + b * 0.114f)
+                    if (brightness in 35.0..225.0) {
+                        totalR += r
+                        totalG += g
+                        totalB += b
+                        sampleCount++
+
+                        // Measure chromatic saturation (vibrancy)
+                        val maxC = max(r, max(g, b)).toFloat()
+                        val minC = min(r, min(g, b)).toFloat()
+                        val saturation = if (maxC > 0) (maxC - minC) / maxC else 0f
+                        if (saturation > maxVibrancy && saturation > 0.22f) {
+                            maxVibrancy = saturation
+                            vibrantColor = Color(r, g, b)
+                        }
+                    }
                 }
             }
-            if (bins.isEmpty()) return null
-            val bestKey = bins.keys.maxWithOrNull(
-                compareBy<Int> { bins[it] ?: 0L }
-                    .thenBy { key ->
-                        val count = bins[key] ?: 1L
-                        val r = (sumR[key] ?: 0L).toFloat() / count
-                        val g = (sumG[key] ?: 0L).toFloat() / count
-                        val b = (sumB[key] ?: 0L).toFloat() / count
-                        val maxC = max(r, max(g, b))
-                        val minC = min(r, min(g, b))
-                        if (maxC > 0f) (maxC - minC) / maxC else 0f
-                    }
-            ) ?: return null
-            val count = bins[bestKey] ?: return null
-            return Color(
-                (sumR[bestKey]!! / count).toInt().coerceIn(0, 255),
-                (sumG[bestKey]!! / count).toInt().coerceIn(0, 255),
-                (sumB[bestKey]!! / count).toInt().coerceIn(0, 255)
-            )
+
+            if (vibrantColor != null && maxVibrancy > 0.28f) {
+                return vibrantColor
+            }
+
+            if (sampleCount > 0) {
+                val avgR = (totalR / sampleCount).toInt().coerceIn(0, 255)
+                val avgG = (totalG / sampleCount).toInt().coerceIn(0, 255)
+                val avgB = (totalB / sampleCount).toInt().coerceIn(0, 255)
+                return Color(avgR, avgG, avgB)
+            }
         } catch (_: Exception) {
-            return null
+            // Fallback
         }
+        return null
     }
 
     fun generateThemePalette(baseColor: Color): TrackThemeColors {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(baseColor.toArgb(), hsv)
         val hue = hsv[0]
-        val sat = hsv[1].coerceIn(0f, 1f)
+        val sat = hsv[1].coerceIn(0.45f, 0.95f)
 
         // Dominant rich color
         val dominant = Color.hsv(hue, sat, 0.75f)
         // Deep secondary moody tone
-        val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0f, 1f), 0.16f)
+        val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
         // Vivid luminous accent for active waveform bars, progress bead, and active shuffle/repeat
-        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0f, 1f), 0.98f)
+        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
         // Ambient soft glow
         val glow = Color.hsv(hue, sat, 0.88f)
 
         // Atmosphere gradient: top warm atmosphere -> deep warm tone -> dark burnt-hue tone -> very dark hue tone (visibly preserving hue all the way down, never pure black)
-        val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0f, 1f), 0.32f)
-        val bgMidUpper = Color.hsv(hue, (sat * 0.65f).coerceIn(0f, 1f), 0.22f)
-        val bgMidLower = Color.hsv(hue, (sat * 0.60f).coerceIn(0f, 1f), 0.15f)
-        val bgBottom = Color.hsv(hue, (sat * 0.55f).coerceIn(0f, 1f), 0.09f)
+        val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0.40f, 0.82f), 0.32f)
+        val bgMidUpper = Color.hsv(hue, (sat * 0.65f).coerceIn(0.36f, 0.76f), 0.22f)
+        val bgMidLower = Color.hsv(hue, (sat * 0.60f).coerceIn(0.32f, 0.70f), 0.15f)
+        val bgBottom = Color.hsv(hue, (sat * 0.55f).coerceIn(0.28f, 0.65f), 0.09f)
 
         val darkBackground = bgBottom
-        val atmosphericBloom = Color.hsv(hue, (sat * 0.78f).coerceIn(0f, 1f), 0.40f)
+        val atmosphericBloom = Color.hsv(hue, (sat * 0.78f).coerceIn(0.45f, 0.88f), 0.40f)
 
         // Premium gradient circle matching the atmospheric background tones with clean glassmorphic depth
-        val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0f, 1f), 0.48f)
-        val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0f, 1f), 0.24f)
+        val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
+        val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
         val playPauseCircle = playPauseGradTop
         val playPauseBorder = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.40f)
 
