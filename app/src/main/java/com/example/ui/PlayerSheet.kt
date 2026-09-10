@@ -215,10 +215,10 @@ fun PlayerSheet(
             drawRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        themeColors.bgTop,
-                        themeColors.bgMidUpper,
-                        themeColors.bgMidLower,
-                        themeColors.bgBottom
+                        themeColors.darkBackground,
+                        themeColors.darkBackground,
+                        themeColors.darkBackground,
+                        themeColors.darkBackground
                     ),
                     startY = 0f,
                     endY = canvasHeight
@@ -227,8 +227,8 @@ fun PlayerSheet(
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        themeColors.atmosphericBloom.copy(alpha = 0.35f),
-                        themeColors.atmosphericBloom.copy(alpha = 0.12f),
+                        Color.Transparent,
+                        Color.Transparent,
                         Color.Transparent
                     ),
                     center = Offset(canvasWidth * 0.5f, canvasHeight * 0.28f),
@@ -495,6 +495,29 @@ fun PlayerSheet(
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
                     .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
@@ -503,11 +526,11 @@ fun PlayerSheet(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.16f to themeColors.bgBottom.copy(alpha = 0.12f),
-                                0.34f to themeColors.bgBottom.copy(alpha = 0.34f),
-                                0.52f to themeColors.bgBottom.copy(alpha = 0.62f),
-                                0.72f to themeColors.bgBottom.copy(alpha = 0.86f),
-                                1.00f to themeColors.bgBottom
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                1.00f to themeColors.darkBackground
                             )
                         )
                     )
