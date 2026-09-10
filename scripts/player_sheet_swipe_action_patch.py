@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Velvet queue swipe actions: two-stage reveal with an underlay action surface.
 p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = p.read_text(encoding='utf-8')
 
