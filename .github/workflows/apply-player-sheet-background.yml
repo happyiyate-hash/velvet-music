@@ -5,6 +5,7 @@ on:
     paths:
       - 'scripts/player_sheet_background_gradient.py'
       - 'scripts/player_sheet_queue_patch.py'
+      - 'scripts/player_sheet_queue_drag_patch.py'
   workflow_dispatch:
 
 jobs:
@@ -19,11 +20,12 @@ jobs:
           sed -i 's/animatedPlayerBackground/themeColors.bgBottom/g' app/src/main/java/com/example/ui/PlayerSheet.kt
           python3 scripts/player_sheet_background_gradient.py
           python3 scripts/player_sheet_queue_patch.py
+          python3 scripts/player_sheet_queue_drag_patch.py
       - name: Commit PlayerSheet patches
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/com/example/ui/PlayerSheet.kt
           git diff --cached --quiet && exit 0
-          git commit -m 'Apply PlayerSheet queue and background updates'
+          git commit -m 'Apply flicker-free queue drag reordering'
           git push
