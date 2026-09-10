@@ -979,7 +979,8 @@ fun PlayerSheet(
                     items(
                         items = orderedQueueItems,
                         key = { it.id }
-                    ) { queueTrack ->
+                    ,
+                        contentType = { "track_row" }) { queueTrack ->
                         val isCurrent = queueTrack.id == track.id
                         val queueIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
                         val isDragging = activeQueueDragId == queueTrack.id
@@ -1122,18 +1123,11 @@ private fun UpNextTrackRow(
     val thresholdPx = with(density) { 100.dp.toPx() }
     val maxRevealPx = with(density) { 132.dp.toPx() }
     val dismissPx = with(density) { 760.dp.toPx() }
-    val neutralAction = Color(0xFF1E1E1E)
-    val deleteAction = Color(0xFFE53935)
-    val playNextAction = Color(0xFF43A047)
     val swipingRight = swipeOffset > 0f
     val swipingLeft = swipeOffset < 0f
-    val stage2 = abs(swipeOffset) >= thresholdPx
     val stageProgress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
-    val actionColor = if (stage2) {
-        if (swipingLeft) deleteAction else playNextAction
-    } else {
-        neutralAction
-    }
+    // Continuous black action surface, matching the reference behavior.
+    val actionColor = Color.Black
     val actionIconAlpha = 0.30f + (0.70f * stageProgress)
     val actionIconScale = 0.70f + (0.30f * stageProgress)
     val actionColorAnimated by androidx.compose.animation.animateColorAsState(
@@ -1284,7 +1278,13 @@ private fun UpNextTrackRow(
                     .border(.7.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(7.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                TrackArtworkImage(track = track, contentDescription = track.title, modifier = Modifier.fillMaxSize())
+                TrackArtworkImage(
+                    track = track,
+                    contentDescription = track.title,
+                    modifier = Modifier.fillMaxSize(),
+                    thumbnailSizePx = 128,
+                    crossfade = false
+                )
                 if (isCurrent && isPlaying) {
                     Box(
                         Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)),
