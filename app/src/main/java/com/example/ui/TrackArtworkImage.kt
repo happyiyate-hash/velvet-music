@@ -13,8 +13,8 @@ import com.example.model.Track
 /**
  * Universal Track Artwork renderer:
  * 1. If the music fetched/searched from user device has a photo (embedded in ID3 tag, MediaStore, or local cache),
- *    this component renders that real photo without jarring placeholder flicker!
- * 2. If the song has NO photo, it renders the deterministic distributed fallback cover image directly.
+ *    this component renders that real photo!
+ * 2. Only if the song has NO photo at all does it fall back to the app's default photo resource.
  */
 @Composable
 fun TrackArtworkImage(
@@ -28,11 +28,12 @@ fun TrackArtworkImage(
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(artUri)
-                .crossfade(false)
+                .crossfade(true)
                 .build(),
             contentDescription = contentDescription,
             modifier = modifier,
             contentScale = contentScale,
+            placeholder = painterResource(id = track.coverResId),
             error = painterResource(id = track.coverResId),
             fallback = painterResource(id = track.coverResId)
         )

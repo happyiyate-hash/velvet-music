@@ -98,7 +98,6 @@ object SampleData {
 /**
  * Fallback pool using the app's photos to automatically assign distinct photos
  * to device music that does not have an embedded photo.
- * Ensures stable, distributed fallback artwork without accidental collision.
  */
 object FallbackArtworkPool {
     val covers = listOf(
@@ -115,14 +114,5 @@ object FallbackArtworkPool {
         val rawHash = id.hashCode() xor (title.hashCode() * 31) xor (artist.hashCode() * 17)
         val index = kotlin.math.abs(rawHash) % covers.size
         return covers[index]
-    }
-
-    /**
-     * Distributes fallback artworks across multiple tracks deterministically based on their order,
-     * ensuring consecutive tracks without artwork receive different fallback images.
-     */
-    fun getDistributedPhoto(index: Int, id: String): Int {
-        val baseIndex = kotlin.math.abs(index) % covers.size
-        return covers[baseIndex]
     }
 }

@@ -116,19 +116,14 @@ object DeviceMediaManager {
                     val cleanArtist = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist
                     val trackId = "device_audio_$id"
 
-                    // Strict Artwork Verification:
-                    // 1. Never assume albumart belongs to this song. Only assign artworkUri if the track
-                    //    actually possesses its own verifiable embedded picture or valid albumart.
-                    // 2. If a track has no artwork of its own, artworkUri remains null so it safely
-                    //    receives a dedicated distributed fallback image without borrowing another song's art.
-                    val resolvedArtUri = resolveArtwork(context, contentUri, albumId, trackId)
-
-                    // Distribute fallback covers across tracks without genuine artwork
-                    val cover = if (resolvedArtUri != null) {
-                        R.drawable.art_luminous_echoes
+                    // Instant artwork URI construction: zero I/O blocking during scan.
+                    // Coil will lazily decode and cache artwork asynchronously only when the item is visible on screen!
+                    val resolvedArtUri = if (albumId > 0) {
+                        ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId).toString()
                     } else {
-                        FallbackArtworkPool.getDistributedPhoto(tracks.size, trackId)
+                        contentUri.toString()
                     }
+                    val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
 
                     tracks.add(
                         Track(
@@ -163,41 +158,7 @@ object DeviceMediaManager {
         albumId: Long,
         trackId: String
     ): String? {
-        // 1. Try embedded picture from ID3 tag in this specific audio file (most authentic & exclusive)
-        try {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(context, contentUri)
-                val picture = retriever.embeddedPicture
-                if (picture != null && picture.isNotEmpty()) {
-                    val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
-                    val artFile = File(cacheDir, "art_${trackId}.jpg")
-                    if (!artFile.exists() || artFile.length() == 0L) {
-                        artFile.outputStream().use { it.write(picture) }
-                    }
-                    return Uri.fromFile(artFile).toString()
-                }
-            } finally {
-                retriever.release()
-            }
-        } catch (_: Exception) {}
-
-        // 2. Android 10+ (Q) loadThumbnail from contentResolver for this exact track
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                val bmp = context.contentResolver.loadThumbnail(contentUri, android.util.Size(512, 512), null)
-                val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
-                val artFile = File(cacheDir, "art_${trackId}.jpg")
-                if (!artFile.exists() || artFile.length() == 0L) {
-                    artFile.outputStream().use { out ->
-                        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)
-                    }
-                }
-                return Uri.fromFile(artFile).toString()
-            } catch (_: Exception) {}
-        }
-
-        // 3. Try MediaStore album art URI only if albumId is valid and stream genuinely readable
+        // 1. Try MediaStore album art URI if albumId exists
         if (albumId > 0) {
             val albumArtUri = ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
             try {
@@ -207,6 +168,36 @@ object DeviceMediaManager {
                         return albumArtUri.toString()
                     }
                 }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Try embedded picture from ID3 tag in audio file
+        try {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, contentUri)
+                val picture = retriever.embeddedPicture
+                if (picture != null && picture.isNotEmpty()) {
+                    val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
+                    val artFile = File(cacheDir, "art_${trackId}.jpg")
+                    artFile.outputStream().use { it.write(picture) }
+                    return Uri.fromFile(artFile).toString()
+                }
+            } finally {
+                retriever.release()
+            }
+        } catch (_: Exception) {}
+
+        // 3. Android 10+ (Q) loadThumbnail from contentResolver
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                val bmp = context.contentResolver.loadThumbnail(contentUri, android.util.Size(512, 512), null)
+                val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
+                val artFile = File(cacheDir, "art_${trackId}.jpg")
+                artFile.outputStream().use { out ->
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)
+                }
+                return Uri.fromFile(artFile).toString()
             } catch (_: Exception) {}
         }
 
