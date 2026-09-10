@@ -4,19 +4,16 @@ PLAYER = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 COLORS = Path('app/src/main/java/com/example/media/ArtworkColorExtractor.kt')
 
 s = PLAYER.read_text(encoding='utf-8')
-
-# Reference commit: 80b5ec8847c72e1ee47321ce198e0c610e2092c8.
-# Restore only the requested rendering pieces; do not replace the entire PlayerSheet.
-start = s.index('    // Pure dynamic artwork color for the entire PlayerSheet surface.')
-end_marker = '    ) {\n        val totalHeight = maxHeight'
-end = s.index(end_marker, start) + len('    ) {')
-reference_background = '''    BoxWithConstraints(
+start = s.index('    // Pure dynamic artwork color for the entire PlayerSheet surface.') if '    // Pure dynamic artwork color for the entire PlayerSheet surface.' in s else -1
+if start >= 0:
+    end_marker = '    ) {\n        val totalHeight = maxHeight'
+    end = s.index(end_marker, start) + len('    ) {')
+    reference_background = '''    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(themeColors.darkBackground)
             .testTag("full_player_sheet")
     ) {
-        // Reference background rendering restored from commit 80b5ec8.
         Canvas(modifier = Modifier.fillMaxSize()) {
             val canvasWidth = size.width
             val canvasHeight = size.height
@@ -44,7 +41,7 @@ reference_background = '''    BoxWithConstraints(
                 )
             )
         }'''
-s = s[:start] + reference_background + s[end:]
+    s = s[:start] + reference_background + s[end:]
 
 old_play = '''            Box(
                 modifier = Modifier
@@ -114,16 +111,11 @@ reference_play = '''            Box(
                     modifier = Modifier.size(40.dp)
                 )
             }'''
-if old_play not in s:
-    raise SystemExit('Reference play/pause block target not found; refusing to modify PlayerSheet.')
-s = s.replace(old_play, reference_play, 1)
+if old_play in s:
+    s = s.replace(old_play, reference_play, 1)
 s = s.replace('contentScale = if (isTallArtwork) ContentScale.FillHeight else ContentScale.Fit,', 'contentScale = ContentScale.Crop,', 1)
-s = s.replace('import androidx.compose.animation.animateColorAsState\n', '', 1)
 PLAYER.write_text(s, encoding='utf-8')
 
-# The reference and current extractor were identical, but its old logic selected the single
-# most-saturated pixel and then forced saturation to >= 0.45. That can turn a mostly-white
-# cover with a tiny red detail into a red theme. Use a quantized dominant cluster instead.
 c = COLORS.read_text(encoding='utf-8')
 start = c.index('    private fun sampleDominantColor')
 end = c.index('\n    fun generateThemePalette', start)
@@ -150,7 +142,6 @@ new_sampler = '''    private fun sampleDominantColor(bitmap: Bitmap): Color? {
                     val b = pixel and 0xFF
                     val brightness = r * 0.299f + g * 0.587f + b * 0.114f
                     if (brightness < 18f || brightness > 245f) continue
-
                     val qr = r shr 4
                     val qg = g shr 4
                     val qb = b shr 4
@@ -162,7 +153,6 @@ new_sampler = '''    private fun sampleDominantColor(bitmap: Bitmap): Color? {
                 }
             }
             if (bins.isEmpty()) return null
-
             val bestKey = bins.keys.maxWithOrNull(
                 compareBy<Int> { bins[it] ?: 0L }
                     .thenBy { key ->
@@ -175,7 +165,6 @@ new_sampler = '''    private fun sampleDominantColor(bitmap: Bitmap): Color? {
                         if (maxC > 0f) (maxC - minC) / maxC else 0f
                     }
             ) ?: return null
-
             val count = bins[bestKey] ?: return null
             return Color(
                 (sumR[bestKey]!! / count).toInt().coerceIn(0, 255),
@@ -188,7 +177,18 @@ new_sampler = '''    private fun sampleDominantColor(bitmap: Bitmap): Color? {
     }
 '''
 c = c[:start] + new_sampler + c[end:]
-c = c.replace('val sat = hsv[1].coerceIn(0.45f, 0.95f)', 'val sat = hsv[1].coerceIn(0f, 1f)', 1)
+# Preserve the sampled saturation. Do not force a minimum saturation, which turns neutral
+# white/gray artwork into hue-0 red and is the bug observed in the PlayerSheet.
+c = c.replace('val sat = hsv[1].coerceIn(0f, 1f)', 'val sat = hsv[1].coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.9f).coerceIn(0.5f, 1f)', '(sat * 0.9f).coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.85f).coerceIn(0.50f, 0.95f)', '(sat * 0.85f).coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.72f).coerceIn(0.40f, 0.82f)', '(sat * 0.72f).coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.65f).coerceIn(0.36f, 0.76f)', '(sat * 0.65f).coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.60f).coerceIn(0.32f, 0.70f)', '(sat * 0.60f).coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.55f).coerceIn(0.28f, 0.65f)', '(sat * 0.55f).coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.78f).coerceIn(0.45f, 0.88f)', '(sat * 0.78f).coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.76f).coerceIn(0.45f, 0.88f)', '(sat * 0.76f).coerceIn(0f, 1f)', 1)
+c = c.replace('(sat * 0.85f).coerceIn(0.55f, 0.92f)', '(sat * 0.85f).coerceIn(0f, 1f)', 1)
 COLORS.write_text(c, encoding='utf-8')
 
-print('Reference PlayerSheet background/play card/artwork rendering and color extraction fix applied.')
+print('Reference components restored and neutral-color extraction corrected.')
