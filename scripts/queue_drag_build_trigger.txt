@@ -1,1 +1,2 @@
 Queue drag refactor build verification trigger.
+Two-stage queue swipe action verification.
