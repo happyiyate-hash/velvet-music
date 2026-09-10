@@ -78,6 +78,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -529,6 +530,29 @@ fun PlayerSheet(
             p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)
             else -> 1f
         }
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
@@ -1162,7 +1186,7 @@ private fun UpNextTrackRow(
     val maxSwipe = 132f
     val displacement by animateFloatAsState(
         targetValue = virtualDisplacementY,
-        animationSpec = spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow, dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy),
+        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow, dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy),
         label = "queue_virtual_displacement"
     )
     val scale by animateFloatAsState(if (isDragging) 1.02f else 1f, tween(120), label = "queue_drag_scale")
