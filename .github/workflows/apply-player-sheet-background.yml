@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'scripts/fix_queue_swipe_compile.py'
+      - 'scripts/fix_queue_swipe_yt_visual.py'
   workflow_dispatch:
 
 jobs:
@@ -16,11 +17,14 @@ jobs:
       - name: Apply safe PlayerSheet repair
         run: |
           python3 scripts/fix_queue_swipe_compile.py
+      - name: Apply YouTube-style queue swipe visuals
+        run: |
+          python3 scripts/fix_queue_swipe_yt_visual.py
       - name: Commit PlayerSheet repair
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/com/example/ui/PlayerSheet.kt
           git diff --cached --quiet && exit 0
-          git commit -m 'Apply safe PlayerSheet repair'
+          git commit -m 'Apply YouTube-style queue swipe visuals'
           git push
