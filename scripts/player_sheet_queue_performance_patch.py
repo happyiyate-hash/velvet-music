@@ -5,7 +5,6 @@ p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = p.read_text(encoding='utf-8')
 
 # Keep the queue truly edge-to-edge: the LazyColumn owns the continuous surface.
-# Row content may still have its own small internal spacing/artwork radius.
 s = s.replace(
     '''                    LazyColumn(
                     state = queueListState,
@@ -23,32 +22,44 @@ s = s.replace(
                         .graphicsLayer { alpha = listAlpha },'''
 )
 
-# Stable identity is already used by the queue. Add contentType so Compose can reuse
-# the same track-row layout type while items enter/leave the viewport.
+# Stable IDs plus contentType let Compose retain item identity and reuse the same row layout.
+if 'import androidx.compose.foundation.lazy.itemsIndexed' not in s:
+    s = s.replace(
+        'import androidx.compose.foundation.lazy.items\n',
+        'import androidx.compose.foundation.lazy.items\nimport androidx.compose.foundation.lazy.itemsIndexed\n'
+    )
+
+# Prefer itemsIndexed so the row receives its position directly instead of doing an
+# indexOfFirst scan for every visible item during recomposition.
 needle = '''                        items(
                         items = orderedQueueItems,
                         key = { it.id }
                     ) { queueTrack ->'''
-replacement = '''                        items(
+replacement = '''                        itemsIndexed(
                         items = orderedQueueItems,
-                        key = { it.id },
-                        contentType = { "track_row" }
-                    ) { queueTrack ->'''
+                        key = { _, item -> item.id },
+                        contentType = { _, _ -> "track_row" }
+                    ) { queueIndex, queueTrack ->'''
 if needle in s:
     s = s.replace(needle, replacement, 1)
-
-# Some generated PlayerSheet revisions use a different indentation. Handle the equivalent
-# items block without touching unrelated LazyColumns.
-if 'contentType = { "track_row" }' not in s:
+else:
     s = re.sub(
-        r'(items\(\s*items\s*=\s*orderedQueueItems,\s*key\s*=\s*\{\s*it\.id\s*\}\s*)(\)\s*\{\s*queueTrack\s*->)',
-        r'\1,\n                        contentType = { "track_row" }\2',
+        r'items\(\s*items\s*=\s*orderedQueueItems,\s*key\s*=\s*\{\s*it\.id\s*\}\s*\)\s*\{\s*queueTrack\s*->',
+        'itemsIndexed(\n                        items = orderedQueueItems,\n                        key = { _, item -> item.id },\n                        contentType = { _, _ -> "track_row" }\n                    ) { queueIndex, queueTrack ->',
         s,
         count=1,
     )
 
+# Remove the old per-row index scan if the generated revision still contains it.
+s = re.sub(
+    r'\n\s*val queueIndex = orderedQueueItems\.indexOfFirst \{ it\.id == queueTrack\.id \}',
+    '',
+    s,
+    count=1,
+)
+
 # Queue artwork is only 48dp on screen. Bound Coil's decode to a small square and
-# disable per-row crossfade so fast flings do not upload large bitmaps or run animations.
+# disable per-row crossfade so fast flings do not upload large bitmaps or animate them.
 old_art = 'TrackArtworkImage(track = track, contentDescription = track.title, modifier = Modifier.fillMaxSize())'
 new_art = '''TrackArtworkImage(
                     track = track,
@@ -60,10 +71,10 @@ new_art = '''TrackArtworkImage(
 if old_art in s:
     s = s.replace(old_art, new_art, 1)
 
-if 'contentType = { "track_row" }' not in s:
-    raise SystemExit('queue contentType insertion point not found')
+if 'itemsIndexed(' not in s or 'contentType = { _, _ -> "track_row" }' not in s:
+    raise SystemExit('indexed queue insertion point not found')
 if 'thumbnailSizePx = 128' not in s:
     raise SystemExit('queue artwork optimization insertion point not found')
 
 p.write_text(s, encoding='utf-8')
-print('Applied queue LazyColumn, stable content type, single-surface, and bounded artwork optimizations.')
+print('Applied single-surface queue, stable indexed keys/contentType, bounded artwork decoding, and no crossfade.')
