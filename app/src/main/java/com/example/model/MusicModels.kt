@@ -96,8 +96,8 @@ object SampleData {
 }
 
 /**
- * Fallback pool using the app's photos to automatically assign distinct photos
- * to device music that does not have an embedded photo.
+ * Fallback pool using the app's photos to assign deterministic, distinct photos
+ * to device music that does not have real artwork.
  */
 object FallbackArtworkPool {
     val covers = listOf(
@@ -110,9 +110,17 @@ object FallbackArtworkPool {
         R.drawable.art_acoustic_waves
     )
 
+    /** Assigns a fallback by stable pool position, cycling only after every cover was used. */
+    fun getPhotoForIndex(index: Int): Int {
+        if (covers.isEmpty()) return R.drawable.art_luminous_echoes
+        return covers[index.mod(covers.size)]
+    }
+
+    /** Stable per-track fallback for callers that do not have a scan position. */
     fun getPhotoForTrack(id: String, title: String = "", artist: String = ""): Int {
+        if (covers.isEmpty()) return R.drawable.art_luminous_echoes
         val rawHash = id.hashCode() xor (title.hashCode() * 31) xor (artist.hashCode() * 17)
-        val index = kotlin.math.abs(rawHash) % covers.size
-        return covers[index]
+        val index = (rawHash and Int.MAX_VALUE) % covers.size
+        return getPhotoForIndex(index)
     }
 }
