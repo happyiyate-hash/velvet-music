@@ -19,12 +19,24 @@ old = '''                            colorStops = arrayOf(
                             )'''
 new = '''                            colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.60f to themeColors.bgBottom.copy(alpha = 0.50f),
+                                0.50f to themeColors.bgBottom.copy(alpha = 0.40f),
+                                0.80f to themeColors.bgBottom.copy(alpha = 0.90f),
                                 1.00f to themeColors.bgBottom.copy(alpha = 1.00f)
                             )'''
 if old not in s:
     raise SystemExit('Expected artwork fade block was not found; refusing to modify PlayerSheet.kt')
 s = s.replace(old, new, 1)
+
+# Extend the fade across the lower 40% of the expanded artwork instead of only the final 24%.
+old_geometry = '''                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)'''
+new_geometry = '''                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.60f))
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.40f)'''
+if old_geometry not in s:
+    raise SystemExit('Expected artwork fade geometry was not found; refusing to modify PlayerSheet.kt')
+s = s.replace(old_geometry, new_geometry, 1)
 
 # Keep the existing artwork-derived PlayerSheet background renderer intact.
 required = ['themeColors.bgTop', 'themeColors.bgMidUpper', 'themeColors.bgMidLower', 'themeColors.bgBottom']
@@ -33,4 +45,4 @@ if missing:
     raise SystemExit(f'Restored reference background is missing: {missing}; refusing to commit.')
 
 p.write_text(s, encoding='utf-8')
-print('PlayerSheet restored and artwork fade now uses the exact existing dynamic bottom background color.')
+print('PlayerSheet restored and artwork fade now uses a 40% deep multi-stage dissolve into the exact dynamic bottom background color.')
