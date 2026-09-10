@@ -4,15 +4,20 @@ from pathlib import Path
 p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = p.read_text(encoding='utf-8')
 
-if 'import androidx.compose.animation.core.Animatable' not in s:
-    s = s.replace('import androidx.compose.animation.AnimatedVisibility\n', 'import androidx.compose.animation.AnimatedVisibility\nimport androidx.compose.animation.core.Animatable\n', 1)
-
 start = s.index('@Composable\nprivate fun UpNextTrackRow(')
 end = s.index('@Composable\nprivate fun AnimatedPlayingBars', start)
+
+# Keep the queue row visually blended with Velvet's dynamic player background while the
+# action surface remains physically underneath the card and only appears when revealed.
+needle = '                            accentColor = themeColors.accent,\n                            onClick = { onSelectQueueTrack(queueTrack) },'
+replacement = '                            accentColor = themeColors.accent,\n                            surfaceColor = themeColors.darkBackground,\n                            onClick = { onSelectQueueTrack(queueTrack) },'
+if needle in s and 'surfaceColor = themeColors.darkBackground' not in s:
+    s = s.replace(needle, replacement, 1)
 
 new_func = r'''@Composable
 private fun UpNextTrackRow(
     track: Track, isCurrent: Boolean, isPlaying: Boolean, accentColor: Color,
+    surfaceColor: Color,
     onClick: () -> Unit, onPlayNext: () -> Unit, onDelete: () -> Unit,
     onDragStart: () -> Unit, onDragBy: (Float) -> Unit, onDragEnd: () -> Unit,
     isDragging: Boolean, dragOffsetY: Float, virtualDisplacementY: Float,
@@ -39,9 +44,8 @@ private fun UpNextTrackRow(
     } else {
         neutralAction
     }
-    val actionIconAlpha = 0.38f + (0.62f * stageProgress)
+    val actionIconAlpha = 0.30f + (0.70f * stageProgress)
     val actionIconScale = 0.70f + (0.30f * stageProgress)
-    val actionBackgroundAlpha = if (stage2) 1f else 0.96f
     val actionColorAnimated by androidx.compose.animation.animateColorAsState(
         targetValue = actionColor,
         animationSpec = tween(120, easing = FastOutSlowInEasing),
@@ -80,44 +84,39 @@ private fun UpNextTrackRow(
             .zIndex(if (isDragging) 10f else 0f)
             .shadow(elevation.dp, RoundedCornerShape(9.dp), clip = false)
     ) {
-        // UNDERLAY: the action surface is always behind the song card. The card slides over it,
-        // revealing the nested action icon instead of placing an icon on top of the row.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(9.dp))
-                .background(actionColorAnimated.copy(alpha = actionBackgroundAlpha)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (swipingLeft || swipingRight) {
-                Box(
+        // UNDERLAY: action background and icon live strictly behind the song card.
+        // The card exposes more of this surface as it moves horizontally.
+        if (swipingLeft || swipingRight) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(132.dp)
+                    .align(if (swipingLeft) Alignment.CenterEnd else Alignment.CenterStart)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(actionColorAnimated),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (swipingLeft) Icons.Default.Delete else Icons.Default.SkipNext,
+                    contentDescription = if (swipingLeft) "Delete from queue" else "Play next",
+                    tint = Color.White.copy(alpha = actionAlphaAnimated),
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .width(92.dp)
-                        .align(if (swipingLeft) Alignment.CenterEnd else Alignment.CenterStart),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (swipingLeft) Icons.Default.Delete else Icons.Default.SkipNext,
-                        contentDescription = if (swipingLeft) "Delete from queue" else "Play next",
-                        tint = Color.White.copy(alpha = actionAlphaAnimated),
-                        modifier = Modifier
-                            .size(24.dp)
-                            .graphicsLayer {
-                                scaleX = actionScaleAnimated
-                                scaleY = actionScaleAnimated
-                            }
-                    )
-                }
+                        .size(24.dp)
+                        .graphicsLayer {
+                            scaleX = actionScaleAnimated
+                            scaleY = actionScaleAnimated
+                        }
+                )
             }
         }
 
-        // TOP CARD: only this layer translates. The underlying action layer never moves.
+        // TOP CARD: this is the only horizontal-moving layer. The action surface never floats above it.
         Row(
             Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
                 .clip(RoundedCornerShape(9.dp))
+                .background(surfaceColor)
                 .background(
                     when {
                         isDragging -> accentColor.copy(alpha = .13f)
@@ -130,7 +129,6 @@ private fun UpNextTrackRow(
                     detectHorizontalDragGestures(
                         onDragStart = {
                             thresholdLatched = false
-                            swipeSettle.stop()
                         },
                         onDragCancel = {
                             scope.launch {
