@@ -43,15 +43,6 @@ jobs:
       - name: Prepare Signing and Configuration
         run: |
           chmod +x gradlew
-          if [ -f "debug.keystore.base64" ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-            echo "Restored debug.keystore from base64."
-          fi
-          if [ ! -f "debug.keystore" ]; then
-            echo "debug.keystore not found. Generating standard debug keystore using keytool..."
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            echo "Generated debug.keystore successfully."
-          fi
           if [ ! -f ".env" ]; then
             if [ -f ".env.example" ]; then
               cp .env.example .env
@@ -61,14 +52,24 @@ jobs:
             echo "Prepared .env configuration file."
           fi
 
-      - name: Build Debug APK
-        run: ./gradlew clean :app:assembleDebug --stacktrace
+      - name: Build Optimized Release APK
+        run: ./gradlew clean :app:assembleRelease --stacktrace
 
-      - name: Package APK for Distribution
+      - name: Generate and Sign Release APK
         run: |
           mkdir -p build-apks
-          cp app/build/outputs/apk/debug/app-debug.apk build-apks/Velvet-Music.apk
-          echo "APK generated: build-apks/Velvet-Music.apk"
+          
+          # Find the compiled release APK
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          
+          # Generate a release keystore for signing
+          keytool -genkey -v -keystore release.keystore -storepass android -alias releasekey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Velvet Music,O=Release,C=US"
+          
+          # Sign the release APK using apksigner from Android SDK
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:android --ks-key-alias releasekey --key-pass pass:android --out build-apks/Velvet-Music.apk $RELEASE_APK
+          
+          echo "Signed Release APK generated: build-apks/Velvet-Music.apk"
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
@@ -99,7 +100,7 @@ jobs:
           tag_name: ${{ steps.release_metadata.outputs.tag_name }}
           name: ${{ steps.release_metadata.outputs.release_name }}
           body: |
-            ### Velvet Music Android APK
+            ### Velvet Music Android APK (Production Release Build)
             Install directly on your Android device:
             1. Download `Velvet-Music.apk` below directly to your Android device.
             2. Tap the downloaded file and select **Install**.
@@ -107,5 +108,4 @@ jobs:
           files: build-apks/Velvet-Music.apk
           draft: false
           prerelease: false
-
-# Verification build: compile the exact restored PlayerSheet reference components and corrected artwork color extractor.
+          
