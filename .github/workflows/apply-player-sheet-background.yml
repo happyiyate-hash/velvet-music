@@ -6,6 +6,8 @@ on:
       - 'scripts/fix_queue_swipe_compile.py'
       - 'scripts/fix_queue_swipe_yt_visual.py'
       - 'scripts/player_sheet_queue_performance_patch.py'
+      - 'scripts/player_sheet_exact_waveform_patch.py'
+      - 'scripts/player_audio_visualizer_patch.py'
   workflow_dispatch:
 
 jobs:
@@ -24,11 +26,17 @@ jobs:
       - name: Optimize queue rendering
         run: |
           python3 scripts/player_sheet_queue_performance_patch.py
-      - name: Commit PlayerSheet repair
+      - name: Wire exact decoded waveform
+        run: |
+          python3 scripts/player_sheet_exact_waveform_patch.py
+      - name: Wire native playback visualizer
+        run: |
+          python3 scripts/player_audio_visualizer_patch.py
+      - name: Commit PlayerSheet and audio visualization repair
         run: |
           git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/java/com/example/ui/PlayerSheet.kt
+          git config user.email '41898282+github-actions[bot]@github.com'
+          git add app/src/main/java/com/example/ui/PlayerSheet.kt app/src/main/java/com/example/audio/VelvetAudioEngine.kt
           git diff --cached --quiet && exit 0
-          git commit -m 'Optimize queue list rendering and artwork loading'
+          git commit -m 'Add exact waveform and native playback visualization'
           git push
