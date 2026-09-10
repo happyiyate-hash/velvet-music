@@ -20,28 +20,35 @@ if 'import androidx.compose.foundation.layout.fillMaxHeight\n' not in s:
         1,
     )
 
-# AnimatedPlayingBars: animateFloat is an InfiniteTransition extension, not a top-level
-# function. Use the transition receiver explicitly so Kotlin resolves it correctly.
+# AnimatedPlayingBars: animateFloat is an InfiniteTransition extension. Use the transition
+# receiver explicitly so Kotlin resolves it correctly.
 s = s.replace(
     'androidx.compose.animation.core.animateFloat(',
     'infinite.animateFloat(',
 )
-# Do not add the invalid top-level animateFloat import.
 s = s.replace('import androidx.compose.animation.core.animateFloat\n', '')
 
 # The expanded artwork brush currently remains fixed over the compact 44dp artwork.
 # Fade that brush progressively during stage 2 so the small top-left artwork is unobstructed.
 brush_anchor = '''        val artworkFadeAlpha = when {\n            p < 0.30f -> 0f\n            p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)\n            else -> 1f\n        }\n'''
-brush_new = '''        val artworkFadeAlpha = when {\n            p < 0.30f -> 0f\n            p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)\n            else -> 1f\n        }\n\n        // During the second snap, the expanded artwork brush must gently disappear as\n        // the Up Next queue approaches its maximum height. This keeps the compact 44dp\n        // artwork at the top-left completely clear instead of covering it with the brush.\n        // The fade follows the drag continuously and also remains smooth during snap animation.\n        val compactBrushFadeAlpha = when {\n            p <= 1.05f -> 1f\n            p >= 1.90f -> 0f\n            else -> {\n                val t = ((p - 1.05f) / 0.85f).coerceIn(0f, 1f)\n                1f - (t * t * (3f - 2f * t))\n            }\n        }\n'''
-if brush_anchor in s and 'val compactBrushFadeAlpha = when' not in s:
+brush_new = '''        val artworkFadeAlpha = when {\n            p < 0.30f -> 0f\n            p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)\n            else -> 1f\n        }\n\n        // During the second snap, the expanded artwork brush must gently disappear as\n        // the Up Next queue approaches its maximum height. This keeps the compact 44dp\n        // artwork at the top-left completely clear instead of covering it with the brush.\n        // The fade follows the drag continuously and remains smooth during snap animation.\n        val compactBrushFadeAlpha = when {\n            p <= 1.05f -> 1f\n            p >= 1.90f -> 0f\n            else -> {\n                val t = ((p - 1.05f) / 0.85f).coerceIn(0f, 1f)\n                1f - (t * t * (3f - 2f * t))\n            }\n        }\n'''
+if 'val compactBrushFadeAlpha = when' not in s:
+    if brush_anchor not in s:
+        raise SystemExit('Artwork fade anchor not found')
     s = s.replace(brush_anchor, brush_new, 1)
 
 # All fixed brush layers use artworkFadeAlpha. Multiply by the stage-2 fade so every
-# duplicate/stacked brush layer disappears together without changing the artwork itself.
+# stacked brush layer disappears together without changing the artwork itself.
 s = s.replace(
     '.graphicsLayer { alpha = artworkFadeAlpha }',
     '.graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }',
 )
 
+# Repair the exact queue-row tail corruption introduced by the swipe patch. Do not use a
+# broad regex: remove only the known orphaned fragment before AnimatedPlayingBars.
+orphan = '''\nound(Color.White.copy(alpha = .92f)))\n            }\n        }\n    }\n}\n\n@Composable\nprivate fun AnimatedPlayingBars'''
+if orphan in s:
+    s = s.replace(orphan, '\n@Composable\nprivate fun AnimatedPlayingBars', 1)
+
 p.write_text(s, encoding='utf-8')
-print('Fixed queue swipe/drag compile errors and added compact-state brush fade.')
+print('Fixed queue swipe/drag compile errors, repaired queue-row tail, and added compact-state brush fade.')
