@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -181,6 +182,7 @@ fun PlayerSheet(
     val dragProgress = remember { Animatable(0f) }
     val p = dragProgress.value
     val haptic = LocalHapticFeedback.current
+    val queueDragDensity = LocalDensity.current
     var hasLatchedStage1 by remember { mutableStateOf(false) }
 
     // Haptic feedback trigger on reaching the first snap point
@@ -220,7 +222,7 @@ fun PlayerSheet(
     fun updateQueueDrag(deltaY: Float) {
         if (activeQueueDragId == null || activeQueueDragIndex < 0) return
         queueDragOffsetY += deltaY
-        val step = with(LocalDensity.current) { 60.dp.toPx() }
+        val step = with(queueDragDensity) { 60.dp.toPx() }
         val raw = activeQueueDragIndex + (queueDragOffsetY / step).roundToInt()
         queueDragTargetIndex = raw.coerceIn(1, orderedQueueItems.lastIndex.coerceAtLeast(1))
     }
@@ -530,13 +532,26 @@ fun PlayerSheet(
             p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)
             else -> 1f
         }
+
+        // During the second snap, the expanded artwork brush must gently disappear as
+        // the Up Next queue approaches its maximum height. This keeps the compact 44dp
+        // artwork at the top-left completely clear instead of covering it with the brush.
+        // The fade follows the drag continuously and also remains smooth during snap animation.
+        val compactBrushFadeAlpha = when {
+            p <= 1.05f -> 1f
+            p >= 1.90f -> 0f
+            else -> {
+                val t = ((p - 1.05f) / 0.85f).coerceIn(0f, 1f)
+                1f - (t * t * (3f - 2f * t))
+            }
+        }
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -559,7 +574,7 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -582,7 +597,7 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -605,7 +620,7 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -628,7 +643,7 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -651,7 +666,7 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -674,7 +689,7 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -697,7 +712,7 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -720,7 +735,30 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY)
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -743,7 +781,7 @@ fun PlayerSheet(
                     .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
@@ -1264,10 +1302,7 @@ fun PlayerSheet(
 
 /**
  * Up Next list track row component:
- * Clean, modern row displaying track art thumbnail, title, artist & duration,
- * playing indicator badge if active, and sleek reorder handle.
- */
-@Composable
+ * Clean, modern row displaying track art thumbnail, title, artist & duratio@Composable
 private fun UpNextTrackRow(
     track: Track, isCurrent: Boolean, isPlaying: Boolean, accentColor: Color,
     surfaceColor: Color,
@@ -1493,12 +1528,18 @@ private fun UpNextTrackRow(
     }
 }
 
+ound(Color.White.copy(alpha = .92f)))
+            }
+        }
+    }
+}
+
 @Composable
 private fun AnimatedPlayingBars(color: Color, modifier: Modifier = Modifier) {
     val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "queue_playing")
-    val a by androidx.compose.animation.core.animateFloat(.30f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar1")
-    val b by androidx.compose.animation.core.animateFloat(.75f, .25f, androidx.compose.animation.core.infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar2")
-    val c by androidx.compose.animation.core.animateFloat(.45f, .95f, androidx.compose.animation.core.infiniteRepeatable(tween(360, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar3")
+    val a by infinite.animateFloat(.30f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar1")
+    val b by infinite.animateFloat(.75f, .25f, androidx.compose.animation.core.infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar2")
+    val c by infinite.animateFloat(.45f, .95f, androidx.compose.animation.core.infiniteRepeatable(tween(360, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar3")
     Row(modifier, Arrangement.spacedBy(2.dp), Alignment.CenterVertically) {
         Box(Modifier.width(3.dp).height((18f * a).dp).clip(RoundedCornerShape(2.dp)).background(color))
         Box(Modifier.width(3.dp).height((18f * b).dp).clip(RoundedCornerShape(2.dp)).background(color))
