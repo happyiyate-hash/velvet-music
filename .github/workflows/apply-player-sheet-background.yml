@@ -8,6 +8,7 @@ on:
       - 'scripts/player_sheet_queue_drag_patch.py'
       - 'scripts/queue_drag_trigger.py'
       - 'scripts/fix_queue_drag_brace.py'
+      - 'scripts/fix_queue_drag_compile.py'
   workflow_dispatch:
 
 jobs:
@@ -24,6 +25,7 @@ jobs:
           python3 scripts/player_sheet_queue_patch.py
           python3 scripts/player_sheet_queue_drag_patch.py
           python3 scripts/fix_queue_drag_brace.py
+          python3 scripts/fix_queue_drag_compile.py
       - name: Commit PlayerSheet patches
         run: |
           git config user.name 'github-actions[bot]'
