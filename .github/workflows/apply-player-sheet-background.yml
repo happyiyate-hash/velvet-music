@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'scripts/player_sheet_background_gradient.py'
+      - 'scripts/player_sheet_queue_patch.py'
   workflow_dispatch:
 
 jobs:
@@ -13,16 +14,16 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Apply background patch
+      - name: Apply PlayerSheet patches
         run: |
-          # Deterministically remove the stale state name left by the failed background patch.
           sed -i 's/animatedPlayerBackground/themeColors.bgBottom/g' app/src/main/java/com/example/ui/PlayerSheet.kt
           python3 scripts/player_sheet_background_gradient.py
-      - name: Commit background patch
+          python3 scripts/player_sheet_queue_patch.py
+      - name: Commit PlayerSheet patches
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/com/example/ui/PlayerSheet.kt
           git diff --cached --quiet && exit 0
-          git commit -m 'Fix stale PlayerSheet background color reference'
+          git commit -m 'Apply PlayerSheet queue and background updates'
           git push
