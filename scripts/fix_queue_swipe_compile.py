@@ -55,4 +55,4 @@ if orphan in s:
     s = s.replace(orphan, '\n@Composable\nprivate fun AnimatedPlayingBars', 1)
 
 p.write_text(s, encoding='utf-8')
-print('Stabilized PlayerSheet compile boundaries and compact brush fade.')
+print('Stabilized PlayerSheet compile boundaries and compact brush fade; safe repair chain active.')
