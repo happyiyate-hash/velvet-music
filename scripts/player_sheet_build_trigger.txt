@@ -1,0 +1,2 @@
+PlayerSheet safe repair verification trigger.
+Compact artwork brush fade verification.
