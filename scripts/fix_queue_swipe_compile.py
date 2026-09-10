@@ -3,17 +3,45 @@ from pathlib import Path
 p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = p.read_text(encoding='utf-8')
 
-# Compose imports required by the two-stage swipe implementation.
-if 'import androidx.compose.animation.core.animateFloat\n' not in s:
-    s = s.replace('import androidx.compose.animation.core.Animatable\n', 'import androidx.compose.animation.core.Animatable\nimport androidx.compose.animation.core.animateFloat\n', 1)
-if 'import androidx.compose.foundation.layout.fillMaxHeight\n' not in s:
-    s = s.replace('import androidx.compose.foundation.layout.fillMaxWidth\n', 'import androidx.compose.foundation.layout.fillMaxWidth\nimport androidx.compose.foundation.layout.fillMaxHeight\n', 1)
-
-# updateQueueDrag is a non-composable local function, so capture density in the composable scope.
+# Queue drag: updateQueueDrag is a normal local function, so density must be captured
+# from the composable scope before that function is declared.
 if 'val queueDragDensity = LocalDensity.current' not in s:
     anchor = '    val haptic = LocalHapticFeedback.current\n'
+    if anchor not in s:
+        raise SystemExit('Queue drag haptic anchor not found')
     s = s.replace(anchor, anchor + '    val queueDragDensity = LocalDensity.current\n', 1)
 s = s.replace('val step = with(LocalDensity.current) { 60.dp.toPx() }', 'val step = with(queueDragDensity) { 60.dp.toPx() }', 1)
 
+# Swipe underlay uses fillMaxHeight.
+if 'import androidx.compose.foundation.layout.fillMaxHeight\n' not in s:
+    s = s.replace(
+        'import androidx.compose.foundation.layout.fillMaxWidth\n',
+        'import androidx.compose.foundation.layout.fillMaxWidth\nimport androidx.compose.foundation.layout.fillMaxHeight\n',
+        1,
+    )
+
+# AnimatedPlayingBars: animateFloat is an InfiniteTransition extension, not a top-level
+# function. Use the transition receiver explicitly so Kotlin resolves it correctly.
+s = s.replace(
+    'androidx.compose.animation.core.animateFloat(',
+    'infinite.animateFloat(',
+)
+# Do not add the invalid top-level animateFloat import.
+s = s.replace('import androidx.compose.animation.core.animateFloat\n', '')
+
+# The expanded artwork brush currently remains fixed over the compact 44dp artwork.
+# Fade that brush progressively during stage 2 so the small top-left artwork is unobstructed.
+brush_anchor = '''        val artworkFadeAlpha = when {\n            p < 0.30f -> 0f\n            p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)\n            else -> 1f\n        }\n'''
+brush_new = '''        val artworkFadeAlpha = when {\n            p < 0.30f -> 0f\n            p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)\n            else -> 1f\n        }\n\n        // During the second snap, the expanded artwork brush must gently disappear as\n        // the Up Next queue approaches its maximum height. This keeps the compact 44dp\n        // artwork at the top-left completely clear instead of covering it with the brush.\n        // The fade follows the drag continuously and also remains smooth during snap animation.\n        val compactBrushFadeAlpha = when {\n            p <= 1.05f -> 1f\n            p >= 1.90f -> 0f\n            else -> {\n                val t = ((p - 1.05f) / 0.85f).coerceIn(0f, 1f)\n                1f - (t * t * (3f - 2f * t))\n            }\n        }\n'''
+if brush_anchor in s and 'val compactBrushFadeAlpha = when' not in s:
+    s = s.replace(brush_anchor, brush_new, 1)
+
+# All fixed brush layers use artworkFadeAlpha. Multiply by the stage-2 fade so every
+# duplicate/stacked brush layer disappears together without changing the artwork itself.
+s = s.replace(
+    '.graphicsLayer { alpha = artworkFadeAlpha }',
+    '.graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }',
+)
+
 p.write_text(s, encoding='utf-8')
-print('Fixed queue swipe/drag Compose compile errors.')
+print('Fixed queue swipe/drag compile errors and added compact-state brush fade.')
