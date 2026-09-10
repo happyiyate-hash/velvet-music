@@ -8,7 +8,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -486,11 +486,11 @@ fun PlayerSheet(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.16f to playerBackgroundTop.copy(alpha = 0.12f),
-                                0.34f to playerBackgroundTop.copy(alpha = 0.34f),
-                                0.52f to playerBackgroundBottom.copy(alpha = 0.62f),
-                                0.72f to playerBackgroundBottom.copy(alpha = 0.86f),
-                                1.00f to playerBackgroundBottom
+                                0.16f to animatedPlayerBackground.copy(alpha = 0.12f),
+                                0.34f to animatedPlayerBackground.copy(alpha = 0.34f),
+                                0.52f to animatedPlayerBackground.copy(alpha = 0.62f),
+                                0.72f to animatedPlayerBackground.copy(alpha = 0.86f),
+                                1.00f to animatedPlayerBackground
                             )
                         )
                     )
