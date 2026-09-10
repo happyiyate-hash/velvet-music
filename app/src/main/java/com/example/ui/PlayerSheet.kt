@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -108,6 +109,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
 import com.example.audio.AudioTelemetry
@@ -116,6 +118,7 @@ import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.roundToInt
 
 /**
  * Now Playing screen reproduced to match the exact visual reference and specifications:
@@ -144,6 +147,7 @@ fun PlayerSheet(
     isCachedOffline: Boolean = false,
     queueTracks: List<Track> = emptyList(),
     onSelectQueueTrack: (Track) -> Unit = {},
+    onPlayNextTrack: (Track) -> Unit = {},
     onTogglePlayPause: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onSkipNext: () -> Unit,
@@ -191,15 +195,11 @@ fun PlayerSheet(
     }
 
     // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
-    val queueItems = remember(queueTracks, track) {
-        if (queueTracks.isNotEmpty()) {
-            val otherTracks = queueTracks.filter { it.id != track.id }
-            listOf(track) + otherTracks
-        } else {
-            listOf(track) + com.example.model.SampleData.starterTracks.filter { it.id != track.id }
-        }
+    val queueItems = remember(queueTracks) {
+        if (queueTracks.isNotEmpty()) queueTracks.distinctBy { it.id }
+        else com.example.model.SampleData.starterTracks.distinctBy { it.id }
     }
-
+    var orderedQueueItems by remember(queueItems) { mutableStateOf(queueItems) }
     val queueListState = rememberLazyListState()
 
     BoxWithConstraints(
@@ -492,6 +492,29 @@ fun PlayerSheet(
             p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)
             else -> 1f
         }
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
@@ -912,18 +935,44 @@ fun PlayerSheet(
                         .padding(horizontal = 14.dp),
                     contentPadding = PaddingValues(bottom = insetsBottom + 24.dp)
                 ) {
-                    items(queueItems) { queueTrack ->
+                    items(
+                        items = orderedQueueItems,
+                        key = { it.id }
+                    ) { queueTrack ->
                         val isCurrent = queueTrack.id == track.id
+                        val queueIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
                         UpNextTrackRow(
                             track = queueTrack,
                             isCurrent = isCurrent,
                             isPlaying = isPlaying && isCurrent,
                             accentColor = themeColors.accent,
-                            onClick = {
-                                onSelectQueueTrack(queueTrack)
-                            }
+                            onClick = { onSelectQueueTrack(queueTrack) },
+                            onPlayNext = {
+                                onPlayNextTrack(queueTrack)
+                                val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
+                                val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
+                                if (currentIndex >= 0 && playingIndex >= 0 && currentIndex != playingIndex + 1) {
+                                    val destination = if (currentIndex < playingIndex) playingIndex else playingIndex + 1
+                                    orderedQueueItems = orderedQueueItems.toMutableList().apply {
+                                        val moved = removeAt(currentIndex)
+                                        add(destination.coerceAtMost(size), moved)
+                                    }
+                                }
+                            },
+                            onDelete = {
+                                if (!isCurrent) orderedQueueItems = orderedQueueItems.filterNot { it.id == queueTrack.id }
+                            },
+                            onMove = { from, direction ->
+                                val target = from + direction
+                                if (target in orderedQueueItems.indices && from != 0 && target != 0) {
+                                    orderedQueueItems = orderedQueueItems.toMutableList().apply {
+                                        add(target, removeAt(from))
+                                    }
+                                }
+                            },
+                            index = queueIndex
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                     }
                 }
             }
@@ -1021,91 +1070,182 @@ private fun UpNextTrackRow(
     isPlaying: Boolean,
     accentColor: Color,
     onClick: () -> Unit,
+    onPlayNext: () -> Unit,
+    onDelete: () -> Unit,
+    onMove: (Int, Int) -> Unit,
+    index: Int,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (isCurrent) accentColor.copy(alpha = 0.16f) else Color.Transparent
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Thumbnail
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            TrackArtworkImage(
-                track = track,
-                contentDescription = track.title,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (isCurrent && isPlaying) {
+    var swipeOffset by remember(track.id) { mutableFloatStateOf(0f) }
+    var reordering by remember(track.id) { mutableStateOf(false) }
+    var reorderAccumulatedY by remember(track.id) { mutableFloatStateOf(0f) }
+    val maxSwipe = 132f
+    val density = LocalDensity.current
+
+    Box(modifier = modifier.fillMaxWidth().height(58.dp)) {
+        if (swipeOffset != 0f) {
+            val isDelete = swipeOffset < 0f
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                horizontalArrangement = if (isDelete) Arrangement.Start else Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.40f)),
+                        .width(92.dp)
+                        .height(50.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isDelete) Color.White.copy(alpha = 0.07f) else accentColor.copy(alpha = 0.16f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = "Playing",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = if (isDelete) Icons.Default.Delete else Icons.Default.SkipNext,
+                        contentDescription = if (isDelete) "Delete from queue" else "Play next",
+                        tint = Color.White.copy(alpha = (abs(swipeOffset) / maxSwipe).coerceIn(0.35f, 1f)),
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Title and Artist + Duration
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title.substringBefore(" - "),
-                fontSize = 13.5.sp,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
-                color = if (isCurrent) accentColor else Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "${track.artist} • ${formatTrackDuration(track.durationMs)}",
-                fontSize = 11.5.sp,
-                color = Color.White.copy(alpha = 0.65f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Reorder drag handle (two clean horizontal lines)
-        Column(
-            modifier = Modifier.padding(horizontal = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(swipeOffset.roundToInt(), 0) }
+                .clip(RoundedCornerShape(9.dp))
+                .background(if (isCurrent) accentColor.copy(alpha = 0.07f) else Color.Transparent)
+                .pointerInput(track.id) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {},
+                        onDragCancel = { swipeOffset = 0f },
+                        onDragEnd = {
+                            when {
+                                swipeOffset <= -92f -> { onDelete(); swipeOffset = 0f }
+                                swipeOffset >= 92f -> { onPlayNext(); swipeOffset = 0f }
+                                else -> swipeOffset = 0f
+                            }
+                        },
+                        onHorizontalDrag = { change, amount ->
+                            change.consume()
+                            if (!reordering) swipeOffset = (swipeOffset + amount).coerceIn(-maxSwipe, maxSwipe)
+                        }
+                    )
+                }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick
+                )
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .width(16.dp)
-                    .height(2.dp)
-                    .background(Color.White.copy(alpha = 0.45f), RoundedCornerShape(1.dp))
-            )
-            Box(
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .border(0.7.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(7.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                TrackArtworkImage(track = track, contentDescription = track.title, modifier = Modifier.fillMaxSize())
+                if (isCurrent && isPlaying) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AnimatedPlayingBars(color = Color.White, modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(9.dp))
+
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Text(
+                    text = track.title.substringBefore(" - "),
+                    fontSize = 14.sp,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (isCurrent) accentColor else Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(1.dp))
+                Text(
+                    text = "${track.artist} • ${formatTrackDuration(track.durationMs)}",
+                    fontSize = 11.5.sp,
+                    color = Color.White.copy(alpha = 0.58f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Column(
                 modifier = Modifier
-                    .width(16.dp)
-                    .height(2.dp)
-                    .background(Color.White.copy(alpha = 0.45f), RoundedCornerShape(1.dp))
-            )
+                    .size(38.dp)
+                    .pointerInput(track.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                reordering = true
+                                reorderAccumulatedY = 0f
+                                swipeOffset = 0f
+                            },
+                            onDragEnd = { reordering = false; reorderAccumulatedY = 0f },
+                            onDragCancel = { reordering = false; reorderAccumulatedY = 0f },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                reorderAccumulatedY += dragAmount.y
+                                val threshold = with(density) { 28.dp.toPx() }
+                                if (abs(reorderAccumulatedY) >= threshold) {
+                                    val direction = if (reorderAccumulatedY < 0f) -1 else 1
+                                    onMove(index, direction)
+                                    reorderAccumulatedY = 0f
+                                }
+                            }
+                        )
+                    },
+                verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = 0.88f)))
+                Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = 0.88f)))
+            }
         }
+    }
+}
+
+@Composable
+private fun AnimatedPlayingBars(color: Color, modifier: Modifier = Modifier) {
+    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "queue_playing")
+    val a by infinite.animateFloat(
+        initialValue = 0.30f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = tween(420, easing = FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "bar1"
+    )
+    val b by infinite.animateFloat(
+        initialValue = 0.75f,
+        targetValue = 0.25f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = tween(520, easing = FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "bar2"
+    )
+    val c by infinite.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.95f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = tween(360, easing = FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "bar3"
+    )
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(3.dp).height((18f * a).dp).clip(RoundedCornerShape(2.dp)).background(color))
+        Box(Modifier.width(3.dp).height((18f * b).dp).clip(RoundedCornerShape(2.dp)).background(color))
+        Box(Modifier.width(3.dp).height((18f * c).dp).clip(RoundedCornerShape(2.dp)).background(color))
     }
 }
 
