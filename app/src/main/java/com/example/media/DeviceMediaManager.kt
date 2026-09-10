@@ -75,7 +75,6 @@ object DeviceMediaManager {
 
     fun loadDeviceTracks(context: Context): List<Track> {
         val tracks = mutableListOf<Track>()
-        var fallbackIndex = 0
         try {
             val projection = arrayOf(
                 MediaStore.Audio.Media._ID,
@@ -117,21 +116,18 @@ object DeviceMediaManager {
                     val cleanArtist = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist
                     val trackId = "device_audio_$id"
 
-                    // Artwork belongs to this individual track. Never use the audio content URI
-                    // itself as an image URI. Resolve real artwork first; only a null result gets
-                    // an app-owned fallback drawable.
-                    val resolvedArtUri = resolveArtwork(
-                        context = context,
-                        contentUri = contentUri,
-                        albumId = albumId,
-                        trackId = trackId
-                    )
-                    val cover = if (resolvedArtUri == null) {
-                        FallbackArtworkPool.getPhotoForIndex(fallbackIndex++)
+                    // Strict Artwork Verification:
+                    // 1. Never assume albumart belongs to this song. Only assign artworkUri if the track
+                    //    actually possesses its own verifiable embedded picture or valid albumart.
+                    // 2. If a track has no artwork of its own, artworkUri remains null so it safely
+                    //    receives a dedicated distributed fallback image without borrowing another song's art.
+                    val resolvedArtUri = resolveArtwork(context, contentUri, albumId, trackId)
+
+                    // Distribute fallback covers across tracks without genuine artwork
+                    val cover = if (resolvedArtUri != null) {
+                        R.drawable.art_luminous_echoes
                     } else {
-                        // coverResId is only a safety fallback for an artwork load failure.
-                        // The real artworkUri remains authoritative.
-                        FallbackArtworkPool.getPhotoForIndex(fallbackIndex)
+                        FallbackArtworkPool.getDistributedPhoto(tracks.size, trackId)
                     }
 
                     tracks.add(
@@ -167,8 +163,7 @@ object DeviceMediaManager {
         albumId: Long,
         trackId: String
     ): String? {
-        // 1. Prefer artwork embedded in this exact audio file. This prevents an album-art
-        // provider from accidentally replacing track-specific ID3 artwork.
+        // 1. Try embedded picture from ID3 tag in this specific audio file (most authentic & exclusive)
         try {
             val retriever = MediaMetadataRetriever()
             try {
@@ -177,7 +172,9 @@ object DeviceMediaManager {
                 if (picture != null && picture.isNotEmpty()) {
                     val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
                     val artFile = File(cacheDir, "art_${trackId}.jpg")
-                    artFile.outputStream().use { it.write(picture) }
+                    if (!artFile.exists() || artFile.length() == 0L) {
+                        artFile.outputStream().use { it.write(picture) }
+                    }
                     return Uri.fromFile(artFile).toString()
                 }
             } finally {
@@ -185,36 +182,31 @@ object DeviceMediaManager {
             }
         } catch (_: Exception) {}
 
-        // 2. If there is no embedded image, accept MediaStore's album artwork only when the
-        // provider actually exposes a readable image. It is never used as a raw audio URI.
-        if (albumId > 0) {
-            val albumArtUri = ContentUris.withAppendedId(
-                Uri.parse("content://media/external/audio/albumart"),
-                albumId
-            )
+        // 2. Android 10+ (Q) loadThumbnail from contentResolver for this exact track
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
-                context.contentResolver.openInputStream(albumArtUri)?.use { stream ->
-                    if (stream.read() != -1) {
-                        return albumArtUri.toString()
+                val bmp = context.contentResolver.loadThumbnail(contentUri, android.util.Size(512, 512), null)
+                val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
+                val artFile = File(cacheDir, "art_${trackId}.jpg")
+                if (!artFile.exists() || artFile.length() == 0L) {
+                    artFile.outputStream().use { out ->
+                        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)
                     }
                 }
+                return Uri.fromFile(artFile).toString()
             } catch (_: Exception) {}
         }
 
-        // 3. Android 10+ thumbnail fallback. This is still tied to this track's content URI.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // 3. Try MediaStore album art URI only if albumId is valid and stream genuinely readable
+        if (albumId > 0) {
+            val albumArtUri = ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
             try {
-                val bmp = context.contentResolver.loadThumbnail(
-                    contentUri,
-                    android.util.Size(512, 512),
-                    null
-                )
-                val cacheDir = File(context.cacheDir, "art_cache").apply { mkdirs() }
-                val artFile = File(cacheDir, "art_${trackId}.jpg")
-                artFile.outputStream().use { out ->
-                    bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)
+                context.contentResolver.openInputStream(albumArtUri)?.use { stream ->
+                    val b = stream.read()
+                    if (b != -1) {
+                        return albumArtUri.toString()
+                    }
                 }
-                return Uri.fromFile(artFile).toString()
             } catch (_: Exception) {}
         }
 

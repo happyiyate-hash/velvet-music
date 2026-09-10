@@ -32,21 +32,30 @@ data class TrackThemeColors(
 
 object ArtworkColorExtractor {
 
+    private val colorCache = java.util.concurrent.ConcurrentHashMap<String, TrackThemeColors>()
+
     /**
      * Dynamically samples the artwork of a track (from drawable resource or content URI)
      * and extracts the dominant color palette so the background automatically reflects
      * the exact color of the song's picture (e.g., vibrant blue for blue artwork, crimson for red, etc.).
      */
     fun extractColors(context: Context, track: Track): TrackThemeColors {
+        val cacheKey = track.artworkUri ?: "res_${track.coverResId}_${track.id}"
+        colorCache[cacheKey]?.let { return it }
+
         val bitmap = loadThumbnailBitmap(context, track)
         if (bitmap != null) {
             val sampled = sampleDominantColor(bitmap)
             if (sampled != null) {
-                return generateThemePalette(sampled)
+                val palette = generateThemePalette(sampled)
+                colorCache[cacheKey] = palette
+                return palette
             }
         }
         // Fallback to track's pre-configured dominant color
-        return generateThemePalette(track.dominantColor)
+        val fallbackPalette = generateThemePalette(track.dominantColor)
+        colorCache[cacheKey] = fallbackPalette
+        return fallbackPalette
     }
 
     fun extractColorsFromUri(context: Context, artworkUriString: String): TrackThemeColors {

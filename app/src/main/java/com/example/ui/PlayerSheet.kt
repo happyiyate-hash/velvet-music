@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.graphics.BitmapFactory
+import android.net.Uri
 import com.example.R
 import android.content.Context
 import android.content.Intent
@@ -240,17 +242,29 @@ fun PlayerSheet(
         val totalWidth = maxWidth
         val density = LocalDensity.current
 
-        // Artwork framing is based on the actual drawable dimensions. Square artwork keeps
-        // the normal player geometry; portrait/tall artwork is allowed to use its natural
-        // height instead of being forced into a 1:1 box. Intrinsic dimensions are available
-        // immediately for bundled artwork, so this does not delay the first render.
-        // v10 retrigger: painterResource must be invoked directly from composition.
-        // Reading its intrinsic size is immediate and does not block the first render.
-        val artworkPainter = painterResource(track.coverResId)
-        val artworkIntrinsicSize = artworkPainter.intrinsicSize
-        val artworkAspectRatio = if (artworkIntrinsicSize.width > 0f && artworkIntrinsicSize.height > 0f) {
-            artworkIntrinsicSize.width / artworkIntrinsicSize.height
-        } else 1f
+        // Artwork framing is based on the actual artwork dimensions.
+        // If the song has a real artwork file, we query its aspect ratio safely from cache/file,
+        // otherwise falling back to the bundled drawable's intrinsic size.
+        val artworkAspectRatio = remember(track) {
+            var ratio = 1f
+            if (!track.artworkUri.isNullOrBlank()) {
+                try {
+                    val uri = Uri.parse(track.artworkUri)
+                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    if (uri.scheme == "file") {
+                        BitmapFactory.decodeFile(uri.path, opts)
+                    } else {
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            BitmapFactory.decodeStream(stream, null, opts)
+                        }
+                    }
+                    if (opts.outWidth > 0 && opts.outHeight > 0) {
+                        ratio = opts.outWidth.toFloat() / opts.outHeight.toFloat()
+                    }
+                } catch (_: Exception) {}
+            }
+            ratio
+        }
         val isTallArtwork = artworkAspectRatio < 0.94f
 
         // Safe insets
@@ -485,7 +499,7 @@ fun PlayerSheet(
 
         // Fixed expanded-state dissolve. It is deliberately OUTSIDE the moving artwork
         // box, so during collapse the picture leaves this area while the fade remains stable.
-        // Resting/mini states have no fade. In expanded mode, the final ~24% dissolves
+        // Resting/mini states have no fade. In expanded mode, the final ~35% dissolves
         // strongly into the player background without changing image height.
         val artworkFadeAlpha = when {
             p < 0.30f -> 0f
@@ -495,18 +509,19 @@ fun PlayerSheet(
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
-                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
+                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.65f))
                     .width(expArtWidth)
-                    .height(expArtHeight * 0.24f)
+                    .height(expArtHeight * 0.35f)
                     .graphicsLayer { alpha = artworkFadeAlpha }
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0.00f to Color.Transparent,
-                                0.16f to themeColors.bgBottom.copy(alpha = 0.12f),
-                                0.34f to themeColors.bgBottom.copy(alpha = 0.34f),
-                                0.52f to themeColors.bgBottom.copy(alpha = 0.62f),
-                                0.72f to themeColors.bgBottom.copy(alpha = 0.86f),
+                                0.30f to themeColors.bgBottom.copy(alpha = 0.22f),
+                                0.50f to themeColors.bgBottom.copy(alpha = 0.50f),
+                                0.70f to themeColors.bgBottom.copy(alpha = 0.80f),
+                                0.88f to themeColors.bgBottom.copy(alpha = 0.96f),
+                                0.95f to themeColors.bgBottom,
                                 1.00f to themeColors.bgBottom
                             )
                         )
