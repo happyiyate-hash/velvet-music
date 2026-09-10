@@ -601,6 +601,29 @@ fun PlayerSheet(
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
                     .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
@@ -1037,7 +1060,6 @@ fun PlayerSheet(
                             isDropTarget = activeQueueDragId != null && !isDragging && queueIndex == queueDragTargetIndex
                         )
                         Spacer(modifier = Modifier.height(2.dp))
-                    }
                     }
                 }
             }
