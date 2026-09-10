@@ -671,6 +671,29 @@ fun PlayerSheet(
         if (artworkFadeAlpha > 0f) {
             Box(
                 modifier = Modifier
+                    .offset(x = expArtX, y = expArtY)
+                    .width(expArtWidth)
+                    .height(expArtHeight * 0.24f)
+                    .graphicsLayer { alpha = artworkFadeAlpha }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to themeColors.darkBackground,
+                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
+                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
+                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
+                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
+                                1.00f to Color.Transparent
+                            )
+                        )
+                    )
+                    .zIndex(1f)
+            )
+        }
+
+        if (artworkFadeAlpha > 0f) {
+            Box(
+                modifier = Modifier
                     .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
                     .width(expArtWidth)
                     .height(expArtHeight * 0.24f)
@@ -1077,6 +1100,7 @@ fun PlayerSheet(
                             isCurrent = isCurrent,
                             isPlaying = isPlaying && isCurrent,
                             accentColor = themeColors.accent,
+                            surfaceColor = themeColors.darkBackground,
                             onClick = { onSelectQueueTrack(queueTrack) },
                             onPlayNext = {
                                 onPlayNextTrack(queueTrack)
@@ -1194,12 +1218,10 @@ fun PlayerSheet(
 
 /**
  * Up Next list track row component:
- * Clean, modern row displaying track art thumbnail, title, artist & duration,
- * playing indicator badge if active, and sleek reorder handle.
- */
-@Composable
+ * Clean, modern row displaying track art thumbnail, title, artist & duratio@Composable
 private fun UpNextTrackRow(
     track: Track, isCurrent: Boolean, isPlaying: Boolean, accentColor: Color,
+    surfaceColor: Color,
     onClick: () -> Unit, onPlayNext: () -> Unit, onDelete: () -> Unit,
     onDragStart: () -> Unit, onDragBy: (Float) -> Unit, onDragEnd: () -> Unit,
     isDragging: Boolean, dragOffsetY: Float, virtualDisplacementY: Float,
@@ -1226,9 +1248,8 @@ private fun UpNextTrackRow(
     } else {
         neutralAction
     }
-    val actionIconAlpha = 0.38f + (0.62f * stageProgress)
+    val actionIconAlpha = 0.30f + (0.70f * stageProgress)
     val actionIconScale = 0.70f + (0.30f * stageProgress)
-    val actionBackgroundAlpha = if (stage2) 1f else 0.96f
     val actionColorAnimated by androidx.compose.animation.animateColorAsState(
         targetValue = actionColor,
         animationSpec = tween(120, easing = FastOutSlowInEasing),
@@ -1267,44 +1288,39 @@ private fun UpNextTrackRow(
             .zIndex(if (isDragging) 10f else 0f)
             .shadow(elevation.dp, RoundedCornerShape(9.dp), clip = false)
     ) {
-        // UNDERLAY: the action surface is always behind the song card. The card slides over it,
-        // revealing the nested action icon instead of placing an icon on top of the row.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(9.dp))
-                .background(actionColorAnimated.copy(alpha = actionBackgroundAlpha)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (swipingLeft || swipingRight) {
-                Box(
+        // UNDERLAY: action background and icon live strictly behind the song card.
+        // The card exposes more of this surface as it moves horizontally.
+        if (swipingLeft || swipingRight) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(132.dp)
+                    .align(if (swipingLeft) Alignment.CenterEnd else Alignment.CenterStart)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(actionColorAnimated),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (swipingLeft) Icons.Default.Delete else Icons.Default.SkipNext,
+                    contentDescription = if (swipingLeft) "Delete from queue" else "Play next",
+                    tint = Color.White.copy(alpha = actionAlphaAnimated),
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .width(92.dp)
-                        .align(if (swipingLeft) Alignment.CenterEnd else Alignment.CenterStart),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (swipingLeft) Icons.Default.Delete else Icons.Default.SkipNext,
-                        contentDescription = if (swipingLeft) "Delete from queue" else "Play next",
-                        tint = Color.White.copy(alpha = actionAlphaAnimated),
-                        modifier = Modifier
-                            .size(24.dp)
-                            .graphicsLayer {
-                                scaleX = actionScaleAnimated
-                                scaleY = actionScaleAnimated
-                            }
-                    )
-                }
+                        .size(24.dp)
+                        .graphicsLayer {
+                            scaleX = actionScaleAnimated
+                            scaleY = actionScaleAnimated
+                        }
+                )
             }
         }
 
-        // TOP CARD: only this layer translates. The underlying action layer never moves.
+        // TOP CARD: this is the only horizontal-moving layer. The action surface never floats above it.
         Row(
             Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
                 .clip(RoundedCornerShape(9.dp))
+                .background(surfaceColor)
                 .background(
                     when {
                         isDragging -> accentColor.copy(alpha = .13f)
@@ -1317,7 +1333,6 @@ private fun UpNextTrackRow(
                     detectHorizontalDragGestures(
                         onDragStart = {
                             thresholdLatched = false
-                            swipeSettle.stop()
                         },
                         onDragCancel = {
                             scope.launch {
@@ -1424,6 +1439,12 @@ private fun UpNextTrackRow(
             ) {
                 Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = .92f)))
                 Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = .92f)))
+            }
+        }
+    }
+}
+
+ound(Color.White.copy(alpha = .92f)))
             }
         }
     }
