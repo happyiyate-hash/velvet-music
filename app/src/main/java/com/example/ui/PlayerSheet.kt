@@ -1341,7 +1341,12 @@ fun PlayerSheet(
                 accentColor = themeColors.accent,
                 onSeekTo = onSeekTo,
                 onDismiss = { showLyricsSheet = false }
-        @Composable
+            )
+        }
+    }
+}
+
+@Composable
 private fun UpNextTrackRow(
     track: Track, isCurrent: Boolean, isPlaying: Boolean, accentColor: Color,
     surfaceColor: Color,
