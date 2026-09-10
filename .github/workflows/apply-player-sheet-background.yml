@@ -6,6 +6,7 @@ on:
       - 'scripts/player_sheet_background_gradient.py'
       - 'scripts/player_sheet_queue_patch.py'
       - 'scripts/player_sheet_queue_drag_patch.py'
+      - 'scripts/queue_drag_trigger.py'
   workflow_dispatch:
 
 jobs:
