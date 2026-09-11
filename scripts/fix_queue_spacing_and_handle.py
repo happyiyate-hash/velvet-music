@@ -11,9 +11,14 @@ s = s.replace('.padding(end = 4.dp)', '.padding(end = 2.dp)', 1)
 s = s.replace('''                .clip(RoundedCornerShape(9.dp))\n                .background(surfaceColor)''', '''                .background(surfaceColor)''', 1)
 s = s.replace('''                .clip(RoundedCornerShape(9.dp))\n                .background(if (isCurrent) accentColor.copy(alpha = .07f) else Color.Transparent)''', '''                .background(if (isCurrent) accentColor.copy(alpha = .07f) else Color.Transparent)''', 1)
 
-# Make the artwork square too: no rounded clipping or rounded border in the Up Next rows.
-s = s.replace('''                    .clip(RoundedCornerShape(7.dp))\n                    .border(.7.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(7.dp)),''', '''                    .border(.7.dp, Color.White.copy(alpha = .10f), RectangleShape),''', 1)
-s = s.replace('''                    .clip(RoundedCornerShape(7.dp))\n                    .border(0.7.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(7.dp)),''', '''                    .border(0.7.dp, Color.White.copy(alpha = 0.10f), RectangleShape),''', 1)
+# Make the artwork square too: no rounded clipping and no border in the Up Next rows.
+s = s.replace('''                    .clip(RoundedCornerShape(7.dp))\n                    .border(.7.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(7.dp)),''', '''                    ,''', 1)
+s = s.replace('''                    .clip(RoundedCornerShape(7.dp))\n                    .border(0.7.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(7.dp)),''', '''                    ,''', 1)
+
+# The previous replacement leaves a trailing comma after size(48.dp) in the Modifier chain;
+# normalize that exact shape to a valid modifier.
+s = s.replace('''                Modifier\n                    .padding(start = 2.dp)\n                    .size(48.dp)\n                    ,''', '''                Modifier\n                    .padding(start = 2.dp)\n                    .size(48.dp),''', 1)
+s = s.replace('''                modifier = Modifier\n                    .size(48.dp)\n                    ,''', '''                modifier = Modifier\n                    .size(48.dp),''', 1)
 
 # Make the two drag lines clearly separated.
 s = s.replace('verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)', 'verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)', 1)
@@ -28,7 +33,6 @@ else:
     old2 = '''detectDragGesturesAfterLongPress(\n                            onDragStart = { swipeOffset = 0f; onDragStart() },'''
     new2 = '''detectDragGestures(\n                            onDragStart = { swipeOffset = 0f; onDragStart() },'''
     s = s.replace(old2, new2, 1)
-
 s = s.replace('detectDragGesturesAfterLongPress(', 'detectDragGestures(', 1)
 
 # Bring action icons closer to the screen edge.
