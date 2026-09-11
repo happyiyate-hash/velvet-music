@@ -8,6 +8,7 @@ on:
       - 'scripts/player_sheet_queue_performance_patch.py'
       - 'scripts/player_sheet_exact_waveform_patch.py'
       - 'scripts/player_audio_visualizer_patch.py'
+      - 'scripts/fix_queue_spacing_and_handle.py'
   workflow_dispatch:
 
 jobs:
@@ -26,6 +27,9 @@ jobs:
       - name: Optimize queue rendering
         run: |
           python3 scripts/player_sheet_queue_performance_patch.py
+      - name: Tighten queue spacing and reorder handle
+        run: |
+          python3 scripts/fix_queue_spacing_and_handle.py
       - name: Wire exact decoded waveform
         run: |
           python3 scripts/player_sheet_exact_waveform_patch.py
@@ -38,5 +42,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@github.com'
           git add app/src/main/java/com/example/ui/PlayerSheet.kt app/src/main/java/com/example/audio/VelvetAudioEngine.kt
           git diff --cached --quiet && exit 0
-          git commit -m 'Add exact waveform and native playback visualization'
+          git commit -m 'Tighten queue spacing and make reorder handle immediate'
           git push
