@@ -47,4 +47,5 @@ jobs:
           git add app/src/main/java/com/example/ui/PlayerSheet.kt app/src/main/java/com/example/ui/HomeFeedScreen.kt app/src/main/java/com/example/audio/VelvetAudioEngine.kt
           git diff --cached --quiet && exit 0
           git commit -m 'Polish Home Feed gradient and contrast'
+          git pull --rebase origin main
           git push
