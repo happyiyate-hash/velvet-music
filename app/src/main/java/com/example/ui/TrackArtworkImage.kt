@@ -17,7 +17,8 @@ import com.example.model.Track
  * 2. Only if the song has NO photo at all does it fall back to the app's default photo resource.
  *
  * Callers rendering small scrolling thumbnails can provide thumbnailSizePx and disable crossfade
- * to keep bitmap decode/upload work bounded during fast list scrolling.
+ * to keep bitmap decode/upload work bounded during fast list scrolling. Those requests also use
+ * a stable per-track cache key so revisiting a row can reuse the decoded thumbnail immediately.
  */
 @Composable
 fun TrackArtworkImage(
@@ -34,7 +35,13 @@ fun TrackArtworkImage(
             .data(artUri)
             .crossfade(crossfade)
             .apply {
-                thumbnailSizePx?.let { size(it, it) }
+                thumbnailSizePx?.let {
+                    size(it, it)
+                    val cacheKey = "thumb_${track.id}_$artUri"
+                    memoryCacheKey(cacheKey)
+                    diskCacheKey(cacheKey)
+                    allowHardware(true)
+                }
             }
             .build()
         AsyncImage(
