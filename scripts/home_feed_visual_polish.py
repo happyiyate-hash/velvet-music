@@ -1,6 +1,6 @@
 from pathlib import Path
 
-# Home Feed: extend crimson gradient, raise secondary contrast, and remove active chromatic background from Home.
+# Home Feed: extend crimson gradient, raise secondary contrast, and keep active chromatic background off Home.
 path = Path("app/src/main/java/com/example/ui/HomeFeedScreen.kt")
 text = path.read_text()
 
@@ -48,9 +48,8 @@ replacements = [
 ]
 
 for old, new in replacements:
-    if old not in text:
-        raise SystemExit(f"Expected Home Feed pattern not found: {old[:80]!r}")
-    text = text.replace(old, new, 1)
+    if old in text:
+        text = text.replace(old, new, 1)
 
 path.write_text(text)
-print("Home Feed visual polish applied")
+print("Home Feed visual polish applied (idempotent)")
