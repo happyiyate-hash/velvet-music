@@ -14,6 +14,7 @@ val VelvetAshGray = Color(0xFF120E12)
 val VelvetAshGrayMedium = Color(0xFF181216)
 val VelvetAshGrayLight = Color(0xFF241A21)
 val VelvetWhiteAsh = Color(0xFFD8DDE6)
+val BrightAshGray = Color(0xFFD1C4C6)
 
 // Frosted Glass Surfaces (translucent light glass + 15% white border)
 val VelvetFrostedGlassBg = Color(0x0DFFFFFF) // ~5% white tint
