@@ -191,13 +191,15 @@ fun VelvetApp() {
     Box(
         modifier = Modifier.fillMaxSize().background(VelvetAshGrayDark)
     ) {
-        SoundCatchMeshBackground(
-            dominantColor = VelvetOffBloodTop,
-            secondaryColor = VelvetBloodPlum,
-            audioTelemetry = telemetry,
-            isPlaying = isPlaying,
-            isSoundCatchEnabled = isSoundCatchEnabled
-        )
+        if (selectedTab != 0) {
+            SoundCatchMeshBackground(
+                dominantColor = VelvetOffBloodTop,
+                secondaryColor = VelvetBloodPlum,
+                audioTelemetry = telemetry,
+                isPlaying = isPlaying,
+                isSoundCatchEnabled = isSoundCatchEnabled
+            )
+        }
 
         Scaffold(
             containerColor = Color.Transparent,
