@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Home Feed: extend crimson gradient, raise secondary contrast, and remove active chromatic background from Home.
 path = Path("app/src/main/java/com/example/ui/HomeFeedScreen.kt")
 text = path.read_text()
 
