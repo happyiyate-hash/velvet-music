@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -83,15 +84,15 @@ fun AshGlassBottomNavigationBar(
             )
             val dotColor1 = Color(0x1AFFFFFF)
             val dotColor2 = Color(0x12CCD4E0)
-            val stepX = 3.8f
-            val stepY = 3.8f
-            var curY = 1.5f
+            val stepX = 2.8f
+            val stepY = 2.8f
+            var curY = 1.2f
             while (curY < h) {
-                var curX = if (((curY / stepY).toInt() % 2) == 0) 1.5f else 3.4f
+                var curX = 1.2f
                 while (curX < w) {
                     drawCircle(
                         color = if (((curX + curY).toInt() % 3) == 0) dotColor1 else dotColor2,
-                        radius = 0.65f,
+                        radius = 0.35f,
                         center = Offset(curX, curY)
                     )
                     curX += stepX
