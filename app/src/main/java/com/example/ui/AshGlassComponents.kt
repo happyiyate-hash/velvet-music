@@ -81,8 +81,10 @@ fun AshGlassBottomNavigationBar(
                     )
                 )
             )
-            val dotColor1 = Color(0x1AFFFFFF)
-            val dotColor2 = Color(0x12CCD4E0)
+            // Ash-gray micro-dot texture: brighter and clearly visible on the dark base,
+            // while remaining subtle enough to preserve the luxury/glass feel.
+            val dotColor1 = Color(0xFFB8B8B8).copy(alpha = 0.34f)
+            val dotColor2 = Color(0xFF8F8F8F).copy(alpha = 0.27f)
             val stepX = 2.8f
             val stepY = 2.8f
             var curY = 1.2f
