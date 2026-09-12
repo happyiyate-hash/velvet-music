@@ -57,3 +57,5 @@ jobs:
           git commit -m 'Fix latest release Kotlin compilation errors'
           git pull --rebase origin main
           git push
+
+# Compile-repair workflow trigger checkpoint.
