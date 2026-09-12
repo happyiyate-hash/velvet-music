@@ -63,5 +63,4 @@ nav = nav.replace(old_nav_background, new_nav_background, 1)
 
 nav_path.write_text(nav)
 
-# Keep this marker change so the existing patch workflow runs once after the
-# workflow itself has been updated to include this script.
+# Dedicated workflow trigger marker: no UI behavior change.
