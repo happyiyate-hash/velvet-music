@@ -1,24 +1,22 @@
 name: Apply PlayerSheet background gradient
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'scripts/fix_queue_swipe_compile.py'
       - 'scripts/fix_queue_swipe_yt_visual.py'
       - 'scripts/player_sheet_queue_performance_patch.py'
-      - 'scripts/player_sheet_exact_waveform_patch.py'
-      - 'scripts/player_audio_visualizer_patch.py'
       - 'scripts/fix_queue_spacing_and_handle.py'
       - 'scripts/home_feed_visual_polish.py'
       - 'scripts/fix_main_app_background_color.py'
+      - 'scripts/player_sheet_exact_waveform_patch.py'
+      - 'scripts/player_audio_visualizer_patch.py'
       - 'scripts/fix_latest_release_compile_errors.py'
-  workflow_dispatch:
 
 jobs:
   patch:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Apply safe PlayerSheet repair
@@ -43,6 +41,7 @@ jobs:
         run: |
           python3 scripts/player_sheet_exact_waveform_patch.py
       - name: Wire native playback visualizer
+        continue-on-error: true
         run: |
           python3 scripts/player_audio_visualizer_patch.py
       - name: Fix latest release Kotlin compilation errors
