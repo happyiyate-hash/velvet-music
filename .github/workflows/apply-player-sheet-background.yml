@@ -10,6 +10,7 @@ on:
       - 'scripts/player_audio_visualizer_patch.py'
       - 'scripts/fix_queue_spacing_and_handle.py'
       - 'scripts/home_feed_visual_polish.py'
+      - 'scripts/fix_main_app_background_color.py'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +35,9 @@ jobs:
       - name: Apply Home Feed visual polish
         run: |
           python3 scripts/home_feed_visual_polish.py
+      - name: Apply main-app background color
+        run: |
+          python3 scripts/fix_main_app_background_color.py
       - name: Wire exact decoded waveform
         run: |
           python3 scripts/player_sheet_exact_waveform_patch.py
@@ -44,8 +48,8 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@github.com'
-          git add app/src/main/java/com/example/ui/PlayerSheet.kt app/src/main/java/com/example/ui/HomeFeedScreen.kt app/src/main/java/com/example/audio/VelvetAudioEngine.kt
+          git add app/src/main/java/com/example/ui/PlayerSheet.kt app/src/main/java/com/example/ui/HomeFeedScreen.kt app/src/main/java/com/example/ui/VelvetApp.kt app/src/main/java/com/example/ui/AshGlassComponents.kt app/src/main/java/com/example/audio/VelvetAudioEngine.kt
           git diff --cached --quiet && exit 0
-          git commit -m 'Polish Home Feed gradient and contrast'
+          git commit -m 'Use main app background across non-player surfaces'
           git pull --rebase origin main
           git push
