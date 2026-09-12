@@ -3,6 +3,8 @@ from pathlib import Path
 p = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
 s = p.read_text(encoding='utf-8')
 
+# Apply the final YouTube Music-style queue geometry: nearly edge-to-edge, fully sharp rows/artwork,
+# immediately recognized drag handle, separated handle lines, and edge-pinned swipe actions.
 # Keep the queue almost edge-to-edge: only a tiny 2dp inset remains for touch-safe visual breathing room.
 s = s.replace('.padding(start = 4.dp)', '.padding(start = 2.dp)', 1)
 s = s.replace('.padding(end = 4.dp)', '.padding(end = 2.dp)', 1)
@@ -39,4 +41,4 @@ s = s.replace('detectDragGesturesAfterLongPress(', 'detectDragGestures(', 1)
 s = s.replace('.padding(horizontal = 24.dp)\n                        .size(24.dp)', '.padding(horizontal = 16.dp)\n                        .size(24.dp)', 1)
 
 p.write_text(s, encoding='utf-8')
-print('Applied compact sharp queue rows, square artwork, separated drag handle lines, and immediate drag recognition.')
+print('Applied final sharp edge-to-edge queue geometry, square artwork, separated drag handle lines, immediate drag recognition, and edge-pinned swipe actions.')
