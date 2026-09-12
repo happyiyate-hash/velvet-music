@@ -22,15 +22,12 @@ s = s.replace(
                         .graphicsLayer { alpha = listAlpha },'''
 )
 
-# Stable IDs plus contentType let Compose retain item identity and reuse the same row layout.
 if 'import androidx.compose.foundation.lazy.itemsIndexed' not in s:
     s = s.replace(
         'import androidx.compose.foundation.lazy.items\n',
         'import androidx.compose.foundation.lazy.items\nimport androidx.compose.foundation.lazy.itemsIndexed\n'
     )
 
-# Prefer itemsIndexed so the row receives its position directly instead of doing an
-# indexOfFirst scan for every visible item during recomposition.
 needle = '''                        items(
                         items = orderedQueueItems,
                         key = { it.id }
@@ -50,7 +47,6 @@ else:
         count=1,
     )
 
-# Remove the old per-row index scan if the generated revision still contains it.
 s = re.sub(
     r'\n\s*val queueIndex = orderedQueueItems\.indexOfFirst \{ it\.id == queueTrack\.id \}',
     '',
@@ -58,8 +54,6 @@ s = re.sub(
     count=1,
 )
 
-# Queue artwork is only 48dp on screen. Bound Coil's decode to a small square and
-# disable per-row crossfade so fast flings do not upload large bitmaps or animate them.
 old_art = 'TrackArtworkImage(track = track, contentDescription = track.title, modifier = Modifier.fillMaxSize())'
 new_art = '''TrackArtworkImage(
                     track = track,
@@ -71,14 +65,65 @@ new_art = '''TrackArtworkImage(
 if old_art in s:
     s = s.replace(old_art, new_art, 1)
 
-# The swipe-visual patch can legitimately emit an equivalent queue implementation with
-# different indentation/structure. Do not fail the whole UI patch pipeline merely because
-# the optional itemsIndexed rewrite did not match that generated form. The artwork/cache
-# optimization and the dedicated sharp-row patch remain independently safe to apply.
+# Pre-warm a bounded window of queue artwork when Up Next becomes visible. This mirrors
+# the main page's practical behavior: artwork is prepared before the user flings through
+# the list, while LazyColumn virtualization is retained for large queues.
+if 'private fun QueueArtworkPreloader(' not in s:
+    marker = '        // 8. UP NEXT HANDLE & CONTENT (Lives within the SAME surface, continuously positioned at upNextY)'
+    if marker not in s:
+        raise SystemExit('queue section marker not found for artwork preloader')
+    helper = '''@Composable
+private fun QueueArtworkPreloader(
+    tracks: List<Track>,
+    enabled: Boolean
+) {
+    if (!enabled || tracks.isEmpty()) return
+
+    val context = LocalContext.current
+    val imageLoader = remember(context) { ImageLoader(context) }
+    val warmTracks = remember(tracks) { tracks.take(24) }
+
+    LaunchedEffect(warmTracks) {
+        warmTracks.forEach { queueTrack ->
+            val uri = queueTrack.artworkUri ?: queueTrack.contentUri ?: return@forEach
+            imageLoader.enqueue(
+                ImageRequest.Builder(context)
+                    .data(uri)
+                    .size(128, 128)
+                    .precision(Precision.EXACT)
+                    .allowHardware(true)
+                    .crossfade(false)
+                    .memoryCacheKey("thumb_${queueTrack.id}_$uri")
+                    .diskCacheKey("thumb_${queueTrack.id}_$uri")
+                    .build()
+            )
+        }
+    }
+}
+
+'''
+    s = s.replace(marker, helper + marker, 1)
+
+queue_marker = '''            if (p > 0.40f) {
+                val listAlpha = ((p - 0.40f) / 0.40f).coerceIn(0f, 1f)
+                LazyColumn('''
+if queue_marker in s and 'QueueArtworkPreloader(orderedQueueItems' not in s:
+    s = s.replace(
+        queue_marker,
+        '''            if (p > 0.40f) {
+                val listAlpha = ((p - 0.40f) / 0.40f).coerceIn(0f, 1f)
+                QueueArtworkPreloader(
+                    tracks = orderedQueueItems,
+                    enabled = p >= 0.40f
+                )
+                LazyColumn(''',
+        1,
+    )
+
 if 'itemsIndexed(' not in s:
     print('Queue index optimization already present in an equivalent generated form; continuing.')
 if 'thumbnailSizePx = 128' not in s:
     raise SystemExit('queue artwork optimization insertion point not found')
 
 p.write_text(s, encoding='utf-8')
-print('Applied single-surface queue, stable indexed keys/contentType when supported, bounded artwork decoding, and no crossfade.')
+print('Applied queue scrolling optimization: stable item reuse, bounded artwork, no crossfade, and a 24-item artwork warm window.')
