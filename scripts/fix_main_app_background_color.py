@@ -64,3 +64,4 @@ nav = nav.replace(old_nav_background, new_nav_background, 1)
 nav_path.write_text(nav)
 
 # Dedicated workflow trigger marker: no UI behavior change.
+# Build trigger: this comment is intentionally non-functional and exists only to run CI on the final tree.
