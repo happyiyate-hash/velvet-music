@@ -82,7 +82,6 @@ import android.widget.Toast
 import kotlinx.coroutines.launch
 import com.example.audio.VelvetAudioEngine
 import com.example.media.DeviceMediaManager
-import com.example.mesh.SoundCatchMeshBackground
 import com.example.model.SampleData
 import com.example.model.Track
 import com.example.ui.theme.VelvetActiveGlow
@@ -191,18 +190,8 @@ fun VelvetApp() {
     Box(
         modifier = Modifier.fillMaxSize().background(VelvetAshGrayDark)
     ) {
-        if (selectedTab != 0) {
-            SoundCatchMeshBackground(
-                dominantColor = VelvetOffBloodTop,
-                secondaryColor = VelvetBloodPlum,
-                audioTelemetry = telemetry,
-                isPlaying = isPlaying,
-                isSoundCatchEnabled = isSoundCatchEnabled
-            )
-        }
-
         Scaffold(
-            containerColor = Color.Transparent,
+            containerColor = VelvetAshGrayDark,
             contentColor = VelvetTextPrimary,
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { paddingValues ->

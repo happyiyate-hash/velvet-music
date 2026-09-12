@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.Track
 import com.example.ui.theme.VelvetBrightCrimson
+import com.example.ui.theme.VelvetAshGrayDark
 import com.example.ui.theme.VelvetTextPrimary
 import com.example.ui.theme.VelvetTextSecondary
 
@@ -68,15 +69,9 @@ fun AshGlassBottomNavigationBar(
         Canvas(modifier = Modifier.matchParentSize()) {
             val w = size.width
             val h = size.height
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xB8231C28),
-                        Color(0xC817121D),
-                        Color(0xD80E0A14)
-                    )
-                )
-            )
+            // Use the exact main-app background as the navigation bar base.
+            // Keep the existing glass/highlight layers below untouched.
+            drawRect(color = VelvetAshGrayDark)
             drawRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(
