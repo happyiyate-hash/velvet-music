@@ -3,6 +3,7 @@ package com.example.audio
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.util.Log
 import com.example.media.ArtworkColorExtractor
@@ -50,6 +51,12 @@ class VelvetAudioEngine(
     private val playerLock = Any()
     private val transitionMutex = Mutex()
     private var mediaPlayer: MediaPlayer? = null
+    private var audioVisualizer: Visualizer? = null
+    @Volatile private var liveRms = 0f
+    @Volatile private var liveTransient = 0f
+    @Volatile private var liveFrequencyHz = 110f
+    @Volatile private var liveKick = false
+    @Volatile private var liveSnare = false
     private var isPlayerPrepared = false
 
     private var playbackJob: Job? = null
@@ -196,6 +203,7 @@ class VelvetAudioEngine(
                 synchronized(playerLock) {
                     try {
                         isPlayerPrepared = false
+                        releaseAudioVisualizer()
 
                         // Get or initialize persistent player
                         var player = mediaPlayer
@@ -244,6 +252,7 @@ class VelvetAudioEngine(
                                     prepared.start()
                                     _isPlaying.value = true
                                     _playbackPositionMs.value = 0L
+                                    attachAudioVisualizer(prepared.audioSessionId)
                                 } catch (e: Exception) {
                                     Log.e("VelvetAudioEngine", "Failed starting MediaPlayer", e)
                                     _isPlaying.value = false
@@ -293,6 +302,87 @@ class VelvetAudioEngine(
                 }
             }
         }
+    }
+
+    private fun attachAudioVisualizer(audioSessionId: Int) {
+        releaseAudioVisualizer()
+        if (audioSessionId <= 0) return
+        try {
+            audioVisualizer = Visualizer(audioSessionId).apply {
+                captureSize = Visualizer.getCaptureSizeRange()[1]
+                setDataCaptureListener(
+                    object : Visualizer.OnDataCaptureListener {
+                        override fun onWaveFormDataCapture(
+                            visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int
+                        ) {
+                            if (waveform.isNullOrEmpty()) return
+                            var sum = 0.0
+                            var peak = 0f
+                            waveform.forEach { value ->
+                                val sample = (value.toInt() - 128) / 128f
+                                val magnitude = kotlin.math.abs(sample)
+                                sum += sample * sample
+                                if (magnitude > peak) peak = magnitude
+                            }
+                            liveRms = kotlin.math.sqrt(sum / waveform.size).toFloat().coerceIn(0f, 1f)
+                            liveTransient = (peak * 0.75f + liveRms * 0.25f).coerceIn(0f, 1f)
+                        }
+
+                        override fun onFftDataCapture(
+                            visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int
+                        ) {
+                            if (fft == null || fft.size < 4) return
+                            var bestMagnitude = 0f
+                            var bestBin = 1
+                            var lowEnergy = 0f
+                            var midEnergy = 0f
+                            var bin = 1
+                            while (2 * bin + 1 < fft.size) {
+                                val real = fft[2 * bin].toInt()
+                                val imag = fft[2 * bin + 1].toInt()
+                                val magnitude = kotlin.math.hypot(real.toFloat(), imag.toFloat())
+                                val frequency = bin * (samplingRate / 1000f) / fft.size
+                                if (magnitude > bestMagnitude) {
+                                    bestMagnitude = magnitude
+                                    bestBin = bin
+                                }
+                                when {
+                                    frequency < 120f -> lowEnergy += magnitude
+                                    frequency < 450f -> midEnergy += magnitude
+                                }
+                                bin++
+                            }
+                            val frequencyHz = (bestBin * (samplingRate / 1000f) / fft.size)
+                                .coerceIn(20f, 20_000f)
+                            liveFrequencyHz = frequencyHz
+                            val fftEnergy = (bestMagnitude / 128f).coerceIn(0f, 1f)
+                            liveRms = maxOf(liveRms * 0.65f, fftEnergy * 0.85f)
+                            liveTransient = maxOf(liveTransient * 0.70f, fftEnergy)
+                            liveKick = lowEnergy > midEnergy * 1.25f && liveTransient > 0.30f
+                            liveSnare = midEnergy > lowEnergy * 1.10f && liveTransient > 0.34f
+                        }
+                    },
+                    Visualizer.getMaxCaptureRate() / 2,
+                    true,
+                    true
+                )
+                scalingMode = Visualizer.SCALING_MODE_NORMALIZED
+                enabled = true
+            }
+        } catch (_: Throwable) {
+            releaseAudioVisualizer()
+        }
+    }
+
+    private fun releaseAudioVisualizer() {
+        try { audioVisualizer?.enabled = false } catch (_: Throwable) {}
+        try { audioVisualizer?.release() } catch (_: Throwable) {}
+        audioVisualizer = null
+        liveRms = 0f
+        liveTransient = 0f
+        liveFrequencyHz = 110f
+        liveKick = false
+        liveSnare = false
     }
 
     private fun extractColorsLazily(track: Track) {
@@ -492,17 +582,18 @@ class VelvetAudioEngine(
                     val beatIntervalSteps = (60000 / bpm / 40).coerceAtLeast(6)
                     val isBeat = step % beatIntervalSteps == 0
                     val isSnare = step % (beatIntervalSteps * 2) == beatIntervalSteps
-                    val transient = if (isBeat || isSnare) 0.85f + (0.15f * kotlin.random.Random.nextFloat()) else (_telemetry.value.transientSpike * 0.72f).coerceAtLeast(0f)
-                    val sustained = 0.45f + (0.35f * sin(step * 0.06f))
-                    val rms = (transient * 0.4f + sustained * 0.6f).coerceIn(0.1f, 1f)
+                    val visualizerActive = audioVisualizer != null && (liveRms > 0f || liveTransient > 0f)
+                    val transient = if (visualizerActive) liveTransient else if (isBeat || isSnare) 0.85f + (0.15f * kotlin.random.Random.nextFloat()) else (_telemetry.value.transientSpike * 0.72f).coerceAtLeast(0f)
+                    val sustained = if (visualizerActive) liveRms else 0.45f + (0.35f * sin(step * 0.06f))
+                    val rms = if (visualizerActive) liveRms.coerceIn(0.05f, 1f) else (transient * 0.4f + sustained * 0.6f).coerceIn(0.1f, 1f)
                     _telemetry.value = AudioTelemetry(
                         transientSpike = transient,
                         sustainedEnergy = sustained,
                         rmsLevel = rms,
-                        kickDetected = isBeat,
-                        snareDetected = isSnare,
-                        dominantFrequencyHz = if (isBeat) 55f else 220f + (sin(step * 0.1f) * 110f),
-                        pipelineLatencyMs = (3L..6L).random()
+                        kickDetected = if (visualizerActive) liveKick else isBeat,
+                        snareDetected = if (visualizerActive) liveSnare else isSnare,
+                        dominantFrequencyHz = if (visualizerActive) liveFrequencyHz else if (isBeat) 55f else 220f + (sin(step * 0.1f) * 110f),
+                        pipelineLatencyMs = if (visualizerActive) 4L else (3L..6L).random()
                     )
                 } else {
                     _telemetry.value = _telemetry.value.copy(
@@ -523,6 +614,7 @@ class VelvetAudioEngine(
         colorExtractionJob?.cancel()
         synchronized(playerLock) {
             isPlayerPrepared = false
+            releaseAudioVisualizer()
             try { mediaPlayer?.stop() } catch (_: Exception) {}
             try { mediaPlayer?.release() } catch (_: Exception) {}
             mediaPlayer = null

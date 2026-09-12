@@ -60,6 +60,7 @@ import com.example.model.Track
 import com.example.ui.theme.VelvetAshGray
 import com.example.ui.theme.VelvetBrightCrimson
 import com.example.ui.theme.VelvetCardBorder
+import com.example.ui.theme.BrightAshGray
 import com.example.ui.theme.VelvetDarkBurgundy
 import com.example.ui.theme.VelvetTextPrimary
 import com.example.ui.theme.VelvetTextSecondary
@@ -91,6 +92,15 @@ fun HomeFeedScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0.0f to Color(0xFF621017),
+                        0.55f to Color(0xFF38090C),
+                        1.0f to Color(0xFF0F0B0C)
+                    )
+                )
+            )
             .testTag("home_feed_screen"),
         contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp)
     ) {
@@ -112,7 +122,7 @@ fun HomeFeedScreen(
                             text = "Welcome back, Echo",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Normal,
-                            color = VelvetTextSecondary.copy(alpha = 0.90f)
+                            color = BrightAshGray.copy(alpha = 0.95f)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
@@ -159,15 +169,9 @@ fun HomeFeedScreen(
                     .padding(horizontal = 6.dp, vertical = 4.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.06f),
-                                Color(0xFFE50914).copy(alpha = 0.04f),
-                                Color.White.copy(alpha = 0.03f)
-                            )
-                        )
+                        Color(0x33FFFFFF)
                     )
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(22.dp))
+                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(22.dp))
                     .padding(8.dp)
                     .testTag("most_played_container")
             ) {
@@ -244,7 +248,7 @@ fun HomeFeedScreen(
                             Text(
                                 text = "Play music from your device to display your favorites here",
                                 fontSize = 12.sp,
-                                color = VelvetTextSecondary,
+                                color = BrightAshGray.copy(alpha = 0.92f),
                                 textAlign = TextAlign.Center
                             )
                         }
@@ -277,7 +281,7 @@ fun HomeFeedScreen(
                         Text(
                             text = "(${allTracks.size})",
                             fontSize = 14.sp,
-                            color = VelvetTextTertiary
+                            color = BrightAshGray.copy(alpha = 0.82f)
                         )
                     }
 
@@ -442,7 +446,7 @@ fun StandaloneMusicRow(
             Text(
                 text = "${track.artist} • ${track.album}",
                 fontSize = 12.sp,
-                color = VelvetTextSecondary.copy(alpha = 0.85f),
+                color = BrightAshGray.copy(alpha = 0.92f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

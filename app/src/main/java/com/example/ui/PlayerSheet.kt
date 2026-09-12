@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -696,7 +697,8 @@ fun PlayerSheet(
             (1f - ((p - 1f) / 0.60f)).coerceIn(0f, 1f)
         }
         if (progressComponentAlpha > 0f) {
-            NowPlayingWaveformProgress(
+            ExactAudioWaveformProgress(
+                audioUri = track.contentUri,
                 positionMs = playbackPositionMs,
                 durationMs = track.durationMs,
                 isPlaying = isPlaying,
@@ -982,7 +984,6 @@ fun PlayerSheet(
                     ,
                         contentType = { "track_row" }) { queueTrack ->
                         val isCurrent = queueTrack.id == track.id
-                        val queueIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
                         val isDragging = activeQueueDragId == queueTrack.id
                         UpNextTrackRow(
                             track = queueTrack,
@@ -1125,9 +1126,15 @@ private fun UpNextTrackRow(
     val dismissPx = with(density) { 760.dp.toPx() }
     val swipingRight = swipeOffset > 0f
     val swipingLeft = swipeOffset < 0f
+    val stage2 = abs(swipeOffset) >= thresholdPx
     val stageProgress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
     // Continuous black action surface, matching the reference behavior.
-    val actionColor = Color.Black
+    val actionColor = when {
+        !stage2 -> Color.Black
+        swipingLeft -> Color(0xFFE53935)
+        swipingRight -> Color(0xFF43A047)
+        else -> Color.Black
+    }
     val actionIconAlpha = 0.30f + (0.70f * stageProgress)
     val actionIconScale = 0.70f + (0.30f * stageProgress)
     val actionColorAnimated by androidx.compose.animation.animateColorAsState(
@@ -1199,7 +1206,6 @@ private fun UpNextTrackRow(
             Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
-                .clip(RoundedCornerShape(9.dp))
                 .background(surfaceColor)
                 .background(
                     when {
@@ -1274,8 +1280,7 @@ private fun UpNextTrackRow(
             Box(
                 Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .border(.7.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(7.dp)),
+                    ,
                 contentAlignment = Alignment.Center
             ) {
                 TrackArtworkImage(
@@ -1313,14 +1318,14 @@ private fun UpNextTrackRow(
             }
             Column(
                 Modifier.size(38.dp).pointerInput(track.id) {
-                    detectDragGesturesAfterLongPress(
+                    detectDragGestures(
                         onDragStart = { swipeOffset = 0f; onDragStart() },
                         onDragEnd = onDragEnd,
                         onDragCancel = onDragEnd,
                         onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }
                     )
                 },
-                verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
+                verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(Modifier.width(17.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = .92f)))
