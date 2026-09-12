@@ -1,0 +1,27 @@
+name: Apply main app background color
+
+on:
+  push:
+    paths:
+      - 'scripts/fix_main_app_background_color.py'
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply targeted main-app background repair
+        run: |
+          python3 scripts/fix_main_app_background_color.py
+      - name: Commit only main-app background changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@github.com'
+          git add app/src/main/java/com/example/ui/VelvetApp.kt app/src/main/java/com/example/ui/AshGlassComponents.kt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Use main app background across non-player surfaces'
+          git pull --rebase origin main
+          git push
