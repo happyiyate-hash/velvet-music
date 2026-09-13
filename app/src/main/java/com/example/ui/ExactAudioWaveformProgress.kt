@@ -9,12 +9,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -28,23 +32,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioTelemetry
+import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.log10
 import kotlin.math.sin
 
 /**
  * Player Sheet visualizer + progress component.
  *
- * This intentionally restores the visual treatment used by the earlier PlayerSheet:
- * - a compact live audio visualizer made from animated amplitude bars
- * - a clear gap between the visualizer and the progress bar
- * - one thin horizontal playback progress bar with a small thumb
- * - timestamps underneath
- * - the visualizer responds to live AudioTelemetry while playing and freezes when paused
- * - tapping/dragging the component seeks the track
- *
- * It does NOT decode the audio file into a static waveform. The bars are the live visualizer
- * the player uses while music is playing.
+ * Provides a mature, music-reactive visualizer that plays dynamically to playback:
+ * - Responds directly to the highest beat (sub-bass / kick hits) and highest sounds (sharp transients / snares)
+ * - Strictly bounded within its canvas height without overflowing or clipping
+ * - Studio-grade attack & decay physics (instant rise on beats, fluid decay)
+ * - Sits gracefully on a tranquil resting wave when paused
+ * - One thin horizontal playback progress bar with small thumb and timestamps underneath
  */
 @Composable
 fun ExactAudioWaveformProgress(
@@ -65,17 +67,34 @@ fun ExactAudioWaveformProgress(
     var dragFraction by remember { mutableFloatStateOf(0f) }
     val displayFraction = if (isDragging) dragFraction else progressFraction
 
-    // Same visual profile and compact geometry as the PlayerSheet visualizer from
-    // commit 64168ed5a67d52f116197def0f1873d065f51305.
+    // 80 bars provides high spectral detail and perfect spacing across standard phone screens
     val barCount = 80
-    val baseProfile = remember(durationMs, barCount) {
+
+    // Calibrated baseline resting profile when paused or between beats
+    val restingProfile = remember(barCount) {
         FloatArray(barCount) { i ->
-            val norm = i.toFloat() / barCount
-            val wave1 = abs(sin(norm * 3.14159f * 1.8f + 0.35f))
-            val wave2 = abs(sin(norm * 3.14159f * 4.3f)) * 0.42f
-            val wave3 = abs(sin(norm * 3.14159f * 7.8f + 1.1f)) * 0.28f
-            val wave4 = abs(cos(norm * 3.14159f * 12.2f)) * 0.16f
-            (wave1 * 0.52f + wave2 + wave3 + wave4).coerceIn(0.18f, 0.95f)
+            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+            val wave1 = abs(sin(norm * 3.14159f * 1.5f + 0.35f)) * 0.16f
+            val wave2 = abs(sin(norm * 3.14159f * 3.8f)) * 0.10f
+            val wave3 = abs(cos(norm * 3.14159f * 7.2f)) * 0.06f
+            (0.12f + wave1 + wave2 + wave3).coerceIn(0.12f, 0.32f)
+        }
+    }
+
+    // Persisted amplitudes across frames for natural, studio-grade attack/decay physics
+    val liveAmplitudes = remember(barCount) {
+        FloatArray(barCount) { i -> restingProfile[i] }
+    }
+
+    // Continuous 60/120 FPS hardware animation ticker while playing
+    val frameTicker = remember { mutableLongStateOf(0L) }
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isActive) {
+                withFrameNanos { timeNanos ->
+                    frameTicker.longValue = timeNanos
+                }
+            }
         }
     }
 
@@ -115,33 +134,118 @@ fun ExactAudioWaveformProgress(
                 .fillMaxWidth()
                 .height(24.dp)
         ) {
+            if (size.width <= 0f || size.height <= 0f) return@Canvas
+
+            // Read frameTicker to drive frame-by-frame draw invalidate without recomposing
+            val frameTime = frameTicker.longValue
+            val timeSeconds = (frameTime / 1_000_000L) * 0.003f
+
             val totalWidth = size.width
             val barWidth = 1.3.dp.toPx()
             val totalBarWidth = barWidth * barCount
             val barGap = if (barCount > 1) (totalWidth - totalBarWidth) / (barCount - 1) else 0f
-            val maxBarHeight = size.height
-            val minBarHeight = 2.5.dp.toPx()
 
-            val liveEnergy = if (isPlaying) telemetry.rmsLevel else 0.32f
-            val liveTransient = if (isPlaying) telemetry.transientSpike else 0f
+            // Strictly constrain height bounds so bars never go against canvas height
+            val maxBarHeight = size.height
+            val minBarHeight = 2.5.dp.toPx().coerceAtMost(maxBarHeight)
+            val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
+
+            val rms = telemetry.rmsLevel.coerceIn(0f, 1f)
+            val transient = telemetry.transientSpike.coerceIn(0f, 1f)
+            val isKick = telemetry.kickDetected
+            val isSnare = telemetry.snareDetected
+            val domFreq = telemetry.dominantFrequencyHz.coerceIn(40f, 16000f)
+
+            // Normalized center of pitch/dominant frequency (0.0 to 1.0)
+            val domNorm = (log10(domFreq / 40f) / log10(400f)).coerceIn(0.08f, 0.92f)
+
+            // Highest beat impact (Bass & Kick)
+            val highestBeat = if (isKick) 0.92f else 0f
+
+            // Highest sound impact (Transients, highs & Snares)
+            val highestSound = transient
 
             for (i in 0 until barCount) {
-                val barX = i * (barWidth + barGap)
-                val base = baseProfile[i]
+                val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
 
-                val modulation = if (isPlaying) {
-                    val ripple = sin(i * 0.35f + (positionMs / 220f)).toFloat()
-                    0.70f + 0.30f * liveEnergy + 0.18f * liveTransient * ripple.coerceAtLeast(0f)
+                // 1. Bass / Highest Beat Zone (bars 0..32%)
+                // Responds decisively to kick drums and sub bass
+                val bassWeight = (1f - (norm / 0.32f)).coerceIn(0f, 1f)
+                val beatResponse = (highestBeat * bassWeight * 0.95f) + (rms * bassWeight * 0.70f)
+
+                // 2. Highs / Highest Sound Zone (bars 50..100%)
+                // Responds decisively to crisp transient peaks, snares, and cymbals
+                val trebleWeight = ((norm - 0.48f) / 0.52f).coerceIn(0f, 1f)
+                val snarePulse = if (isSnare && norm in 0.52f..0.85f) 0.75f else 0f
+                val soundResponse = (highestSound * trebleWeight * 0.90f) + snarePulse
+
+                // 3. Mids / Body Zone (bars 22..75%)
+                // Melodic harmonic resonance and vocal sustained warmth
+                val midWeight = sin(norm * 3.14159f).coerceAtLeast(0f)
+                val midResponse = (telemetry.sustainedEnergy * 0.45f + rms * 0.40f) * midWeight
+
+                // 4. Acoustic pitch resonance around current dominant frequency
+                val distToDom = abs(norm - domNorm)
+                val resonanceBoost = (1f - (distToDom / 0.22f)).coerceAtLeast(0f) * rms * 0.38f
+
+                // 5. Subtle micro-harmonic rhythm variation
+                val harmonic = sin(i * 0.42f + timeSeconds).toFloat() * 0.06f
+
+                val targetFraction = if (isPlaying) {
+                    val raw = restingProfile[i] * 0.30f +
+                        beatResponse +
+                        soundResponse +
+                        midResponse +
+                        resonanceBoost +
+                        harmonic
+                    raw.coerceIn(0.06f, 1.0f)
                 } else {
-                    0.72f
+                    restingProfile[i]
                 }
 
-                val barHeight = (base * maxBarHeight * modulation)
+                // Mature studio attack/decay physics:
+                // Instant attack on beat / highest sound, smooth gravity decay
+                val current = liveAmplitudes[i]
+                val updated = if (isPlaying) {
+                    if (targetFraction > current) {
+                        // Instantaneous attack: leap up with the beat
+                        current * 0.20f + targetFraction * 0.80f
+                    } else {
+                        // Smooth, fluid studio decay
+                        maxOf(targetFraction, current * 0.88f)
+                    }
+                } else {
+                    // Tranquil resting return when paused
+                    current * 0.92f + restingProfile[i] * 0.08f
+                }
+                liveAmplitudes[i] = updated.coerceIn(0f, 1f)
+
+                // STRICT HEIGHT ENFORCEMENT:
+                // barHeight is strictly clamped between minBarHeight and maxBarHeight.
+                // barTop is strictly >= 0 and never exceeds size.height.
+                val clampedFraction = liveAmplitudes[i].coerceIn(0f, 1f)
+                val barHeight = (minBarHeight + usableRange * clampedFraction)
                     .coerceIn(minBarHeight, maxBarHeight)
                 val barTop = size.height - barHeight
+                val barX = i * (barWidth + barGap)
+
+                // Mature color response: tips illuminate brightly on highest beats/sounds
+                val isPeak = clampedFraction > 0.78f
+                val tipColor = if (isPeak) {
+                    Color.White.copy(alpha = 0.92f)
+                } else {
+                    activeColor.copy(alpha = (0.75f + clampedFraction * 0.25f).coerceIn(0f, 1f))
+                }
+                val baseColor = activeColor.copy(alpha = 0.70f)
+
+                val barBrush = Brush.verticalGradient(
+                    colors = listOf(tipColor, baseColor),
+                    startY = barTop,
+                    endY = size.height
+                )
 
                 drawRoundRect(
-                    color = activeColor,
+                    brush = barBrush,
                     topLeft = Offset(barX, barTop),
                     size = Size(barWidth, barHeight),
                     cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)

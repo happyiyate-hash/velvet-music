@@ -576,24 +576,44 @@ class VelvetAudioEngine(
         scope.launch(Dispatchers.Default) {
             var step = 0
             while (isActive) {
-                delay(40L)
+                delay(25L)
                 if (_isPlaying.value) {
                     step++
                     val bpm = _currentTrack.value.bpm.coerceAtLeast(1)
-                    val beatIntervalSteps = (60000 / bpm / 40).coerceAtLeast(6)
+                    val beatIntervalSteps = (60000 / bpm / 25).coerceAtLeast(6)
                     val isBeat = step % beatIntervalSteps == 0
                     val isSnare = step % (beatIntervalSteps * 2) == beatIntervalSteps
                     val visualizerActive = audioVisualizer != null && (liveRms > 0f || liveTransient > 0f)
-                    val transient = if (visualizerActive) liveTransient else if (isBeat || isSnare) 0.85f + (0.15f * kotlin.random.Random.nextFloat()) else (_telemetry.value.transientSpike * 0.72f).coerceAtLeast(0f)
-                    val sustained = if (visualizerActive) liveRms else 0.45f + (0.35f * sin(step * 0.06f))
-                    val rms = if (visualizerActive) liveRms.coerceIn(0.05f, 1f) else (transient * 0.4f + sustained * 0.6f).coerceIn(0.1f, 1f)
+
+                    val kick = if (visualizerActive) {
+                        val k = liveKick
+                        liveKick = false
+                        k
+                    } else isBeat
+
+                    val snare = if (visualizerActive) {
+                        val s = liveSnare
+                        liveSnare = false
+                        s
+                    } else isSnare
+
+                    val transient = if (visualizerActive) {
+                        liveTransient
+                    } else if (kick || snare) {
+                        0.88f + (0.12f * kotlin.random.Random.nextFloat())
+                    } else {
+                        (_telemetry.value.transientSpike * 0.78f).coerceAtLeast(0f)
+                    }
+
+                    val sustained = if (visualizerActive) liveRms else 0.45f + (0.35f * sin(step * 0.04f))
+                    val rms = if (visualizerActive) liveRms.coerceIn(0.05f, 1f) else (transient * 0.45f + sustained * 0.55f).coerceIn(0.1f, 1f)
                     _telemetry.value = AudioTelemetry(
                         transientSpike = transient,
                         sustainedEnergy = sustained,
                         rmsLevel = rms,
-                        kickDetected = if (visualizerActive) liveKick else isBeat,
-                        snareDetected = if (visualizerActive) liveSnare else isSnare,
-                        dominantFrequencyHz = if (visualizerActive) liveFrequencyHz else if (isBeat) 55f else 220f + (sin(step * 0.1f) * 110f),
+                        kickDetected = kick,
+                        snareDetected = snare,
+                        dominantFrequencyHz = if (visualizerActive) liveFrequencyHz else if (kick) 55f else 220f + (sin(step * 0.08f) * 110f),
                         pipelineLatencyMs = if (visualizerActive) 4L else (3L..6L).random()
                     )
                 } else {
