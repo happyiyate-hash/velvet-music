@@ -74,6 +74,10 @@ jobs:
 
           echo "Release keystore prepared."
 
+      - name: Apply Latest Release Compile Fixes
+        shell: bash
+        run: python3 scripts/fix_latest_release_compile_errors.py
+
       - name: Build Optimized Release APK
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
