@@ -100,6 +100,10 @@ class VelvetLiveVisualizer(
         }
     }
 
+    fun setEnabled(enabled: Boolean) {
+        try { visualizer?.enabled = enabled } catch (_: Throwable) {}
+    }
+
     fun release() {
         try { visualizer?.enabled = false } catch (_: Throwable) {}
         try { visualizer?.release() } catch (_: Throwable) {}

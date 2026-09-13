@@ -147,7 +147,7 @@ fun VelvetApp() {
         if (cached.isNotEmpty()) {
             audioEngine.setDeviceTracks(cached)
         }
-        if (DeviceMediaManager.hasAudioPermission(context)) {
+        if (DeviceMediaManager.hasAudioPermission(context) && DeviceMediaManager.hasRecordAudioPermission(context)) {
             val loaded = withContext(Dispatchers.IO) {
                 DeviceMediaManager.loadDeviceTracks(context)
             }

@@ -1,11 +1,14 @@
 package com.example.audio
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.example.media.ArtworkColorExtractor
 import com.example.media.VelvetMediaSessionManager
 import com.example.model.SampleData
@@ -22,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.hypot
 import kotlin.math.sin
 
 data class AudioTelemetry(
@@ -31,8 +35,36 @@ data class AudioTelemetry(
     val kickDetected: Boolean = false,
     val snareDetected: Boolean = false,
     val dominantFrequencyHz: Float = 110f,
-    val pipelineLatencyMs: Long = 4L
-)
+    val pipelineLatencyMs: Long = 4L,
+    val fftBars: FloatArray = FloatArray(64) { 0f }
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as AudioTelemetry
+        if (transientSpike != other.transientSpike) return false
+        if (sustainedEnergy != other.sustainedEnergy) return false
+        if (rmsLevel != other.rmsLevel) return false
+        if (kickDetected != other.kickDetected) return false
+        if (snareDetected != other.snareDetected) return false
+        if (dominantFrequencyHz != other.dominantFrequencyHz) return false
+        if (pipelineLatencyMs != other.pipelineLatencyMs) return false
+        if (!fftBars.contentEquals(other.fftBars)) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = transientSpike.hashCode()
+        result = 31 * result + sustainedEnergy.hashCode()
+        result = 31 * result + rmsLevel.hashCode()
+        result = 31 * result + kickDetected.hashCode()
+        result = 31 * result + snareDetected.hashCode()
+        result = 31 * result + dominantFrequencyHz.hashCode()
+        result = 31 * result + pipelineLatencyMs.hashCode()
+        result = 31 * result + fftBars.contentHashCode()
+        return result
+    }
+}
 
 /**
  * Bulletproof Velvet Audio Engine:
@@ -57,6 +89,7 @@ class VelvetAudioEngine(
     @Volatile private var liveFrequencyHz = 110f
     @Volatile private var liveKick = false
     @Volatile private var liveSnare = false
+    private val liveFftBars = FloatArray(64) { 0f }
     private var isPlayerPrepared = false
 
     private var playbackJob: Job? = null
@@ -71,6 +104,9 @@ class VelvetAudioEngine(
 
     private val _playbackPositionMs = MutableStateFlow(0L)
     val playbackPositionMs: StateFlow<Long> = _playbackPositionMs.asStateFlow()
+
+    private val _audioSessionId = MutableStateFlow(0)
+    val audioSessionId: StateFlow<Int> = _audioSessionId.asStateFlow()
 
     private val _telemetry = MutableStateFlow(AudioTelemetry())
     val telemetry: StateFlow<AudioTelemetry> = _telemetry.asStateFlow()
@@ -175,8 +211,14 @@ class VelvetAudioEngine(
         // 2. Extract colors lazily in background
         extractColorsLazily(track)
 
-        // 3. Simulated/Demo Playback if no contentUri (e.g. starter built-in tracks)
-        if (track.contentUri.isNullOrBlank()) {
+        // 3. Playback: Resolve track URI, falling back to rich synthesized audio if local URI is absent
+        val contentUriString = if (!track.contentUri.isNullOrBlank()) {
+            track.contentUri
+        } else {
+            appContext?.let { SynthesizedAudioProvider.getOrCreateDemoAudioUri(it).toString() }
+        }
+
+        if (contentUriString.isNullOrBlank()) {
             synchronized(playerLock) {
                 try {
                     mediaPlayer?.stop()
@@ -198,7 +240,7 @@ class VelvetAudioEngine(
                 }
 
                 val ctx = appContext ?: return@withLock
-                val trackUri = Uri.parse(track.contentUri)
+                val trackUri = Uri.parse(contentUriString)
 
                 synchronized(playerLock) {
                     try {
@@ -252,6 +294,7 @@ class VelvetAudioEngine(
                                     prepared.start()
                                     _isPlaying.value = true
                                     _playbackPositionMs.value = 0L
+                                    _audioSessionId.value = prepared.audioSessionId
                                     attachAudioVisualizer(prepared.audioSessionId)
                                 } catch (e: Exception) {
                                     Log.e("VelvetAudioEngine", "Failed starting MediaPlayer", e)
@@ -306,69 +349,63 @@ class VelvetAudioEngine(
 
     private fun attachAudioVisualizer(audioSessionId: Int) {
         releaseAudioVisualizer()
+        _audioSessionId.value = audioSessionId
         if (audioSessionId <= 0) return
+        val ctx = appContext
+        if (ctx != null && ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
         try {
             audioVisualizer = Visualizer(audioSessionId).apply {
-                captureSize = Visualizer.getCaptureSizeRange()[1]
+                captureSize = Visualizer.getCaptureSizeRange()[0]
                 setDataCaptureListener(
                     object : Visualizer.OnDataCaptureListener {
                         override fun onWaveFormDataCapture(
                             visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int
-                        ) {
-                            if (waveform == null || waveform.isEmpty()) return
-                            val wf = waveform
-                            var sum = 0.0
-                            var peak = 0f
-                            wf.forEach { value ->
-                                val sample = (value.toInt() - 128) / 128f
-                                val magnitude = kotlin.math.abs(sample)
-                                sum += sample * sample
-                                if (magnitude > peak) peak = magnitude
-                            }
-                            liveRms = kotlin.math.sqrt(sum / wf.size).toFloat().coerceIn(0f, 1f)
-                            liveTransient = (peak * 0.75f + liveRms * 0.25f).coerceIn(0f, 1f)
-                        }
+                        ) {}
 
                         override fun onFftDataCapture(
                             visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int
                         ) {
-                            if (fft == null || fft.size < 4) return
-                            var bestMagnitude = 0f
-                            var bestBin = 1
-                            var lowEnergy = 0f
-                            var midEnergy = 0f
-                            var bin = 1
-                            while (2 * bin + 1 < fft.size) {
-                                val real = fft[2 * bin].toInt()
-                                val imag = fft[2 * bin + 1].toInt()
-                                val magnitude = kotlin.math.hypot(real.toFloat(), imag.toFloat())
-                                val frequency = bin * (samplingRate / 1000f) / fft.size
-                                if (magnitude > bestMagnitude) {
-                                    bestMagnitude = magnitude
-                                    bestBin = bin
+                            if (fft == null || fft.isEmpty()) return
+
+                            // FFT returns pairs of [Real, Imaginary] values per frequency bin
+                            val barCount = 64
+                            val numBins = fft.size / 2
+                            val step = (numBins / barCount).coerceAtLeast(1)
+
+                            for (i in 0 until barCount) {
+                                val index = i * step * 2
+                                if (index + 1 < fft.size) {
+                                    val real = fft[index].toFloat()
+                                    val imag = fft[index + 1].toFloat()
+                                    // Calculate magnitude: sqrt(real^2 + imag^2)
+                                    val magnitude = hypot(real, imag)
+
+                                    // Normalize amplitude roughly between 0.0f and 1.0f
+                                    val normalized = (magnitude / 128f).coerceIn(0.05f, 1.0f)
+
+                                    // Smooth out values to prevent aggressive jitter
+                                    liveFftBars[i] = (liveFftBars[i] * 0.4f) + (normalized * 0.6f)
                                 }
-                                when {
-                                    frequency < 120f -> lowEnergy += magnitude
-                                    frequency < 450f -> midEnergy += magnitude
-                                }
-                                bin++
                             }
-                            val frequencyHz = (bestBin * (samplingRate / 1000f) / fft.size)
-                                .coerceIn(20f, 20_000f)
-                            liveFrequencyHz = frequencyHz
-                            val fftEnergy = (bestMagnitude / 128f).coerceIn(0f, 1f)
-                            liveRms = maxOf(liveRms * 0.65f, fftEnergy * 0.85f)
-                            liveTransient = maxOf(liveTransient * 0.70f, fftEnergy)
-                            liveKick = lowEnergy > midEnergy * 1.25f && liveTransient > 0.30f
-                            liveSnare = midEnergy > lowEnergy * 1.10f && liveTransient > 0.34f
+
+                            val bassEnergy = (liveFftBars[0] + liveFftBars[1] + liveFftBars[2] + liveFftBars[3]) / 4f
+                            val midEnergy = (liveFftBars[8] + liveFftBars[9] + liveFftBars[10] + liveFftBars[11]) / 4f
+                            val trebleEnergy = (liveFftBars[24] + liveFftBars[25] + liveFftBars[26] + liveFftBars[27]) / 4f
+
+                            liveRms = (bassEnergy * 0.5f + midEnergy * 0.35f + trebleEnergy * 0.15f).coerceIn(0.05f, 1.0f)
+                            liveTransient = maxOf(liveTransient * 0.70f, bassEnergy)
+                            liveKick = bassEnergy > midEnergy * 1.25f && bassEnergy > 0.28f
+                            liveSnare = midEnergy > bassEnergy * 1.10f && midEnergy > 0.30f
+                            liveFrequencyHz = (55f + bassEnergy * 80f + midEnergy * 400f + trebleEnergy * 3000f).coerceIn(20f, 20_000f)
                         }
                     },
                     Visualizer.getMaxCaptureRate() / 2,
-                    true,
-                    true
+                    false, // Waveform
+                    true   // FFT
                 )
-                scalingMode = Visualizer.SCALING_MODE_NORMALIZED
-                enabled = true
+                enabled = _isPlaying.value
             }
         } catch (_: Throwable) {
             releaseAudioVisualizer()
@@ -379,11 +416,7 @@ class VelvetAudioEngine(
         try { audioVisualizer?.enabled = false } catch (_: Throwable) {}
         try { audioVisualizer?.release() } catch (_: Throwable) {}
         audioVisualizer = null
-        liveRms = 0f
-        liveTransient = 0f
-        liveFrequencyHz = 110f
-        liveKick = false
-        liveSnare = false
+        _audioSessionId.value = 0
     }
 
     private fun extractColorsLazily(track: Track) {
@@ -449,6 +482,7 @@ class VelvetAudioEngine(
                 }
             } catch (_: Exception) {}
         }
+        try { audioVisualizer?.enabled = false } catch (_: Throwable) {}
         _isPlaying.value = false
         playbackJob?.cancel()
         updateMediaSession()
@@ -467,6 +501,7 @@ class VelvetAudioEngine(
 
         if (resumed) {
             _isPlaying.value = true
+            try { audioVisualizer?.enabled = true } catch (_: Throwable) {}
             startPlaybackProgress()
             updateMediaSession()
         } else {
@@ -614,13 +649,12 @@ class VelvetAudioEngine(
                         kickDetected = kick,
                         snareDetected = snare,
                         dominantFrequencyHz = if (visualizerActive) liveFrequencyHz else if (kick) 55f else 220f + (sin(step * 0.08f) * 110f),
-                        pipelineLatencyMs = if (visualizerActive) 4L else (3L..6L).random()
+                        pipelineLatencyMs = if (visualizerActive) 4L else (3L..6L).random(),
+                        fftBars = liveFftBars.clone()
                     )
                 } else {
+                    // Freezing entirely when paused: retain the current fftBars strictly in place
                     _telemetry.value = _telemetry.value.copy(
-                        transientSpike = 0f,
-                        sustainedEnergy = 0.2f,
-                        rmsLevel = 0.05f,
                         kickDetected = false,
                         snareDetected = false
                     )

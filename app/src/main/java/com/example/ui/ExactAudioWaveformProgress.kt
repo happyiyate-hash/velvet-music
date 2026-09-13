@@ -165,46 +165,53 @@ fun ExactAudioWaveformProgress(
             // Highest sound impact (Transients, highs & Snares)
             val highestSound = transient
 
+            val fft = telemetry.fftBars
+            val hasLiveFft = fft.isNotEmpty()
+
             for (i in 0 until barCount) {
                 val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
 
-                // 1. Bass / Highest Beat Zone (bars 0..32%)
-                // Responds decisively to kick drums and sub bass
-                val bassWeight = (1f - (norm / 0.32f)).coerceIn(0f, 1f)
-                val beatResponse = (highestBeat * bassWeight * 0.95f) + (rms * bassWeight * 0.70f)
-
-                // 2. Highs / Highest Sound Zone (bars 50..100%)
-                // Responds decisively to crisp transient peaks, snares, and cymbals
-                val trebleWeight = ((norm - 0.48f) / 0.52f).coerceIn(0f, 1f)
-                val snarePulse = if (isSnare && norm in 0.52f..0.85f) 0.75f else 0f
-                val soundResponse = (highestSound * trebleWeight * 0.90f) + snarePulse
-
-                // 3. Mids / Body Zone (bars 22..75%)
-                // Melodic harmonic resonance and vocal sustained warmth
-                val midWeight = sin(norm * 3.14159f).coerceAtLeast(0f)
-                val midResponse = (telemetry.sustainedEnergy * 0.45f + rms * 0.40f) * midWeight
-
-                // 4. Acoustic pitch resonance around current dominant frequency
-                val distToDom = abs(norm - domNorm)
-                val resonanceBoost = (1f - (distToDom / 0.22f)).coerceAtLeast(0f) * rms * 0.38f
-
-                // 5. Subtle micro-harmonic rhythm variation
-                val harmonic = sin(i * 0.42f + timeSeconds).toFloat() * 0.06f
-
                 val targetFraction = if (isPlaying) {
-                    val raw = restingProfile[i] * 0.30f +
-                        beatResponse +
-                        soundResponse +
-                        midResponse +
-                        resonanceBoost +
-                        harmonic
-                    raw.coerceIn(0.06f, 1.0f)
+                    if (hasLiveFft) {
+                        // FFT frequency mapping:
+                        // Low frequencies (bass) on the left (norm ~ 0)
+                        // High frequencies (treble) on the right (norm ~ 1)
+                        val fftBin = (norm * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
+                        val fftMag = fft[fftBin]
+                        val spectralCurve = 1.0f + (1f - norm) * 0.35f
+                        (fftMag * spectralCurve).coerceIn(0.06f, 1.0f)
+                    } else {
+                        // 1. Bass / Highest Beat Zone (bars 0..32%)
+                        // Responds decisively to kick drums and sub bass
+                        val bassWeight = (1f - (norm / 0.32f)).coerceIn(0f, 1f)
+                        val beatResponse = (highestBeat * bassWeight * 0.95f) + (rms * bassWeight * 0.70f)
+
+                        // 2. Highs / Highest Sound Zone (bars 50..100%)
+                        // Responds decisively to crisp transient peaks, snares, and cymbals
+                        val trebleWeight = ((norm - 0.48f) / 0.52f).coerceIn(0f, 1f)
+                        val snarePulse = if (isSnare && norm in 0.52f..0.85f) 0.75f else 0f
+                        val soundResponse = (highestSound * trebleWeight * 0.90f) + snarePulse
+
+                        // 3. Mids / Body Zone (bars 22..75%)
+                        // Melodic harmonic resonance and vocal sustained warmth
+                        val midWeight = sin(norm * 3.14159f).coerceAtLeast(0f)
+                        val midResponse = (telemetry.sustainedEnergy * 0.45f + rms * 0.40f) * midWeight
+
+                        // 4. Acoustic pitch resonance around current dominant frequency
+                        val distToDom = abs(norm - domNorm)
+                        val resonanceBoost = (1f - (distToDom / 0.22f)).coerceAtLeast(0f) * rms * 0.38f
+
+                        // 5. Subtle micro-harmonic rhythm variation
+                        val harmonic = sin(i * 0.42f + timeSeconds).toFloat() * 0.06f
+
+                        (restingProfile[i] * 0.30f + beatResponse + soundResponse + midResponse + resonanceBoost + harmonic).coerceIn(0.06f, 1.0f)
+                    }
                 } else {
-                    restingProfile[i]
+                    // Freezing entirely when paused: hold previous frame
+                    liveAmplitudes[i]
                 }
 
-                // Mature studio attack/decay physics:
-                // Instant attack on beat / highest sound, smooth gravity decay
+                // Studio attack/decay physics:
                 val current = liveAmplitudes[i]
                 val updated = if (isPlaying) {
                     if (targetFraction > current) {
@@ -215,8 +222,9 @@ fun ExactAudioWaveformProgress(
                         maxOf(targetFraction, current * 0.88f)
                     }
                 } else {
-                    // Tranquil resting return when paused
-                    current * 0.92f + restingProfile[i] * 0.08f
+                    // FREEZING ENTIRELY WHEN PAUSED:
+                    // Maintain current amplitude without decaying or moving
+                    current
                 }
                 liveAmplitudes[i] = updated.coerceIn(0f, 1f)
 

@@ -36,11 +36,22 @@ object DeviceMediaManager {
         get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(
                 android.Manifest.permission.READ_MEDIA_AUDIO,
-                android.Manifest.permission.READ_MEDIA_VIDEO
+                android.Manifest.permission.READ_MEDIA_VIDEO,
+                android.Manifest.permission.RECORD_AUDIO
             )
         } else {
-            arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            arrayOf(
+                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.RECORD_AUDIO
+            )
         }
+
+    fun hasRecordAudioPermission(context: Context): Boolean {
+        return androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
 
     fun hasAudioPermission(context: Context): Boolean {
         return requiredAudioPermissions.all { perm ->

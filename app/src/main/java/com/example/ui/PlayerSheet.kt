@@ -1772,6 +1772,55 @@ fun AudioVisualizerBottomSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasAudioPermission = isGranted
+    }
+
+    val bands = 32
+    val liveBandHeights = remember(bands) {
+        FloatArray(bands) { 0.12f }
+    }
+
+    // Capture and smooth real FFT frequency data
+    val fft = telemetry.fftBars
+    val hasFft = fft.isNotEmpty()
+
+    if (isPlaying) {
+        for (b in 0 until bands) {
+            val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
+            val target = if (hasFft) {
+                // Low frequencies (bass) on the left, high frequencies (treble) on the right
+                val fftBin = (norm * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
+                val rawMag = fft[fftBin]
+                val boost = 1.0f + (1f - norm) * 0.30f
+                (rawMag * boost).coerceIn(0.06f, 1.0f)
+            } else {
+                val wave = kotlin.math.abs(kotlin.math.sin(norm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
+                (0.20f + 0.60f * telemetry.rmsLevel * wave).coerceIn(0.10f, 1.0f)
+            }
+
+            val current = liveBandHeights[b]
+            val updated = if (target > current) {
+                current * 0.25f + target * 0.75f
+            } else {
+                maxOf(target, current * 0.85f)
+            }
+            liveBandHeights[b] = updated.coerceIn(0.05f, 1.0f)
+        }
+    }
+    // When isPlaying == false: FREEZE ENTIRELY! Maintain current liveBandHeights values.
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1803,58 +1852,104 @@ fun AudioVisualizerBottomSheet(
                 color = Color.White
             )
             Text(
-                text = "${track.title.substringBefore(" - ")} • ${if (isPlaying) "Active" else "Paused"}",
+                text = "${track.title.substringBefore(" - ")} • ${if (isPlaying) "Active" else "Frozen (Paused)"}",
                 fontSize = 12.sp,
                 color = Color.White.copy(alpha = 0.55f)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 16-band spectrum visualizer
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(110.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                val bands = 16
-                for (b in 0 until bands) {
-                    val bandNorm = b.toFloat() / bands
-                    val hFraction = if (isPlaying) {
-                        val localMod = abs(sin(bandNorm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
-                        (0.25f + 0.65f * telemetry.rmsLevel * localMod + (if (b % 4 == 0) telemetry.transientSpike * 0.35f else 0f)).coerceIn(0.12f, 1f)
-                    } else {
-                        0.15f
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 2.dp)
-                            .fillMaxWidth()
-                            .height((110 * hFraction).dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        accentColor,
-                                        accentColor.copy(alpha = 0.40f)
-                                    )
-                                )
-                            )
-                    )
+            if (!hasAudioPermission) {
+                Spacer(modifier = Modifier.height(12.dp))
+                androidx.compose.material3.Button(
+                    onClick = { permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Grant Audio Permission for Live FFT")
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            // 32-band live FFT spectrum canvas
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(130.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.40f))
+                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                val canvasWidth = size.width
+                val canvasHeight = size.height
+                val spacing = 3.dp.toPx()
+                val totalSpacing = spacing * (bands - 1)
+                val barWidth = (canvasWidth - totalSpacing) / bands
+
+                for (b in 0 until bands) {
+                    val hFraction = liveBandHeights[b]
+                    val barHeight = (canvasHeight * hFraction).coerceIn(4.dp.toPx(), canvasHeight)
+                    val x = b * (barWidth + spacing)
+                    val y = canvasHeight - barHeight
+
+                    // Frequency gradient coloring:
+                    // Low frequencies (bass) on the left, high frequencies (treble) on the right
+                    val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
+                    val barColor = if (norm < 0.33f) {
+                        accentColor
+                    } else if (norm < 0.66f) {
+                        Color(0xFFBB86FC)
+                    } else {
+                        Color(0xFF03DAC6)
+                    }
+
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.90f),
+                                barColor,
+                                barColor.copy(alpha = 0.45f)
+                            ),
+                            startY = y,
+                            endY = canvasHeight
+                        ),
+                        topLeft = Offset(x, y),
+                        size = Size(barWidth, barHeight),
+                        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Frequency spectrum labels (Bass on left, Treble on right)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "◀ Bass (20-250 Hz)",
+                    fontSize = 10.sp,
+                    color = accentColor.copy(alpha = 0.85f),
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Mids (250-4 kHz)",
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.50f),
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Treble (4-20 kHz) ▶",
+                    fontSize = 10.sp,
+                    color = Color(0xFF03DAC6).copy(alpha = 0.85f),
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Text(
-                text = "Frequency Engine: 44.1 kHz • Fast Snap Transient Peak Response",
+                text = "Native FFT Engine • 44.1 kHz • Hardware AudioFX Visualizer",
                 fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
                 color = Color.White.copy(alpha = 0.40f)
