@@ -92,15 +92,7 @@ fun HomeFeedScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0.0f to Color(0xFF621017),
-                        0.55f to Color(0xFF38090C),
-                        1.0f to Color(0xFF0F0B0C)
-                    )
-                )
-            )
+            .background(Color.Black)
             .testTag("home_feed_screen"),
         contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp)
     ) {

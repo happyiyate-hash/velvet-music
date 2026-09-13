@@ -315,16 +315,17 @@ class VelvetAudioEngine(
                         override fun onWaveFormDataCapture(
                             visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int
                         ) {
-                            if (waveform.isNullOrEmpty()) return
+                            if (waveform == null || waveform.isEmpty()) return
+                            val wf = waveform
                             var sum = 0.0
                             var peak = 0f
-                            waveform.forEach { value ->
+                            wf.forEach { value ->
                                 val sample = (value.toInt() - 128) / 128f
                                 val magnitude = kotlin.math.abs(sample)
                                 sum += sample * sample
                                 if (magnitude > peak) peak = magnitude
                             }
-                            liveRms = kotlin.math.sqrt(sum / waveform.size).toFloat().coerceIn(0f, 1f)
+                            liveRms = kotlin.math.sqrt(sum / wf.size).toFloat().coerceIn(0f, 1f)
                             liveTransient = (peak * 0.75f + liveRms * 0.25f).coerceIn(0f, 1f)
                         }
 

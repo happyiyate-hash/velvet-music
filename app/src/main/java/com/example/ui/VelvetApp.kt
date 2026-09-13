@@ -188,10 +188,10 @@ fun VelvetApp() {
     var actionSheetTrack by remember { mutableStateOf<Track?>(null) }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(VelvetAshGrayDark)
+        modifier = Modifier.fillMaxSize().background(Color.Black)
     ) {
         Scaffold(
-            containerColor = VelvetAshGrayDark,
+            containerColor = Color.Black,
             contentColor = VelvetTextPrimary,
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { paddingValues ->

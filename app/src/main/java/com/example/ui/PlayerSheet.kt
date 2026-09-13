@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -705,12 +706,10 @@ fun PlayerSheet(
                 telemetry = telemetry,
                 activeColor = themeColors.accent,
                 onSeekTo = onSeekTo,
-                waveformAlpha = movingWaveformAlpha * progressComponentAlpha,
-                timestampAlpha = movingTimestampAlpha * progressComponentAlpha,
-                progressAlpha = progressComponentAlpha,
                 modifier = Modifier
                     .offset(x = 16.dp, y = progressHostY)
                     .width(totalWidth - 32.dp)
+                    .graphicsLayer { alpha = progressComponentAlpha }
                     .zIndex(2f)
             )
         }
@@ -978,11 +977,11 @@ fun PlayerSheet(
                         .padding(horizontal = 14.dp),
                     contentPadding = PaddingValues(bottom = insetsBottom + 24.dp)
                 ) {
-                    items(
+                    itemsIndexed(
                         items = orderedQueueItems,
-                        key = { it.id }
-                    ,
-                        contentType = { "track_row" }) { queueTrack ->
+                        key = { _, it -> it.id },
+                        contentType = { _, _ -> "track_row" }
+                    ) { queueIndex, queueTrack ->
                         val isCurrent = queueTrack.id == track.id
                         val isDragging = activeQueueDragId == queueTrack.id
                         UpNextTrackRow(
