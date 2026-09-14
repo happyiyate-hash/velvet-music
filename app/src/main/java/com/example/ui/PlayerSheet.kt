@@ -112,10 +112,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import android.graphics.Bitmap
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.example.audio.AudioTelemetry
 import com.example.media.ArtworkColorExtractor
 import com.example.model.Track
@@ -172,9 +175,24 @@ fun PlayerSheet(
     var showVisualizerSheet by remember { mutableStateOf(false) }
     var showLyricsSheet by remember { mutableStateOf(false) }
 
-    // Dynamically derive the calm, restrained palette based on the current artwork
-    val themeColors = remember(track) {
-        ArtworkColorExtractor.extractColors(context, track)
+    // Dynamically derive the calm, restrained palette based on the current artwork.
+    // The resolved bitmap is passed directly into the color extractor state update loop.
+    var resolvedArtworkBitmap by remember(track.id, track.artworkUri, track.coverResId) {
+        mutableStateOf<Bitmap?>(null)
+    }
+    var themeColors by remember(track.id) {
+        mutableStateOf(ArtworkColorExtractor.extractColors(context, track))
+    }
+
+    LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
+        withContext(Dispatchers.IO) {
+            val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
+            val extractedColors = ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+            withContext(Dispatchers.Main) {
+                resolvedArtworkBitmap = bitmap
+                themeColors = extractedColors
+            }
+        }
     }
 
     // Interactive continuous drag transition state:
@@ -288,11 +306,17 @@ fun PlayerSheet(
         // immediately for bundled artwork, so this does not delay the first render.
         // v10 retrigger: painterResource must be invoked directly from composition.
         // Reading its intrinsic size is immediate and does not block the first render.
-        val artworkPainter = painterResource(track.coverResId)
-        val artworkIntrinsicSize = artworkPainter.intrinsicSize
-        val artworkAspectRatio = if (artworkIntrinsicSize.width > 0f && artworkIntrinsicSize.height > 0f) {
-            artworkIntrinsicSize.width / artworkIntrinsicSize.height
-        } else 1f
+        val safeFallbackRes = if (track.coverResId != 0) track.coverResId else R.drawable.art_luminous_echoes
+        val artworkPainter = painterResource(safeFallbackRes)
+        val bmp = resolvedArtworkBitmap
+        val artworkAspectRatio = if (bmp != null && bmp.width > 0 && bmp.height > 0) {
+            bmp.width.toFloat() / bmp.height.toFloat()
+        } else {
+            val artworkIntrinsicSize = artworkPainter.intrinsicSize
+            if (artworkIntrinsicSize.width > 0f && artworkIntrinsicSize.height > 0f) {
+                artworkIntrinsicSize.width / artworkIntrinsicSize.height
+            } else 1f
+        }
         val isTallArtwork = artworkAspectRatio < 0.94f
 
         // Safe insets
@@ -1444,18 +1468,41 @@ fun NowPlayingWaveformProgress(
             val liveEnergy = if (isPlaying) telemetry.rmsLevel else 0.32f
             val liveTransient = if (isPlaying) telemetry.transientSpike else 0f
 
+            val fft = telemetry.fftBars
+            val peakBass = if (fft.isNotEmpty()) {
+                var maxB = 0.08f
+                for (b in 0 until minOf(8, fft.size)) {
+                    if (fft[b] > maxB) maxB = fft[b]
+                }
+                maxB
+            } else if (telemetry.kickDetected) 0.85f else liveEnergy
+
+            val subBassEnergy = if (telemetry.kickDetected) {
+                maxOf(peakBass * 1.25f, 0.85f)
+            } else {
+                peakBass
+            }
+
+            val effectiveFft = if (fft.isNotEmpty()) {
+                fft
+            } else {
+                FloatArray(barCount) { idx ->
+                    val n = idx.toFloat() / barCount
+                    val wave = abs(sin(n * 3.14159f * 2.5f)).toFloat()
+                    (0.18f + 0.45f * liveEnergy * wave).coerceIn(0.06f, 0.75f)
+                }
+            }
+
+            val compressedTargets = calculateCompressedWaveform(
+                rawFft = effectiveFft,
+                barCount = barCount,
+                subBassEnergy = subBassEnergy
+            )
+
             for (i in 0 until barCount) {
                 val barX = i * (barWidth + barGap)
-                val base = baseProfile[i]
-
-                val modulation = if (isPlaying) {
-                    val ripple = sin(i * 0.35f + (positionMs / 220f)).toFloat()
-                    0.70f + 0.30f * liveEnergy + 0.18f * liveTransient * ripple.coerceAtLeast(0f)
-                } else {
-                    0.72f
-                }
-
-                val barHeight = (base * maxBarHeight * modulation).coerceIn(minBarHeight, maxBarHeight)
+                val targetFraction = if (isPlaying) compressedTargets[i] else 0.20f
+                val barHeight = (minBarHeight + (maxBarHeight - minBarHeight) * targetFraction).coerceIn(minBarHeight, maxBarHeight)
                 val barTop = size.height - barHeight
 
                 drawRoundRect(
@@ -1796,8 +1843,6 @@ fun AudioVisualizerBottomSheet(
     // Capture and smooth real FFT frequency data
     val fft = telemetry.fftBars
     val hasFft = fft.isNotEmpty()
-    val bassWaveCenters = floatArrayOf(0.10f, 0.25f, 0.38f, 0.50f, 0.62f, 0.75f, 0.90f)
-    val waveRadiusBars = 2.2f
 
     if (isPlaying) {
         val peakBass = if (hasFft) {
@@ -1810,55 +1855,38 @@ fun AudioVisualizerBottomSheet(
             telemetry.rmsLevel
         }
 
-        val bassSurge = if (telemetry.kickDetected) {
-            maxOf(peakBass * 1.15f, 0.85f)
-        } else if (peakBass > 0.30f) {
+        val subBassEnergy = if (telemetry.kickDetected) {
+            maxOf(peakBass * 1.25f, 0.85f)
+        } else if (hasFft) {
             peakBass
         } else {
-            0f
+            telemetry.rmsLevel
         }
 
-        for (b in 0 until bands) {
-            val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
-            val baseTarget = if (hasFft) {
-                val fftIndex = (norm * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
-                val low = fftIndex.toInt().coerceIn(0, fft.size - 1)
-                val high = (low + 1).coerceAtMost(fft.size - 1)
-                val frac = fftIndex - low
-                val rawMag = fft[low] * (1f - frac) + fft[high] * frac
-                rawMag.coerceIn(0.06f, 0.75f)
-            } else {
+        val effectiveFft = if (hasFft) {
+            fft
+        } else {
+            FloatArray(bands) { b ->
+                val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
                 val wave = kotlin.math.abs(kotlin.math.sin(norm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
                 (0.18f + 0.50f * telemetry.rmsLevel * wave).coerceIn(0.06f, 0.75f)
             }
+        }
 
-            // Multi-wave stepped water waves:
-            // Center is highest, left and right get lower and lower
-            var multiWavePeak = 0f
-            if (bassSurge > 0f) {
-                val barF = b.toFloat()
-                for (centerNorm in bassWaveCenters) {
-                    val centerBar = centerNorm * (bands - 1)
-                    val distBars = kotlin.math.abs(barF - centerBar)
-                    if (distBars <= waveRadiusBars) {
-                        val stepFactor = 1.0f - (distBars / (waveRadiusBars + 1f))
-                        val distFromMid = kotlin.math.abs(centerNorm - 0.50f) * 2f
-                        val waveHeightScale = 1.0f - (distFromMid * 0.48f)
-                        val waveHeight = bassSurge * waveHeightScale * stepFactor
-                        if (waveHeight > multiWavePeak) {
-                            multiWavePeak = waveHeight
-                        }
-                    }
-                }
-            }
+        val targetHeights = calculateCompressedWaveform(
+            rawFft = effectiveFft,
+            barCount = bands,
+            subBassEnergy = subBassEnergy
+        )
 
-            val target = maxOf(baseTarget, multiWavePeak).coerceIn(0.06f, 1.0f)
+        for (b in 0 until bands) {
+            val target = targetHeights[b]
             val current = liveBandHeights[b]
-            // Up Fast (100% instant pop) & Down Fast (0.50f snappy falloff)
+            // Instant Beat Snap (100%) & Fast Snappy Falloff (0.32)
             val updated = if (target > current) {
-                target
+                target // Instant attack on beat
             } else {
-                current - (current - target) * 0.50f
+                current - (current - target) * 0.32f // Fast gravitational drop
             }
             liveBandHeights[b] = updated.coerceIn(0.06f, 1.0f)
         }
@@ -1964,26 +1992,26 @@ fun AudioVisualizerBottomSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Frequency spectrum labels (Center Bass Peak, Highs on Edges)
+            // Frequency spectrum labels: 5 Bass Focal Centers with Interleaved Spectrum
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "◀ Highs (Hats)",
+                    text = "◀ 10% • 30% Bass",
                     fontSize = 10.sp,
                     color = Color(0xFF03DAC6).copy(alpha = 0.85f),
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "▲ Center Bass (Kick/808) ▲",
+                    text = "▲ 50% Center Ripple ▲",
                     fontSize = 10.sp,
                     color = accentColor,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Highs (Hats) ▶",
+                    text = "70% • 90% Bass ▶",
                     fontSize = 10.sp,
                     color = Color(0xFF03DAC6).copy(alpha = 0.85f),
                     fontFamily = FontFamily.Monospace
@@ -1993,7 +2021,7 @@ fun AudioVisualizerBottomSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Native FFT Engine • 44.1 kHz • Hardware AudioFX Visualizer",
+                text = "Dynamic Interleaved Spectrum • 5 Water Wave Centers • Zero-Delay Physics",
                 fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
                 color = Color.White.copy(alpha = 0.40f)

@@ -36,6 +36,7 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.log10
+import kotlin.math.pow
 import kotlin.math.sin
 
 /**
@@ -48,6 +49,79 @@ import kotlin.math.sin
  * - Sits gracefully on a tranquil resting wave when paused
  * - One thin horizontal playback progress bar with small thumb and timestamps underneath
  */
+/**
+ * Non-Linear Headroom Compression (Power-Curve Compression) & Dynamic Ceiling Multiplier
+ *
+ * 1. Non-Linear Height Compression (Power Curve x^1.8):
+ *    Compresses low/mid sounds down into the lower 20%-50% range, making them harder to push to the top.
+ *    Only an extreme, maximum-energy sub-bass drop has the power to break through to 90%-100%.
+ * 2. Damped High/Mid Gain Multiplier:
+ *    Scale the background lines down to a maximum base cap of 0.45f so regular instruments never touch the top boundary.
+ * 3. Dedicated Bass Peak Dynamic Headroom:
+ *    Reserve the upper 50% of the visualizer height exclusively for the 5 bass ripple centers when a true heavy drop occurs.
+ */
+fun calculateCompressedWaveform(
+    rawFft: FloatArray,
+    barCount: Int,
+    subBassEnergy: Float
+): FloatArray {
+    if (barCount <= 0) return FloatArray(0)
+    if (rawFft.isEmpty()) {
+        return FloatArray(barCount) { 0.06f }
+    }
+    val output = FloatArray(barCount)
+    val bassCenters = floatArrayOf(0.10f, 0.30f, 0.50f, 0.70f, 0.90f)
+    val waveSpread = 2.8f
+
+    for (i in 0 until barCount) {
+        val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+
+        val spreadIndex = if (i % 2 == 0) {
+            (norm * (rawFft.size - 1) * 0.5f).toInt()
+        } else {
+            ((1f - norm) * (rawFft.size - 1) * 0.5f + (rawFft.size * 0.5f)).toInt()
+        }.coerceIn(0, (rawFft.size - 1).coerceAtLeast(0))
+
+        // 1. Cap standard background sounds so they stay low (max 45% height)
+        val rawValue = rawFft[spreadIndex]
+        var linearHeight = rawValue * 0.45f
+
+        // 2. Add Bass Ripple energy (only heavy kick energy can push high)
+        if (subBassEnergy > 0.30f) {
+            var maxRipple = 0f
+            val barF = i.toFloat()
+
+            for (centerNorm in bassCenters) {
+                val centerBar = centerNorm * (barCount - 1)
+                val dist = kotlin.math.abs(barF - centerBar)
+
+                if (dist <= 3.8f) {
+                    val factor = kotlin.math.exp(-(dist * dist) / (2f * waveSpread)).toFloat()
+                    // Scaled so normal bass hits ~60-70%, maximum heavy bass hits ~90-100%
+                    maxRipple = maxOf(maxRipple, subBassEnergy * factor * 0.55f)
+                }
+            }
+            linearHeight += maxRipple
+        }
+
+        // 3. Power-Curve Compression: Compresses medium sounds down, reserves top for extreme peaks
+        val compressedHeight = linearHeight.toDouble().coerceIn(0.0, 1.0).pow(1.8).toFloat()
+
+        output[i] = compressedHeight.coerceIn(0.06f, 1.0f)
+    }
+
+    return output
+}
+
+fun generateBalancedRippleSpectrum(
+    rawFft: FloatArray,
+    barCount: Int,
+    subBassEnergy: Float,
+    timeSeconds: Float = 0f
+): FloatArray {
+    return calculateCompressedWaveform(rawFft, barCount, subBassEnergy)
+}
+
 @Composable
 fun ExactAudioWaveformProgress(
     audioUri: String?,
@@ -165,13 +239,6 @@ fun ExactAudioWaveformProgress(
             // Highest sound impact (Transients, highs & Snares)
             val highestSound = transient
 
-            // Multi-Wave Stepped Bass Architecture:
-            // The bass is distributed into multiple distinct wave centers across the line with gaps.
-            // At each bass location, stepped lines pop up like distinct water waves.
-            // The center wave reaches the highest, while left and right waves get progressively lower.
-            val bassWaveCenters = floatArrayOf(0.09f, 0.23f, 0.36f, 0.50f, 0.64f, 0.77f, 0.91f)
-            val waveRadiusBars = 2.4f
-
             val fft = telemetry.fftBars
             val hasLiveFft = fft.isNotEmpty()
             val peakBass = if (hasLiveFft) {
@@ -184,74 +251,46 @@ fun ExactAudioWaveformProgress(
                 highestBeat
             }
 
-            // Effective bass surge triggered by kick or strong low frequencies
-            val bassSurge = if (isKick) {
-                maxOf(peakBass * 1.15f, 0.85f)
-            } else if (peakBass > 0.30f) {
+            val subBassEnergy = if (isKick) {
+                maxOf(peakBass * 1.25f, 0.85f)
+            } else if (hasLiveFft) {
                 peakBass
             } else {
-                0f
+                highestBeat
             }
 
+            // Synthesize balanced spectrum if raw FFT is not yet available
+            val effectiveFft = if (hasLiveFft) {
+                fft
+            } else {
+                FloatArray(64) { idx ->
+                    val n = idx / 63f
+                    val w = sin(n * 3.14159f).coerceAtLeast(0f)
+                    (restingProfile.getOrElse(idx) { 0.2f } * 0.25f + rms * 0.40f * w + sin(idx * 0.42f + timeSeconds).toFloat() * 0.05f).coerceIn(0.06f, 0.75f)
+                }
+            }
+
+            val targetHeights = calculateCompressedWaveform(
+                rawFft = effectiveFft,
+                barCount = barCount,
+                subBassEnergy = subBassEnergy
+            )
+
             for (i in 0 until barCount) {
-                val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
-
                 val targetFraction = if (isPlaying) {
-                    // 1. Continuous audio background (vocals, mids, treble across the track)
-                    val baseHeight = if (hasLiveFft) {
-                        val fftIndex = (norm * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
-                        val low = fftIndex.toInt().coerceIn(0, fft.size - 1)
-                        val high = (low + 1).coerceAtMost(fft.size - 1)
-                        val frac = fftIndex - low
-                        val interpolated = fft[low] * (1f - frac) + fft[high] * frac
-                        interpolated.coerceIn(0.06f, 0.75f)
-                    } else {
-                        val midWeight = sin(norm * 3.14159f).coerceAtLeast(0f)
-                        val midResponse = (telemetry.sustainedEnergy * 0.45f + rms * 0.40f) * midWeight
-                        val trebleWeight = (norm - 0.40f).coerceAtLeast(0f) * 1.5f
-                        val soundResponse = highestSound * trebleWeight * 0.85f
-                        val harmonic = sin(i * 0.42f + timeSeconds).toFloat() * 0.05f
-                        (restingProfile[i] * 0.22f + midResponse + soundResponse + harmonic).coerceIn(0.06f, 0.75f)
-                    }
-
-                    // 2. Multi-point stepped water waves across the line
-                    var multiWavePeak = 0f
-                    if (bassSurge > 0f) {
-                        val barF = i.toFloat()
-                        for (centerNorm in bassWaveCenters) {
-                            val centerBar = centerNorm * (barCount - 1)
-                            val distBars = abs(barF - centerBar)
-                            if (distBars <= waveRadiusBars) {
-                                // Stepped lines falloff at this particular base location
-                                val stepFactor = 1.0f - (distBars / (waveRadiusBars + 1f))
-
-                                // Envelope: Center is highest, left and right get progressively lower
-                                val distFromMid = abs(centerNorm - 0.50f) * 2f // 0 at center, ~0.82 at ends
-                                val waveHeightScale = (1.0f - (distFromMid * 0.48f)) // 1.0 at center, down to ~0.60 at edges
-
-                                val waveHeight = bassSurge * waveHeightScale * stepFactor
-                                if (waveHeight > multiWavePeak) {
-                                    multiWavePeak = waveHeight
-                                }
-                            }
-                        }
-                    }
-
-                    maxOf(baseHeight, multiWavePeak).coerceIn(0.06f, 1.0f)
+                    targetHeights[i]
                 } else {
                     // Freezing entirely when paused: hold previous frame
                     liveAmplitudes[i]
                 }
 
-                // Up Fast & Down Fast Physics:
-                // When rising: 100% Instant peak jump (up fast!)
-                // When falling: Fast gravitational snap (down fast!)
+                // Instant Beat Snap (100%) & Fast Snappy Falloff (0.32)
                 val current = liveAmplitudes[i]
                 val updated = if (isPlaying) {
                     if (targetFraction > current) {
-                        targetFraction // UP FAST: instant 1-frame pop
+                        targetFraction // Instant attack on beat
                     } else {
-                        current - (current - targetFraction) * 0.50f // DOWN FAST: snappy falloff
+                        current - (current - targetFraction) * 0.32f // Fast gravitational drop
                     }
                 } else {
                     // FREEZING ENTIRELY WHEN PAUSED

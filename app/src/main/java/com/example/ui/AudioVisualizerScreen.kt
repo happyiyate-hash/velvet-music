@@ -154,37 +154,20 @@ fun RealTimeAudioPlayerVisualizer(
                                     rawBins[i] = (((db + trebleTiltDb) - minDb) / (maxDb - minDb)).coerceIn(0.05, 1.0).toFloat()
                                 }
 
-                                val bassWaveCenters = floatArrayOf(0.10f, 0.25f, 0.38f, 0.50f, 0.62f, 0.75f, 0.90f)
-                                val waveRadius = 2.4f
                                 val peakBass = rawBins.take(6).maxOrNull() ?: 0.1f
+                                val balancedTargets = generateBalancedRippleSpectrum(
+                                    rawFft = rawBins,
+                                    barCount = barCount,
+                                    subBassEnergy = peakBass
+                                )
 
                                 for (i in 0 until barCount) {
-                                    val baseTarget = rawBins[i]
-
-                                    var multiWavePeak = 0f
-                                    if (peakBass > 0.30f) {
-                                        val barF = i.toFloat()
-                                        for (centerNorm in bassWaveCenters) {
-                                            val centerBar = centerNorm * (barCount - 1)
-                                            val distBars = kotlin.math.abs(barF - centerBar)
-                                            if (distBars <= waveRadius) {
-                                                val stepFactor = 1.0f - (distBars / (waveRadius + 1f))
-                                                val distFromMid = kotlin.math.abs(centerNorm - 0.50f) * 2f
-                                                val waveHeightScale = 1.0f - (distFromMid * 0.48f)
-                                                val waveHeight = peakBass * waveHeightScale * stepFactor
-                                                if (waveHeight > multiWavePeak) {
-                                                    multiWavePeak = waveHeight
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    val targetNormalized = maxOf(baseTarget, multiWavePeak).coerceIn(0.05f, 1.0f)
+                                    val targetNormalized = balancedTargets[i]
                                     val current = fftMagnitudes[i]
                                     val smoothed = if (targetNormalized > current) {
-                                        targetNormalized // 100% Instant Attack (Up Fast!)
+                                        targetNormalized // 100% Instant Attack on beat
                                     } else {
-                                        current - (current - targetNormalized) * 0.50f // Gravitational Fast Falloff (Down Fast!)
+                                        current - (current - targetNormalized) * 0.32f // Fast gravitational drop
                                     }
                                     fftMagnitudes[i] = smoothed.coerceIn(0.05f, 1.0f)
                                 }

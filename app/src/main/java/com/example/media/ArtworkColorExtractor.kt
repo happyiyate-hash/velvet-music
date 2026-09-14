@@ -8,9 +8,20 @@ import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.palette.graphics.Palette
+import com.example.R
 import com.example.model.Track
-import kotlin.math.max
-import kotlin.math.min
+
+data class ArtworkColors(
+    val background: Int,
+    val accent: Int
+)
+
+sealed class ArtworkSource {
+    data class UriSource(val uri: String) : ArtworkSource()
+    data class BitmapSource(val bitmap: Bitmap) : ArtworkSource()
+    data class ResourceSource(val resId: Int) : ArtworkSource()
+}
 
 data class TrackThemeColors(
     val dominant: Color,
@@ -35,194 +46,289 @@ data class TrackThemeColors(
 object ArtworkColorExtractor {
 
     /**
+     * Extracts adaptive artwork colors using Android's Palette API.
+     * Supports colorful artwork as well as black & white, grayscale, and muted neutral covers
+     * via dominantSwatch, darkMutedSwatch, and lightMutedSwatch inspection.
+     */
+    fun extractAdaptiveArtworkColors(bitmap: Bitmap): ArtworkColors {
+        val palette = Palette.from(bitmap).generate()
+
+        // 1. Try vibrant/dark vibrant first for colorful art
+        val vibrantColor = palette.getVibrantColor(0)
+        val darkVibrantColor = palette.getDarkVibrantColor(0)
+
+        // 2. Extract Dominant Swatch (Handles Black & White / Grayscale Artwork)
+        val dominantSwatch = palette.dominantSwatch
+        val darkMutedSwatch = palette.darkMutedSwatch
+        val lightMutedSwatch = palette.lightMutedSwatch
+
+        // 3. Fallback hierarchy to guarantee dark/light background match
+        val primaryBg = when {
+            darkVibrantColor != 0 -> darkVibrantColor
+            darkMutedSwatch != null -> darkMutedSwatch.rgb
+            dominantSwatch != null -> dominantSwatch.rgb
+            else -> 0xFF121212.toInt() // Dark glassmorphism dark mode fallback
+        }
+
+        val accentColor = when {
+            vibrantColor != 0 -> vibrantColor
+            lightMutedSwatch != null -> lightMutedSwatch.rgb
+            dominantSwatch != null -> dominantSwatch.rgb
+            else -> 0xFFE91E63.toInt()
+        }
+
+        return ArtworkColors(background = primaryBg, accent = accentColor)
+    }
+
+    /**
+     * Converts any ArtworkSource to a non-null Bitmap for Palette, System Media Session,
+     * Dynamic Island, and UI renderers.
+     */
+    fun resolveToBitmap(context: Context, source: ArtworkSource): Bitmap {
+        return when (source) {
+            is ArtworkSource.BitmapSource -> source.bitmap
+            is ArtworkSource.UriSource -> {
+                loadBitmapFromUri(context, source.uri) ?: getDefaultBitmap(context)
+            }
+            is ArtworkSource.ResourceSource -> {
+                val resId = if (source.resId != 0) source.resId else R.drawable.art_luminous_echoes
+                try {
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 1 }
+                    BitmapFactory.decodeResource(context.resources, resId, opts) ?: getDefaultBitmap(context)
+                } catch (_: Throwable) {
+                    getDefaultBitmap(context)
+                }
+            }
+        }
+    }
+
+    fun resolveTrackBitmap(context: Context, track: Track): Bitmap {
+        val source = when {
+            !track.artworkUri.isNullOrBlank() -> ArtworkSource.UriSource(track.artworkUri)
+            !track.contentUri.isNullOrBlank() -> ArtworkSource.UriSource(track.contentUri)
+            track.coverResId != 0 -> ArtworkSource.ResourceSource(track.coverResId)
+            else -> ArtworkSource.ResourceSource(R.drawable.art_luminous_echoes)
+        }
+        return resolveToBitmap(context, source)
+    }
+
+    fun getDefaultBitmap(context: Context): Bitmap {
+        return try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.art_luminous_echoes)
+                ?: createSolidFallbackBitmap()
+        } catch (_: Throwable) {
+            createSolidFallbackBitmap()
+        }
+    }
+
+    private fun createSolidFallbackBitmap(): Bitmap {
+        val bmp = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        canvas.drawColor(0xFF1E1E24.toInt())
+        return bmp
+    }
+
+    private fun loadBitmapFromUri(context: Context, uriString: String): Bitmap? {
+        return try {
+            val uri = Uri.parse(uriString)
+            if (uri.scheme == "file" || uri.path?.startsWith("/") == true) {
+                val path = uri.path ?: uriString
+                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                BitmapFactory.decodeFile(path, opts)
+            } else {
+                // Check if audio file has embedded ID3 picture
+                val embedded = try {
+                    val retriever = MediaMetadataRetriever()
+                    try {
+                        retriever.setDataSource(context, uri)
+                        retriever.embeddedPicture
+                    } finally {
+                        retriever.release()
+                    }
+                } catch (_: Throwable) {
+                    null
+                }
+
+                if (embedded != null) {
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeByteArray(embedded, 0, embedded.size, opts)
+                } else {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                        BitmapFactory.decodeStream(stream, null, opts)
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
      * Dynamically samples the artwork of a track (from drawable resource or content URI)
      * and extracts the dominant color palette so the background automatically reflects
      * the color of the song's picture.
      */
     fun extractColors(context: Context, track: Track): TrackThemeColors {
-        val bitmap = loadThumbnailBitmap(context, track)
-        if (bitmap != null) {
-            val sampled = sampleDominantColor(bitmap)
-            if (sampled != null) {
-                return generateThemePalette(sampled)
-            }
-        }
-        return generateThemePalette(track.dominantColor)
+        val bitmap = resolveTrackBitmap(context, track)
+        return extractColorsFromBitmap(bitmap)
     }
 
     fun extractColorsFromUri(context: Context, artworkUriString: String): TrackThemeColors {
-        try {
-            val uri = Uri.parse(artworkUriString)
-            val bitmap = if (uri.scheme == "file") {
-                val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
-                BitmapFactory.decodeFile(uri.path, opts)
-            } else {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    BitmapFactory.decodeStream(stream, null, opts)
-                }
-            }
-            if (bitmap != null) {
-                val sampled = sampleDominantColor(bitmap)
-                if (sampled != null) {
-                    return generateThemePalette(sampled)
-                }
-            }
-        } catch (_: Exception) {}
-        return generateThemePalette(Color(0xFF880E2F))
+        val bitmap = resolveToBitmap(context, ArtworkSource.UriSource(artworkUriString))
+        return extractColorsFromBitmap(bitmap)
     }
 
     fun getColorsForDrawable(context: Context, @DrawableRes resId: Int): TrackThemeColors {
-        try {
-            val options = BitmapFactory.Options().apply { inSampleSize = 8 }
-            val bitmap = BitmapFactory.decodeResource(context.resources, resId, options)
-            if (bitmap != null) {
-                val sampled = sampleDominantColor(bitmap)
-                if (sampled != null) {
-                    return generateThemePalette(sampled)
-                }
-            }
-        } catch (_: Exception) {}
-        return generateThemePalette(Color(0xFF880E2F))
+        val bitmap = resolveToBitmap(context, ArtworkSource.ResourceSource(resId))
+        return extractColorsFromBitmap(bitmap)
     }
 
-    private fun loadThumbnailBitmap(context: Context, track: Track): Bitmap? {
-        try {
-            if (!track.artworkUri.isNullOrBlank()) {
-                val uri = Uri.parse(track.artworkUri)
-                if (uri.scheme == "file") {
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    return BitmapFactory.decodeFile(uri.path, opts)
-                }
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    return BitmapFactory.decodeStream(stream, null, opts)
-                }
-            } else if (track.contentUri != null) {
-                val uri = Uri.parse(track.contentUri)
-                val retriever = MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(context, uri)
-                    val raw = retriever.embeddedPicture
-                    if (raw != null) {
-                        val options = BitmapFactory.Options().apply { inSampleSize = 4 }
-                        return BitmapFactory.decodeByteArray(raw, 0, raw.size, options)
-                    }
-                } finally {
-                    retriever.release()
-                }
-            } else if (track.coverResId != 0) {
-                val options = BitmapFactory.Options().apply { inSampleSize = 8 }
-                return BitmapFactory.decodeResource(context.resources, track.coverResId, options)
-            }
-        } catch (_: Exception) {}
-        return null
+    fun extractColorsFromBitmap(bitmap: Bitmap): TrackThemeColors {
+        val adaptive = extractAdaptiveArtworkColors(bitmap)
+        return generateThemePaletteFromArtworkColors(adaptive)
     }
 
-    private fun sampleDominantColor(bitmap: Bitmap): Color? {
-        try {
-            val width = bitmap.width
-            val height = bitmap.height
-            if (width <= 0 || height <= 0) return null
+    fun generateThemePaletteFromArtworkColors(colors: ArtworkColors): TrackThemeColors {
+        val bgInt = colors.background
+        val accentInt = colors.accent
 
-            var totalR = 0L
-            var totalG = 0L
-            var totalB = 0L
-            var sampleCount = 0
+        val hsvBg = FloatArray(3)
+        android.graphics.Color.colorToHSV(bgInt, hsvBg)
+        val bgHue = hsvBg[0]
+        val bgSat = hsvBg[1]
+        val bgVal = hsvBg[2]
 
-            var maxVibrancy = -1f
-            var vibrantColor: Color? = null
+        val hsvAccent = FloatArray(3)
+        android.graphics.Color.colorToHSV(accentInt, hsvAccent)
+        val accHue = hsvAccent[0]
+        val accSat = hsvAccent[1]
+        val accVal = hsvAccent[2]
 
-            val stepX = max(1, width / 12)
-            val stepY = max(1, height / 12)
+        // Handles black & white, grayscale, or low-saturation album covers
+        val isMonochrome = (bgSat < 0.14f && accSat < 0.14f)
 
-            for (x in 0 until width step stepX) {
-                for (y in 0 until height step stepY) {
-                    val pixel = bitmap.getPixel(x, y)
-                    val a = (pixel shr 24) and 0xFF
-                    if (a < 128) continue
+        return if (isMonochrome) {
+            val darkBg = Color(0xFF121214)
+            val crispAccent = if (accVal > 0.40f) Color(0xFFE8E8EC) else Color(0xFFFFFFFF)
+            TrackThemeColors(
+                dominant = crispAccent,
+                secondary = Color(0xFF26262C),
+                accent = crispAccent,
+                glow = Color.White.copy(alpha = 0.45f),
+                darkBackground = darkBg,
+                atmosphericBloom = Color.Transparent,
+                playPauseCircle = Color(0xFF2C2C34),
+                playPauseBorder = Color(0xFF555560).copy(alpha = 0.45f),
+                bgTop = darkBg,
+                bgMidUpper = darkBg,
+                bgMidLower = darkBg,
+                bgBottom = darkBg,
+                playPauseGradTop = Color(0xFF34343E),
+                playPauseGradBottom = Color(0xFF1E1E24)
+            )
+        } else {
+            val targetHue = if (accSat >= 0.18f) accHue else bgHue
+            val targetSat = maxOf(accSat, bgSat).coerceIn(0.40f, 0.95f)
 
-                    val r = (pixel shr 16) and 0xFF
-                    val g = (pixel shr 8) and 0xFF
-                    val b = pixel and 0xFF
+            val dominant = Color.hsv(targetHue, targetSat, 0.75f)
+            val secondary = Color.hsv(targetHue, (targetSat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
+            val accent = Color(accentInt)
+            val glow = Color.hsv(targetHue, targetSat, 0.88f)
 
-                    val brightness = (r * 0.299f + g * 0.587f + b * 0.114f)
-                    if (brightness in 35.0..225.0) {
-                        totalR += r
-                        totalG += g
-                        totalB += b
-                        sampleCount++
+            val backgroundSurface = Color.hsv(
+                targetHue,
+                (targetSat * 0.60f).coerceIn(0.32f, 0.70f),
+                0.15f
+            )
 
-                        val maxC = max(r, max(g, b)).toFloat()
-                        val minC = min(r, min(g, b)).toFloat()
-                        val saturation = if (maxC > 0) (maxC - minC) / maxC else 0f
-                        if (saturation > maxVibrancy && saturation > 0.22f) {
-                            maxVibrancy = saturation
-                            vibrantColor = Color(r, g, b)
-                        }
-                    }
-                }
-            }
+            val playPauseGradTop = Color.hsv(targetHue, (targetSat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
+            val playPauseGradBottom = Color.hsv(targetHue, (targetSat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
+            val playPauseCircle = playPauseGradTop
+            val playPauseBorder = Color.hsv(targetHue, targetSat, 0.68f).copy(alpha = 0.40f)
 
-            if (vibrantColor != null && maxVibrancy > 0.28f) return vibrantColor
-
-            if (sampleCount > 0) {
-                val avgR = (totalR / sampleCount).toInt().coerceIn(0, 255)
-                val avgG = (totalG / sampleCount).toInt().coerceIn(0, 255)
-                val avgB = (totalB / sampleCount).toInt().coerceIn(0, 255)
-                return Color(avgR, avgG, avgB)
-            }
-        } catch (_: Exception) {}
-        return null
+            TrackThemeColors(
+                dominant = dominant,
+                secondary = secondary,
+                accent = accent,
+                glow = glow,
+                darkBackground = backgroundSurface,
+                atmosphericBloom = Color.Transparent,
+                playPauseCircle = playPauseCircle,
+                playPauseBorder = playPauseBorder,
+                bgTop = backgroundSurface,
+                bgMidUpper = backgroundSurface,
+                bgMidLower = backgroundSurface,
+                bgBottom = backgroundSurface,
+                playPauseGradTop = playPauseGradTop,
+                playPauseGradBottom = playPauseGradBottom
+            )
+        }
     }
 
     fun generateThemePalette(baseColor: Color): TrackThemeColors {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(baseColor.toArgb(), hsv)
         val hue = hsv[0]
-        val sat = hsv[1].coerceIn(0.45f, 0.95f)
+        val sat = hsv[1]
+        val value = hsv[2]
 
-        val dominant = Color.hsv(hue, sat, 0.75f)
-        val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
-        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
-        val glow = Color.hsv(hue, sat, 0.88f)
+        val isMonochrome = sat < 0.14f
 
-        // Single uniform artwork-derived background surface.
-        // This is the old mid-lower mood/tone, chosen as the stable full-screen surface so
-        // there is no top-to-bottom brightness shift and no darker bottom endpoint.
-        val backgroundSurface = Color.hsv(
-            hue,
-            (sat * 0.60f).coerceIn(0.32f, 0.70f),
-            0.15f
-        )
+        return if (isMonochrome) {
+            val darkBg = Color(0xFF121214)
+            val crispAccent = if (value > 0.40f) Color(0xFFE8E8EC) else Color(0xFFFFFFFF)
+            TrackThemeColors(
+                dominant = crispAccent,
+                secondary = Color(0xFF26262C),
+                accent = crispAccent,
+                glow = Color.White.copy(alpha = 0.45f),
+                darkBackground = darkBg,
+                atmosphericBloom = Color.Transparent,
+                playPauseCircle = Color(0xFF2C2C34),
+                playPauseBorder = Color(0xFF555560).copy(alpha = 0.45f),
+                bgTop = darkBg,
+                bgMidUpper = darkBg,
+                bgMidLower = darkBg,
+                bgBottom = darkBg,
+                playPauseGradTop = Color(0xFF34343E),
+                playPauseGradBottom = Color(0xFF1E1E24)
+            )
+        } else {
+            val boundedSat = sat.coerceIn(0.40f, 0.95f)
+            val dominant = Color.hsv(hue, boundedSat, 0.75f)
+            val secondary = Color.hsv(hue, (boundedSat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
+            val accent = Color.hsv(hue, (boundedSat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
+            val glow = Color.hsv(hue, boundedSat, 0.88f)
 
-        val bgTop = backgroundSurface
-        val bgMidUpper = backgroundSurface
-        val bgMidLower = backgroundSurface
-        val bgBottom = backgroundSurface
-        val darkBackground = backgroundSurface
-        val atmosphericBloom = Color.Transparent
+            val backgroundSurface = Color.hsv(
+                hue,
+                (boundedSat * 0.60f).coerceIn(0.32f, 0.70f),
+                0.15f
+            )
 
-        val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
-        val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
-        val playPauseCircle = playPauseGradTop
-        val playPauseBorder = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.40f)
+            val playPauseGradTop = Color.hsv(hue, (boundedSat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
+            val playPauseGradBottom = Color.hsv(hue, (boundedSat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
+            val playPauseCircle = playPauseGradTop
+            val playPauseBorder = Color.hsv(hue, boundedSat, 0.68f).copy(alpha = 0.40f)
 
-        return TrackThemeColors(
-            dominant = dominant,
-            secondary = secondary,
-            accent = accent,
-            glow = glow,
-            darkBackground = darkBackground,
-            atmosphericBloom = atmosphericBloom,
-            playPauseCircle = playPauseCircle,
-            playPauseBorder = playPauseBorder,
-            bgTop = bgTop,
-            bgMidUpper = bgMidUpper,
-            bgMidLower = bgMidLower,
-            bgBottom = bgBottom,
-            playPauseGradTop = playPauseGradTop,
-            playPauseGradBottom = playPauseGradBottom
-        )
+            TrackThemeColors(
+                dominant = dominant,
+                secondary = secondary,
+                accent = accent,
+                glow = glow,
+                darkBackground = backgroundSurface,
+                atmosphericBloom = Color.Transparent,
+                playPauseCircle = playPauseCircle,
+                playPauseBorder = playPauseBorder,
+                bgTop = backgroundSurface,
+                bgMidUpper = backgroundSurface,
+                bgMidLower = backgroundSurface,
+                bgBottom = backgroundSurface,
+                playPauseGradTop = playPauseGradTop,
+                playPauseGradBottom = playPauseGradBottom
+            )
+        }
     }
 }
+

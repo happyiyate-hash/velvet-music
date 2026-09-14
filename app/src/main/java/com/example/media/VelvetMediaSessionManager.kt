@@ -125,17 +125,17 @@ object VelvetMediaSessionManager {
         session.setPlaybackState(playbackState)
 
         // 2. Configure MediaMetadata (Title, Artist, Album, Art Bitmap)
-        val albumArtBitmap = loadTrackArtBitmap(appContext, track)
+        val albumArtBitmap = ArtworkColorExtractor.resolveTrackBitmap(appContext, track)
         val metadataBuilder = MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, track.title.substringBefore(" - "))
             .putString(MediaMetadata.METADATA_KEY_ARTIST, track.artist)
             .putString(MediaMetadata.METADATA_KEY_ALBUM, track.album)
             .putLong(MediaMetadata.METADATA_KEY_DURATION, track.durationMs)
+            // System / Dynamic Island reads these bitmap keys directly
+            .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, albumArtBitmap)
+            .putBitmap(MediaMetadata.METADATA_KEY_ART, albumArtBitmap)
+            .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, albumArtBitmap)
 
-        if (albumArtBitmap != null) {
-            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, albumArtBitmap)
-            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ART, albumArtBitmap)
-        }
         session.setMetadata(metadataBuilder.build())
 
         // 3. Build Lock Screen Notification with Notification.MediaStyle
@@ -229,26 +229,26 @@ object VelvetMediaSessionManager {
             .build()
     }
 
-    private fun loadTrackArtBitmap(context: Context, track: Track): Bitmap? {
-        return try {
-            if (!track.artworkUri.isNullOrBlank()) {
-                val uri = Uri.parse(track.artworkUri)
-                if (uri.scheme == "file") {
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-                    return BitmapFactory.decodeFile(uri.path, opts)
-                }
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-                    return BitmapFactory.decodeStream(stream, null, opts)
-                }
-            }
-            if (track.coverResId != 0) {
-                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-                BitmapFactory.decodeResource(context.resources, track.coverResId, opts)
-            } else null
-        } catch (_: Exception) {
-            null
-        }
+    /**
+     * Updates MediaSession metadata directly with a resolved artwork bitmap.
+     * System media controls and Dynamic Island read ALBUM_ART and DISPLAY_ICON directly.
+     */
+    fun updateMediaSessionMetadata(title: String, artist: String, artworkBitmap: Bitmap) {
+        val session = mediaSession ?: return
+        val metadata = MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+            // System / Dynamic Island reads THIS bitmap key directly
+            .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, artworkBitmap)
+            .putBitmap(MediaMetadata.METADATA_KEY_ART, artworkBitmap)
+            .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, artworkBitmap)
+            .build()
+
+        session.setMetadata(metadata)
+    }
+
+    private fun loadTrackArtBitmap(context: Context, track: Track): Bitmap {
+        return ArtworkColorExtractor.resolveTrackBitmap(context, track)
     }
 
     fun dismissNotification() {

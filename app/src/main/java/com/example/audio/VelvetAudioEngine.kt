@@ -3,6 +3,7 @@ package com.example.audio
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.audiofx.Visualizer
@@ -162,6 +163,13 @@ class VelvetAudioEngine(
             isPlaying = _isPlaying.value,
             playbackPositionMs = _playbackPositionMs.value
         )
+    }
+
+    /**
+     * Pushes metadata and resolved artwork bitmap directly to the system media session.
+     */
+    fun updateMediaSessionMetadata(title: String, artist: String, artworkBitmap: Bitmap) {
+        VelvetMediaSessionManager.updateMediaSessionMetadata(title, artist, artworkBitmap)
     }
 
     fun setDeviceTracks(tracks: List<Track>) {
