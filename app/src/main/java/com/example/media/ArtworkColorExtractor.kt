@@ -8,6 +8,7 @@ import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import com.example.R
 import com.example.model.Track
 import kotlin.math.max
 import kotlin.math.min
@@ -41,6 +42,14 @@ object ArtworkColorExtractor {
      */
     fun resolveTrackBitmap(context: Context, track: Track): Bitmap? {
         return loadThumbnailBitmap(context, track)
+    }
+
+    /**
+     * Returns a guaranteed non-null artwork bitmap for APIs that require Bitmap rather than Bitmap?.
+     */
+    fun getDefaultBitmap(context: Context): Bitmap {
+        return BitmapFactory.decodeResource(context.resources, R.drawable.art_luminous_echoes)
+            ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
     }
 
     /**
