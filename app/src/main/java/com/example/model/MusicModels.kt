@@ -31,7 +31,16 @@ data class Track(
     val dateAddedMs: Long = System.currentTimeMillis(),
     val contentUri: String? = null,
     val artworkUri: String? = null
-)
+) {
+    val formattedDuration: String
+        get() {
+            if (durationMs <= 0) return "3:30"
+            val totalSeconds = durationMs / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            return String.format("%d:%02d", minutes, seconds)
+        }
+}
 
 data class DeviceVideo(
     val id: String,

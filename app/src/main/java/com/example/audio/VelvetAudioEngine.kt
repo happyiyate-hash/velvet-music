@@ -136,6 +136,9 @@ class VelvetAudioEngine(
     private val _deviceTracks = MutableStateFlow<List<Track>>(emptyList())
     val deviceTracks: StateFlow<List<Track>> = _deviceTracks.asStateFlow()
 
+    private val _activeQueue = MutableStateFlow<List<Track>>(emptyList())
+    val activeQueue: StateFlow<List<Track>> = _activeQueue.asStateFlow()
+
     private val _deletedTrackIds = MutableStateFlow<Set<String>>(emptySet())
     val deletedTrackIds: StateFlow<Set<String>> = _deletedTrackIds.asStateFlow()
 
@@ -178,15 +181,21 @@ class VelvetAudioEngine(
         if ((currentId == "device_music_idle" || currentId == "idle_device_track" || currentId == "le_1" || currentId == "track_1") && tracks.isNotEmpty()) {
             val first = tracks.first()
             _currentTrack.value = first
+            _activeQueue.value = tracks
             _isPlaying.value = false
             _playbackPositionMs.value = 0L
             updateMediaSession()
             extractColorsLazily(first)
+        } else if (_activeQueue.value.isEmpty() && tracks.isNotEmpty()) {
+            val current = _currentTrack.value
+            val remaining = tracks.filterNot { it.id == current.id }
+            _activeQueue.value = listOf(current) + remaining
         }
     }
 
     fun addDeviceTrack(track: Track) {
         _deviceTracks.value = listOf(track) + _deviceTracks.value.filter { it.id != track.id }
+        _activeQueue.value = listOf(track) + _activeQueue.value.filter { it.id != track.id }
         val currentId = _currentTrack.value.id
         if (currentId == "device_music_idle" || currentId == "idle_device_track") {
             _currentTrack.value = track
@@ -203,12 +212,24 @@ class VelvetAudioEngine(
      * 2. Atomic requestId cancels stale asynchronous player preparation.
      * 3. Mutex + lock protects MediaPlayer from concurrent setDataSource/release race conditions.
      */
-    fun playTrack(track: Track) {
+    fun playTrack(track: Track, updateQueue: Boolean = true) {
         val requestId = playbackRequestId.incrementAndGet()
 
         // 1. Instant UI update
         _currentTrack.value = track
         _playbackPositionMs.value = 0L
+
+        if (updateQueue) {
+            val current = _activeQueue.value
+            val existingIndex = current.indexOfFirst { it.id == track.id }
+            if (existingIndex >= 0) {
+                // Rotate queue so selected track becomes index 0, and upcoming tracks follow
+                _activeQueue.value = current.drop(existingIndex) + current.take(existingIndex)
+            } else {
+                val all = getAllAvailableTracks().filterNot { it.id == track.id }
+                _activeQueue.value = listOf(track) + all
+            }
+        }
 
         val counts = _trackPlayCounts.value.toMutableMap()
         counts[track.id] = (counts[track.id] ?: 0) + 1
@@ -509,6 +530,45 @@ class VelvetAudioEngine(
 
     fun queueNext(track: Track) {
         _nextQueueTrack.value = track
+        val current = _activeQueue.value.filterNot { it.id == track.id }
+        if (current.isNotEmpty()) {
+            _activeQueue.value = listOf(current[0], track) + current.drop(1)
+        } else {
+            _activeQueue.value = listOf(track)
+        }
+    }
+
+    /**
+     * Synchronizes UI drag-and-drop directly with the active playback queue.
+     * When dragging an item, the active queue order is updated immediately.
+     * If shuffle was enabled, updates shuffleModeEnabled behavior so the queue order remains absolute.
+     */
+    fun reorderQueue(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex) return
+        val current = _activeQueue.value.toMutableList()
+        if (fromIndex !in current.indices || toIndex !in current.indices) return
+
+        // 1. Move item inside internal player queue
+        val item = current.removeAt(fromIndex)
+        current.add(toIndex, item)
+        _activeQueue.value = current
+
+        // 2. If shuffle is enabled, update shuffle order or sync active list
+        if (_isShuffle.value) {
+            // Keeps the visual drag order prioritized as the next playback order
+            _isShuffle.value = false
+        }
+    }
+
+    fun updateQueueList(updatedQueue: List<Track>) {
+        _activeQueue.value = updatedQueue
+        if (_isShuffle.value) {
+            _isShuffle.value = false
+        }
+    }
+
+    fun removeFromQueue(trackId: String) {
+        _activeQueue.value = _activeQueue.value.filterNot { it.id == trackId }
     }
 
     fun toggleFavorite(trackId: String) {
@@ -519,6 +579,7 @@ class VelvetAudioEngine(
 
     fun deleteTrack(trackId: String) {
         _deletedTrackIds.value = _deletedTrackIds.value + trackId
+        _activeQueue.value = _activeQueue.value.filterNot { it.id == trackId }
     }
 
     fun togglePlayPause() {
@@ -582,7 +643,24 @@ class VelvetAudioEngine(
         updateMediaSession()
     }
 
-    fun toggleShuffle() { _isShuffle.value = !_isShuffle.value }
+    fun toggleShuffle() {
+        val newShuffle = !_isShuffle.value
+        _isShuffle.value = newShuffle
+        if (newShuffle) {
+            // YouTube Music shuffle behavior:
+            // Index 0 (currently playing track) remains at index 0.
+            // The remaining upcoming tracks in the active queue are shuffled.
+            val current = _currentTrack.value
+            val upcoming = _activeQueue.value.filterNot { it.id == current.id }.shuffled()
+            _activeQueue.value = listOf(current) + upcoming
+        } else {
+            // Restore normal available order starting with the current track
+            val current = _currentTrack.value
+            val all = getAllAvailableTracks().filterNot { it.id == current.id }
+            _activeQueue.value = listOf(current) + all
+        }
+    }
+
     fun toggleRepeat() { _isRepeat.value = !_isRepeat.value }
     fun toggleSoundCatch() { _isSoundCatchEnabled.value = !_isSoundCatchEnabled.value }
 
@@ -599,6 +677,17 @@ class VelvetAudioEngine(
             playTrack(queued)
             return
         }
+        val queue = _activeQueue.value.filterNot { _deletedTrackIds.value.contains(it.id) }
+        if (queue.size > 1) {
+            // In YouTube Music queue hierarchy:
+            // Index 0 is currently playing track, Index 1 is the immediate next track ("Up Next").
+            // When advancing, track at index 1 is played, and the queue rotates.
+            val nextTrack = queue[1]
+            val rotatedQueue = queue.drop(1) + queue.take(1)
+            _activeQueue.value = rotatedQueue
+            playTrack(nextTrack, updateQueue = false)
+            return
+        }
         val all = getAllAvailableTracks()
         if (all.isEmpty()) {
             _isPlaying.value = false
@@ -610,6 +699,14 @@ class VelvetAudioEngine(
     }
 
     fun playPrevious() {
+        val queue = _activeQueue.value.filterNot { _deletedTrackIds.value.contains(it.id) }
+        if (queue.size > 1) {
+            val prevTrack = queue.last()
+            val rotatedQueue = listOf(prevTrack) + queue.dropLast(1)
+            _activeQueue.value = rotatedQueue
+            playTrack(prevTrack, updateQueue = false)
+            return
+        }
         val all = getAllAvailableTracks()
         if (all.isEmpty()) {
             _isPlaying.value = false

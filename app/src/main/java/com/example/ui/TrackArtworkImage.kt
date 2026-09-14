@@ -2,6 +2,8 @@ package com.example.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -14,11 +16,9 @@ import com.example.model.Track
  * Universal Track Artwork renderer:
  * 1. If the music fetched/searched from user device has a photo (embedded in ID3 tag, MediaStore, or local cache),
  *    this component renders that real photo.
- * 2. Only if the song has NO photo at all does it fall back to the app's default photo resource.
- *
- * Callers rendering small scrolling thumbnails can provide thumbnailSizePx and disable crossfade
- * to keep bitmap decode/upload work bounded during fast list scrolling. Those requests also use
- * a stable per-track cache key so revisiting a row can reuse the decoded thumbnail immediately.
+ * 2. If the song has NO photo, it cleanly and reliably resolves to the app's fallback artwork resource.
+ * 3. Wrapped with a key(track.id) and remember(track.id) so track transitions always force a full reset
+ *    and re-evaluation of the active artwork target.
  */
 @Composable
 fun TrackArtworkImage(
@@ -29,36 +29,53 @@ fun TrackArtworkImage(
     thumbnailSizePx: Int? = null,
     crossfade: Boolean = true
 ) {
-    val artUri = track.artworkUri
-    if (!artUri.isNullOrBlank()) {
-        val request = ImageRequest.Builder(LocalContext.current)
-            .data(artUri)
-            .crossfade(crossfade)
-            .apply {
-                thumbnailSizePx?.let {
-                    size(it, it)
-                    val cacheKey = "thumb_${track.id}_$artUri"
-                    memoryCacheKey(cacheKey)
-                    diskCacheKey(cacheKey)
-                    allowHardware(true)
-                }
+    key(track.id) {
+        val context = LocalContext.current
+        val effectiveArtTarget: Any? = remember(track.id, track.artworkUri, track.coverResId) {
+            val uri = track.artworkUri
+            if (!uri.isNullOrBlank() && !uri.startsWith("content://media/external/audio/media")) {
+                uri
+            } else if (track.coverResId != 0) {
+                track.coverResId
+            } else {
+                null
             }
-            .build()
-        AsyncImage(
-            model = request,
-            contentDescription = contentDescription,
-            modifier = modifier,
-            contentScale = contentScale,
-            placeholder = painterResource(id = track.coverResId),
-            error = painterResource(id = track.coverResId),
-            fallback = painterResource(id = track.coverResId)
-        )
-    } else {
-        Image(
-            painter = painterResource(id = track.coverResId),
-            contentDescription = contentDescription,
-            modifier = modifier,
-            contentScale = contentScale
-        )
+        }
+
+        if (effectiveArtTarget != null) {
+            val request = remember(track.id, effectiveArtTarget) {
+                ImageRequest.Builder(context)
+                    .data(effectiveArtTarget)
+                    .crossfade(crossfade)
+                    .apply {
+                        thumbnailSizePx?.let {
+                            size(it, it)
+                            val cacheKey = "thumb_${track.id}_$effectiveArtTarget"
+                            memoryCacheKey(cacheKey)
+                            diskCacheKey(cacheKey)
+                            allowHardware(true)
+                        }
+                    }
+                    .build()
+            }
+            AsyncImage(
+                model = request,
+                contentDescription = contentDescription,
+                modifier = modifier,
+                contentScale = contentScale,
+                placeholder = painterResource(id = track.coverResId),
+                error = painterResource(id = track.coverResId),
+                fallback = painterResource(id = track.coverResId)
+            )
+        } else {
+            val fallbackRes = remember(track.id, track.coverResId) { track.coverResId }
+            Image(
+                painter = painterResource(id = fallbackRes),
+                contentDescription = contentDescription,
+                modifier = modifier,
+                contentScale = contentScale
+            )
+        }
     }
 }
+

@@ -119,6 +119,7 @@ fun VelvetApp() {
     val trackPlayCounts by audioEngine.trackPlayCounts.collectAsState()
     val favoriteTrackIds by audioEngine.favoriteTrackIds.collectAsState()
     val deviceTracks by audioEngine.deviceTracks.collectAsState()
+    val activeQueue by audioEngine.activeQueue.collectAsState()
     val deletedTrackIds by audioEngine.deletedTrackIds.collectAsState()
 
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
@@ -269,10 +270,16 @@ fun VelvetApp() {
                 isRepeat = isRepeat,
                 isFavorite = favoriteTrackIds.contains(currentTrack.id),
                 isCachedOffline = offlineCachedIds.contains(currentTrack.id),
-                queueTracks = allTracks,
+                queueTracks = if (activeQueue.isNotEmpty()) activeQueue else allTracks,
                 onSelectQueueTrack = { track -> audioEngine.playTrack(track) },
                 onPlayNextTrack = { track ->
                     audioEngine.queueNext(track)
+                },
+                onReorderQueue = { fromIndex, toIndex ->
+                    audioEngine.reorderQueue(fromIndex, toIndex)
+                },
+                onUpdateQueue = { updatedQueue ->
+                    audioEngine.updateQueueList(updatedQueue)
                 },
                 onTogglePlayPause = { audioEngine.togglePlayPause() },
                 onSeekTo = { pos: Long -> audioEngine.seekTo(pos) },

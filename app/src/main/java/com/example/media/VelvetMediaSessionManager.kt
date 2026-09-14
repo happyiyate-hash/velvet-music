@@ -102,12 +102,34 @@ object VelvetMediaSessionManager {
             .build()
         session.setPlaybackState(playbackState)
 
+        val fallbackBitmap = if (track.coverResId != 0) {
+            runCatching {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                BitmapFactory.decodeResource(appContext.resources, track.coverResId, opts)
+            }.getOrNull()
+        } else {
+            null
+        }
         val albumArtBitmap = ArtworkColorExtractor.resolveTrackBitmap(appContext, track)
+            ?: fallbackBitmap
+            ?: ArtworkColorExtractor.getDefaultBitmap(appContext)
+
         val metadataBuilder = MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, track.title.substringBefore(" - "))
             .putString(MediaMetadata.METADATA_KEY_ARTIST, track.artist)
             .putString(MediaMetadata.METADATA_KEY_ALBUM, track.album)
             .putLong(MediaMetadata.METADATA_KEY_DURATION, track.durationMs)
+
+        val fallbackUri = if (track.coverResId != 0) {
+            "android.resource://${appContext.packageName}/${track.coverResId}"
+        } else null
+        val effectiveArtUri = track.artworkUri?.takeIf { !it.startsWith("content://media/external/audio/media") } ?: fallbackUri
+
+        if (effectiveArtUri != null) {
+            metadataBuilder.putString(MediaMetadata.METADATA_KEY_ART_URI, effectiveArtUri)
+            metadataBuilder.putString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI, effectiveArtUri)
+            metadataBuilder.putString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI, effectiveArtUri)
+        }
 
         if (albumArtBitmap != null) {
             metadataBuilder
@@ -204,7 +226,16 @@ object VelvetMediaSessionManager {
     }
 
     private fun loadTrackArtBitmap(context: Context, track: Track): Bitmap {
+        val fallback = if (track.coverResId != 0) {
+            runCatching {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                BitmapFactory.decodeResource(context.resources, track.coverResId, opts)
+            }.getOrNull()
+        } else {
+            null
+        }
         return ArtworkColorExtractor.resolveTrackBitmap(context, track)
+            ?: fallback
             ?: ArtworkColorExtractor.getDefaultBitmap(context)
     }
 

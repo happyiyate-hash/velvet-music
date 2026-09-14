@@ -129,12 +129,12 @@ object DeviceMediaManager {
 
                     // Instant artwork URI construction: zero I/O blocking during scan.
                     // Coil will lazily decode and cache artwork asynchronously only when the item is visible on screen!
+                    val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
                     val resolvedArtUri = if (albumId > 0) {
                         ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId).toString()
                     } else {
-                        contentUri.toString()
+                        "android.resource://${context.packageName}/$cover"
                     }
-                    val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
 
                     tracks.add(
                         Track(
