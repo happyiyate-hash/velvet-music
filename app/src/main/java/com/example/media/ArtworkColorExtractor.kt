@@ -32,14 +32,28 @@ data class TrackThemeColors(
 object ArtworkColorExtractor {
 
     fun extractColors(context: Context, track: Track): TrackThemeColors {
-        val bitmap = loadThumbnailBitmap(context, track)
+        val bitmap = resolveTrackBitmap(context, track)
+        return extractColorsFromBitmap(bitmap)
+    }
+
+    /**
+     * Resolves the artwork bitmap used both by color extraction and Android media metadata.
+     */
+    fun resolveTrackBitmap(context: Context, track: Track): Bitmap? {
+        return loadThumbnailBitmap(context, track)
+    }
+
+    /**
+     * Extracts the theme palette from an already-resolved artwork bitmap.
+     */
+    fun extractColorsFromBitmap(bitmap: Bitmap?): TrackThemeColors {
         if (bitmap != null) {
             val sampled = sampleDominantColor(bitmap)
             if (sampled != null) {
                 return generateThemePalette(sampled)
             }
         }
-        return generateThemePalette(track.dominantColor)
+        return generateThemePalette(Color(0xFF880E2F))
     }
 
     fun extractColorsFromUri(context: Context, artworkUriString: String): TrackThemeColors {
@@ -138,7 +152,6 @@ object ArtworkColorExtractor {
                     val g = (pixel shr 8) and 0xFF
                     val b = pixel and 0xFF
 
-                    // Allow dark/light bounds (5 to 250) so pure white and black & white art aren't ignored
                     val brightness = (r * 0.299f + g * 0.587f + b * 0.114f)
                     if (brightness in 5.0..250.0) {
                         totalR += r
@@ -149,8 +162,7 @@ object ArtworkColorExtractor {
                         val maxC = max(r, max(g, b)).toFloat()
                         val minC = min(r, min(g, b)).toFloat()
                         val saturation = if (maxC > 0) (maxC - minC) / maxC else 0f
-                        
-                        // Pick out rich vibrant colors if present
+
                         if (saturation > maxVibrancy && saturation > 0.18f) {
                             maxVibrancy = saturation
                             vibrantColor = Color(r, g, b)
@@ -159,10 +171,8 @@ object ArtworkColorExtractor {
                 }
             }
 
-            // Return strong vibrant color if found
             if (vibrantColor != null && maxVibrancy > 0.22f) return vibrantColor
 
-            // Otherwise, calculate dynamic average (handles Ash, Black/White, and Pure White)
             if (sampleCount > 0) {
                 val avgR = (totalR / sampleCount).toInt().coerceIn(0, 255)
                 val avgG = (totalG / sampleCount).toInt().coerceIn(0, 255)
@@ -180,7 +190,6 @@ object ArtworkColorExtractor {
         val rawSat = hsv[1]
         val rawVal = hsv[2]
 
-        // Check if artwork is Monochromatic / Black & White / Pure White / Ash Gray
         val isAshOrMonochrome = rawSat < 0.18f
 
         val dominant: Color
@@ -192,32 +201,24 @@ object ArtworkColorExtractor {
         val playPauseGradBottom: Color
 
         if (isAshOrMonochrome) {
-            // Sleek Ash Charcoal Theme Engine (for B&W, Ash, and Pure White covers)
-            dominant = Color.hsv(hue, 0.05f, 0.70f) // Soft Silver Ash
-            secondary = Color.hsv(hue, 0.05f, 0.18f) // Dark Slate
-            accent = Color.hsv(hue, 0.04f, 0.95f) // Crisp Platinum White
-            glow = Color.hsv(hue, 0.05f, 0.82f) // Cool Ash Glow
-
-            // Deep Ash Surface (#16181A tone)
+            dominant = Color.hsv(hue, 0.05f, 0.70f)
+            secondary = Color.hsv(hue, 0.05f, 0.18f)
+            accent = Color.hsv(hue, 0.04f, 0.95f)
+            glow = Color.hsv(hue, 0.05f, 0.82f)
             backgroundSurface = Color.hsv(hue, 0.06f, 0.12f)
-
             playPauseGradTop = Color.hsv(hue, 0.08f, 0.35f)
             playPauseGradBottom = Color.hsv(hue, 0.08f, 0.18f)
         } else {
-            // Standard Vibrant Theme Engine (for Colorful covers)
             val sat = rawSat.coerceIn(0.40f, 0.95f)
-
             dominant = Color.hsv(hue, sat, 0.75f)
             secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0.40f, 1f), 0.16f)
             accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.45f, 0.95f), 0.98f)
             glow = Color.hsv(hue, sat, 0.88f)
-
             backgroundSurface = Color.hsv(
                 hue,
                 (sat * 0.60f).coerceIn(0.32f, 0.70f),
                 0.15f
             )
-
             playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
             playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
         }
