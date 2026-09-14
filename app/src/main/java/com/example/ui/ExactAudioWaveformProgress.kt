@@ -165,11 +165,16 @@ fun ExactAudioWaveformProgress(
             // Highest sound impact (Transients, highs & Snares)
             val highestSound = transient
 
+            // Multi-Wave Stepped Bass Architecture:
+            // The bass is distributed into multiple distinct wave centers across the line with gaps.
+            // At each bass location, stepped lines pop up like distinct water waves.
+            // The center wave reaches the highest, while left and right waves get progressively lower.
+            val bassWaveCenters = floatArrayOf(0.09f, 0.23f, 0.36f, 0.50f, 0.64f, 0.77f, 0.91f)
+            val waveRadiusBars = 2.4f
+
             val fft = telemetry.fftBars
             val hasLiveFft = fft.isNotEmpty()
-            val centerIndex = (barCount - 1) / 2f
             val peakBass = if (hasLiveFft) {
-                // Peak energy in the lower FFT bins
                 var maxB = 0.08f
                 for (b in 0 until minOf(8, fft.size)) {
                     if (fft[b] > maxB) maxB = fft[b]
@@ -179,64 +184,74 @@ fun ExactAudioWaveformProgress(
                 highestBeat
             }
 
+            // Effective bass surge triggered by kick or strong low frequencies
+            val bassSurge = if (isKick) {
+                maxOf(peakBass * 1.15f, 0.85f)
+            } else if (peakBass > 0.30f) {
+                peakBass
+            } else {
+                0f
+            }
+
             for (i in 0 until barCount) {
-                // Distance from center: 0.0 at center, 1.0 at outer edges
-                val distanceFromCenter = (abs(i - centerIndex) / centerIndex).coerceIn(0f, 1f)
+                val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
 
                 val targetFraction = if (isPlaying) {
+                    // 1. Continuous audio background (vocals, mids, treble across the track)
                     val baseHeight = if (hasLiveFft) {
-                        // Center gets lower frequency FFT bins (Bass/Kick), Edges get higher bins (Mids/Treble)
-                        val fftIndex = (distanceFromCenter * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
+                        val fftIndex = (norm * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
                         val low = fftIndex.toInt().coerceIn(0, fft.size - 1)
                         val high = (low + 1).coerceAtMost(fft.size - 1)
                         val frac = fftIndex - low
                         val interpolated = fft[low] * (1f - frac) + fft[high] * frac
-                        interpolated.coerceIn(0.06f, 1.0f)
+                        interpolated.coerceIn(0.06f, 0.75f)
                     } else {
-                        // Fallback synthesized spectrum: Center is bass/kick, Edges are harmonics and highs
-                        val centerWeight = (1f - (distanceFromCenter / 0.35f)).coerceIn(0f, 1f)
-                        val beatResponse = (highestBeat * centerWeight * 0.95f) + (rms * centerWeight * 0.70f)
-
-                        val edgeWeight = ((distanceFromCenter - 0.45f) / 0.55f).coerceIn(0f, 1f)
-                        val snarePulse = if (isSnare && distanceFromCenter in 0.45f..0.85f) 0.75f else 0f
-                        val soundResponse = (highestSound * edgeWeight * 0.90f) + snarePulse
-
-                        val midWeight = sin(distanceFromCenter * 3.14159f).coerceAtLeast(0f)
+                        val midWeight = sin(norm * 3.14159f).coerceAtLeast(0f)
                         val midResponse = (telemetry.sustainedEnergy * 0.45f + rms * 0.40f) * midWeight
-
+                        val trebleWeight = (norm - 0.40f).coerceAtLeast(0f) * 1.5f
+                        val soundResponse = highestSound * trebleWeight * 0.85f
                         val harmonic = sin(i * 0.42f + timeSeconds).toFloat() * 0.05f
-                        (restingProfile[i] * 0.28f + beatResponse + soundResponse + midResponse + harmonic).coerceIn(0.06f, 1.0f)
+                        (restingProfile[i] * 0.22f + midResponse + soundResponse + harmonic).coerceIn(0.06f, 0.75f)
                     }
 
-                    // Stepped Water-Wave Ripple on Kick Drops:
-                    // Generates a stepped stair arch centered in the middle of the screen
-                    var steppedRipple = 0f
-                    if (isKick || peakBass > 0.42f) {
-                        val waveRadiusBars = 5.5f
-                        val distFromCenterBars = abs(i - centerIndex)
-                        if (distFromCenterBars <= waveRadiusBars) {
-                            // Stepped stair falloff: 100% center, down to sides
-                            val stepFactor = 1.0f - (distFromCenterBars / (waveRadiusBars + 1f))
-                            steppedRipple = peakBass * stepFactor * 0.90f
+                    // 2. Multi-point stepped water waves across the line
+                    var multiWavePeak = 0f
+                    if (bassSurge > 0f) {
+                        val barF = i.toFloat()
+                        for (centerNorm in bassWaveCenters) {
+                            val centerBar = centerNorm * (barCount - 1)
+                            val distBars = abs(barF - centerBar)
+                            if (distBars <= waveRadiusBars) {
+                                // Stepped lines falloff at this particular base location
+                                val stepFactor = 1.0f - (distBars / (waveRadiusBars + 1f))
+
+                                // Envelope: Center is highest, left and right get progressively lower
+                                val distFromMid = abs(centerNorm - 0.50f) * 2f // 0 at center, ~0.82 at ends
+                                val waveHeightScale = (1.0f - (distFromMid * 0.48f)) // 1.0 at center, down to ~0.60 at edges
+
+                                val waveHeight = bassSurge * waveHeightScale * stepFactor
+                                if (waveHeight > multiWavePeak) {
+                                    multiWavePeak = waveHeight
+                                }
+                            }
                         }
                     }
 
-                    maxOf(baseHeight, steppedRipple).coerceIn(0.06f, 1.0f)
+                    maxOf(baseHeight, multiWavePeak).coerceIn(0.06f, 1.0f)
                 } else {
                     // Freezing entirely when paused: hold previous frame
                     liveAmplitudes[i]
                 }
 
-                // Peak Velocity Physics:
-                // 100% Instant Attack (zero lag on beat pop) & Fast Gravitational Snapping Down
+                // Up Fast & Down Fast Physics:
+                // When rising: 100% Instant peak jump (up fast!)
+                // When falling: Fast gravitational snap (down fast!)
                 val current = liveAmplitudes[i]
                 val updated = if (isPlaying) {
                     if (targetFraction > current) {
-                        // 100% Instant peak pop
-                        targetFraction
+                        targetFraction // UP FAST: instant 1-frame pop
                     } else {
-                        // Fast gravitational snapping falloff (v = v + g feel)
-                        current - (current - targetFraction) * 0.35f
+                        current - (current - targetFraction) * 0.50f // DOWN FAST: snappy falloff
                     }
                 } else {
                     // FREEZING ENTIRELY WHEN PAUSED

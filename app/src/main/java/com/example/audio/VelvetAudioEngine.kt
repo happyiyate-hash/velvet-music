@@ -412,12 +412,12 @@ class VelvetAudioEngine(
                                     val maxDb = 48.0
                                     val targetNormalized = (((db + trebleTiltDb) - minDb) / (maxDb - minDb)).coerceIn(0.06, 1.0).toFloat()
 
-                                    // Fast Attack (snappy response on beat) and Slow Decay (fluid release)
+                                    // Instant Up (fast attack) & Fast Falloff (fast decay)
                                     val current = liveFftBars[i]
                                     val smoothed = if (targetNormalized > current) {
-                                        current + (targetNormalized - current) * 0.65f
+                                        targetNormalized // 100% Instant attack
                                     } else {
-                                        current - (current - targetNormalized) * 0.16f
+                                        current - (current - targetNormalized) * 0.45f // Fast snappy drop
                                     }
                                     liveFftBars[i] = smoothed.coerceIn(0.06f, 1.0f)
                                 }
@@ -439,12 +439,12 @@ class VelvetAudioEngine(
 
                             liveRms = (bassEnergy * 0.45f + midEnergy * 0.35f + trebleEnergy * 0.20f).coerceIn(0.05f, 1.0f)
                             liveTransient = maxOf(bassEnergy, midEnergy * 0.90f, trebleEnergy * 0.85f)
-                            liveKick = bassEnergy > 0.42f && bassEnergy > midEnergy * 1.12f
-                            liveSnare = midEnergy > 0.36f && (midEnergy > bassEnergy * 0.88f || trebleEnergy > 0.34f)
+                            liveKick = bassEnergy > 0.40f && bassEnergy > midEnergy * 1.10f
+                            liveSnare = midEnergy > 0.35f && (midEnergy > bassEnergy * 0.88f || trebleEnergy > 0.32f)
                             liveFrequencyHz = (40f * Math.pow(16000.0 / 40.0, ((liveFftBars.indices.maxByOrNull { liveFftBars[it] } ?: 0).toFloat() / (barCount - 1)).toDouble())).toFloat().coerceIn(20f, 20_000f)
                         }
                     },
-                    Visualizer.getMaxCaptureRate() / 2,
+                    Visualizer.getMaxCaptureRate(),
                     false, // Waveform
                     true   // FFT
                 )

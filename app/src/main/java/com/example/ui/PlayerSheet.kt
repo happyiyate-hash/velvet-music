@@ -1796,7 +1796,8 @@ fun AudioVisualizerBottomSheet(
     // Capture and smooth real FFT frequency data
     val fft = telemetry.fftBars
     val hasFft = fft.isNotEmpty()
-    val centerIndex = (bands - 1) / 2f
+    val bassWaveCenters = floatArrayOf(0.10f, 0.25f, 0.38f, 0.50f, 0.62f, 0.75f, 0.90f)
+    val waveRadiusBars = 2.2f
 
     if (isPlaying) {
         val peakBass = if (hasFft) {
@@ -1809,39 +1810,55 @@ fun AudioVisualizerBottomSheet(
             telemetry.rmsLevel
         }
 
+        val bassSurge = if (telemetry.kickDetected) {
+            maxOf(peakBass * 1.15f, 0.85f)
+        } else if (peakBass > 0.30f) {
+            peakBass
+        } else {
+            0f
+        }
+
         for (b in 0 until bands) {
-            val distFromCenterNorm = (kotlin.math.abs(b - centerIndex) / centerIndex).coerceIn(0f, 1f)
+            val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
             val baseTarget = if (hasFft) {
-                // Center gets low bass, edges get highs/treble
-                val fftIndex = (distFromCenterNorm * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
+                val fftIndex = (norm * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
                 val low = fftIndex.toInt().coerceIn(0, fft.size - 1)
                 val high = (low + 1).coerceAtMost(fft.size - 1)
                 val frac = fftIndex - low
                 val rawMag = fft[low] * (1f - frac) + fft[high] * frac
-                rawMag
+                rawMag.coerceIn(0.06f, 0.75f)
             } else {
-                val wave = kotlin.math.abs(kotlin.math.sin(distFromCenterNorm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
-                (0.20f + 0.60f * telemetry.rmsLevel * wave)
+                val wave = kotlin.math.abs(kotlin.math.sin(norm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
+                (0.18f + 0.50f * telemetry.rmsLevel * wave).coerceIn(0.06f, 0.75f)
             }
 
-            // Stepped Water-Wave Ripple on Kick/Bass Drops
-            var steppedRipple = 0f
-            if (telemetry.kickDetected || peakBass > 0.40f) {
-                val waveRadius = 4f
-                val distBars = kotlin.math.abs(b - centerIndex)
-                if (distBars <= waveRadius) {
-                    val stepFactor = 1.0f - (distBars / (waveRadius + 1f))
-                    steppedRipple = peakBass * stepFactor * 0.92f
+            // Multi-wave stepped water waves:
+            // Center is highest, left and right get lower and lower
+            var multiWavePeak = 0f
+            if (bassSurge > 0f) {
+                val barF = b.toFloat()
+                for (centerNorm in bassWaveCenters) {
+                    val centerBar = centerNorm * (bands - 1)
+                    val distBars = kotlin.math.abs(barF - centerBar)
+                    if (distBars <= waveRadiusBars) {
+                        val stepFactor = 1.0f - (distBars / (waveRadiusBars + 1f))
+                        val distFromMid = kotlin.math.abs(centerNorm - 0.50f) * 2f
+                        val waveHeightScale = 1.0f - (distFromMid * 0.48f)
+                        val waveHeight = bassSurge * waveHeightScale * stepFactor
+                        if (waveHeight > multiWavePeak) {
+                            multiWavePeak = waveHeight
+                        }
+                    }
                 }
             }
 
-            val target = maxOf(baseTarget, steppedRipple).coerceIn(0.06f, 1.0f)
+            val target = maxOf(baseTarget, multiWavePeak).coerceIn(0.06f, 1.0f)
             val current = liveBandHeights[b]
-            // Instant Peak Snap (100% attack) & Gravitational Fast Drop (0.35)
+            // Up Fast (100% instant pop) & Down Fast (0.50f snappy falloff)
             val updated = if (target > current) {
                 target
             } else {
-                current - (current - target) * 0.35f
+                current - (current - target) * 0.50f
             }
             liveBandHeights[b] = updated.coerceIn(0.06f, 1.0f)
         }

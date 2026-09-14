@@ -154,36 +154,43 @@ fun RealTimeAudioPlayerVisualizer(
                                     rawBins[i] = (((db + trebleTiltDb) - minDb) / (maxDb - minDb)).coerceIn(0.05, 1.0).toFloat()
                                 }
 
-                                val centerIndex = (barCount - 1) / 2f
+                                val bassWaveCenters = floatArrayOf(0.10f, 0.25f, 0.38f, 0.50f, 0.62f, 0.75f, 0.90f)
+                                val waveRadius = 2.4f
                                 val peakBass = rawBins.take(6).maxOrNull() ?: 0.1f
 
                                 for (i in 0 until barCount) {
-                                    val distFromCenterNorm = (kotlin.math.abs(i - centerIndex) / centerIndex).coerceIn(0f, 1f)
-                                    val binIdx = (distFromCenterNorm * (barCount - 1)).toInt().coerceIn(0, barCount - 1)
-                                    val baseTarget = rawBins[binIdx]
+                                    val baseTarget = rawBins[i]
 
-                                    var steppedRipple = 0f
-                                    if (peakBass > 0.40f) {
-                                        val waveRadius = 4f
-                                        val distBars = kotlin.math.abs(i - centerIndex)
-                                        if (distBars <= waveRadius) {
-                                            val stepFactor = 1.0f - (distBars / (waveRadius + 1f))
-                                            steppedRipple = peakBass * stepFactor * 0.92f
+                                    var multiWavePeak = 0f
+                                    if (peakBass > 0.30f) {
+                                        val barF = i.toFloat()
+                                        for (centerNorm in bassWaveCenters) {
+                                            val centerBar = centerNorm * (barCount - 1)
+                                            val distBars = kotlin.math.abs(barF - centerBar)
+                                            if (distBars <= waveRadius) {
+                                                val stepFactor = 1.0f - (distBars / (waveRadius + 1f))
+                                                val distFromMid = kotlin.math.abs(centerNorm - 0.50f) * 2f
+                                                val waveHeightScale = 1.0f - (distFromMid * 0.48f)
+                                                val waveHeight = peakBass * waveHeightScale * stepFactor
+                                                if (waveHeight > multiWavePeak) {
+                                                    multiWavePeak = waveHeight
+                                                }
+                                            }
                                         }
                                     }
 
-                                    val targetNormalized = maxOf(baseTarget, steppedRipple).coerceIn(0.05f, 1.0f)
+                                    val targetNormalized = maxOf(baseTarget, multiWavePeak).coerceIn(0.05f, 1.0f)
                                     val current = fftMagnitudes[i]
                                     val smoothed = if (targetNormalized > current) {
-                                        targetNormalized // 100% Instant Attack
+                                        targetNormalized // 100% Instant Attack (Up Fast!)
                                     } else {
-                                        current - (current - targetNormalized) * 0.35f // Gravitational Fast Falloff
+                                        current - (current - targetNormalized) * 0.50f // Gravitational Fast Falloff (Down Fast!)
                                     }
                                     fftMagnitudes[i] = smoothed.coerceIn(0.05f, 1.0f)
                                 }
                             }
                         },
-                        Visualizer.getMaxCaptureRate() / 2,
+                        Visualizer.getMaxCaptureRate(),
                         false, // Waveform
                         true   // FFT
                     )
