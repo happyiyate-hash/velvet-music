@@ -126,6 +126,7 @@ fun RealTimeAudioPlayerVisualizer(
 
                                 val minFreqBin = 1.0
                                 val maxFreqBin = (fftSize - 1).toDouble()
+                                val rawBins = FloatArray(barCount)
 
                                 for (i in 0 until barCount) {
                                     val fracStart = i.toDouble() / barCount
@@ -150,13 +151,33 @@ fun RealTimeAudioPlayerVisualizer(
 
                                     val minDb = 8.0
                                     val maxDb = 48.0
-                                    val targetNormalized = (((db + trebleTiltDb) - minDb) / (maxDb - minDb)).coerceIn(0.05, 1.0).toFloat()
+                                    rawBins[i] = (((db + trebleTiltDb) - minDb) / (maxDb - minDb)).coerceIn(0.05, 1.0).toFloat()
+                                }
 
+                                val centerIndex = (barCount - 1) / 2f
+                                val peakBass = rawBins.take(6).maxOrNull() ?: 0.1f
+
+                                for (i in 0 until barCount) {
+                                    val distFromCenterNorm = (kotlin.math.abs(i - centerIndex) / centerIndex).coerceIn(0f, 1f)
+                                    val binIdx = (distFromCenterNorm * (barCount - 1)).toInt().coerceIn(0, barCount - 1)
+                                    val baseTarget = rawBins[binIdx]
+
+                                    var steppedRipple = 0f
+                                    if (peakBass > 0.40f) {
+                                        val waveRadius = 4f
+                                        val distBars = kotlin.math.abs(i - centerIndex)
+                                        if (distBars <= waveRadius) {
+                                            val stepFactor = 1.0f - (distBars / (waveRadius + 1f))
+                                            steppedRipple = peakBass * stepFactor * 0.92f
+                                        }
+                                    }
+
+                                    val targetNormalized = maxOf(baseTarget, steppedRipple).coerceIn(0.05f, 1.0f)
                                     val current = fftMagnitudes[i]
                                     val smoothed = if (targetNormalized > current) {
-                                        current + (targetNormalized - current) * 0.60f
+                                        targetNormalized // 100% Instant Attack
                                     } else {
-                                        current - (current - targetNormalized) * 0.15f
+                                        current - (current - targetNormalized) * 0.35f // Gravitational Fast Falloff
                                     }
                                     fftMagnitudes[i] = smoothed.coerceIn(0.05f, 1.0f)
                                 }

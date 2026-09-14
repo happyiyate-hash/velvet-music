@@ -1796,27 +1796,52 @@ fun AudioVisualizerBottomSheet(
     // Capture and smooth real FFT frequency data
     val fft = telemetry.fftBars
     val hasFft = fft.isNotEmpty()
+    val centerIndex = (bands - 1) / 2f
 
     if (isPlaying) {
+        val peakBass = if (hasFft) {
+            var maxB = 0.10f
+            for (i in 0 until minOf(6, fft.size)) {
+                if (fft[i] > maxB) maxB = fft[i]
+            }
+            maxB
+        } else {
+            telemetry.rmsLevel
+        }
+
         for (b in 0 until bands) {
-            val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
-            val target = if (hasFft) {
-                val fftIndex = norm * (fft.size - 1).toFloat()
+            val distFromCenterNorm = (kotlin.math.abs(b - centerIndex) / centerIndex).coerceIn(0f, 1f)
+            val baseTarget = if (hasFft) {
+                // Center gets low bass, edges get highs/treble
+                val fftIndex = (distFromCenterNorm * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
                 val low = fftIndex.toInt().coerceIn(0, fft.size - 1)
                 val high = (low + 1).coerceAtMost(fft.size - 1)
                 val frac = fftIndex - low
                 val rawMag = fft[low] * (1f - frac) + fft[high] * frac
-                rawMag.coerceIn(0.06f, 1.0f)
+                rawMag
             } else {
-                val wave = kotlin.math.abs(kotlin.math.sin(norm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
-                (0.20f + 0.60f * telemetry.rmsLevel * wave).coerceIn(0.10f, 1.0f)
+                val wave = kotlin.math.abs(kotlin.math.sin(distFromCenterNorm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
+                (0.20f + 0.60f * telemetry.rmsLevel * wave)
             }
 
+            // Stepped Water-Wave Ripple on Kick/Bass Drops
+            var steppedRipple = 0f
+            if (telemetry.kickDetected || peakBass > 0.40f) {
+                val waveRadius = 4f
+                val distBars = kotlin.math.abs(b - centerIndex)
+                if (distBars <= waveRadius) {
+                    val stepFactor = 1.0f - (distBars / (waveRadius + 1f))
+                    steppedRipple = peakBass * stepFactor * 0.92f
+                }
+            }
+
+            val target = maxOf(baseTarget, steppedRipple).coerceIn(0.06f, 1.0f)
             val current = liveBandHeights[b]
+            // Instant Peak Snap (100% attack) & Gravitational Fast Drop (0.35)
             val updated = if (target > current) {
-                current + (target - current) * 0.60f
+                target
             } else {
-                current - (current - target) * 0.15f
+                current - (current - target) * 0.35f
             }
             liveBandHeights[b] = updated.coerceIn(0.06f, 1.0f)
         }
@@ -1922,25 +1947,26 @@ fun AudioVisualizerBottomSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Frequency spectrum labels (Bass on left, Treble on right)
+            // Frequency spectrum labels (Center Bass Peak, Highs on Edges)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "◀ Bass (20-250 Hz)",
+                    text = "◀ Highs (Hats)",
                     fontSize = 10.sp,
-                    color = accentColor.copy(alpha = 0.85f),
+                    color = Color(0xFF03DAC6).copy(alpha = 0.85f),
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Mids (250-4 kHz)",
+                    text = "▲ Center Bass (Kick/808) ▲",
                     fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.50f),
+                    color = accentColor,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Treble (4-20 kHz) ▶",
+                    text = "Highs (Hats) ▶",
                     fontSize = 10.sp,
                     color = Color(0xFF03DAC6).copy(alpha = 0.85f),
                     fontFamily = FontFamily.Monospace

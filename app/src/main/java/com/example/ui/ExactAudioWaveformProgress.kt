@@ -167,61 +167,79 @@ fun ExactAudioWaveformProgress(
 
             val fft = telemetry.fftBars
             val hasLiveFft = fft.isNotEmpty()
+            val centerIndex = (barCount - 1) / 2f
+            val peakBass = if (hasLiveFft) {
+                // Peak energy in the lower FFT bins
+                var maxB = 0.08f
+                for (b in 0 until minOf(8, fft.size)) {
+                    if (fft[b] > maxB) maxB = fft[b]
+                }
+                maxB
+            } else {
+                highestBeat
+            }
 
             for (i in 0 until barCount) {
-                val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+                // Distance from center: 0.0 at center, 1.0 at outer edges
+                val distanceFromCenter = (abs(i - centerIndex) / centerIndex).coerceIn(0f, 1f)
 
                 val targetFraction = if (isPlaying) {
-                    if (hasLiveFft) {
-                        // Smoothly interpolate across the 64 log-spaced, dB-scaled frequency bins
-                        val fftIndex = (norm * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
+                    val baseHeight = if (hasLiveFft) {
+                        // Center gets lower frequency FFT bins (Bass/Kick), Edges get higher bins (Mids/Treble)
+                        val fftIndex = (distanceFromCenter * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
                         val low = fftIndex.toInt().coerceIn(0, fft.size - 1)
                         val high = (low + 1).coerceAtMost(fft.size - 1)
                         val frac = fftIndex - low
                         val interpolated = fft[low] * (1f - frac) + fft[high] * frac
                         interpolated.coerceIn(0.06f, 1.0f)
                     } else {
-                        // Fallback synthesized spectrum when microphone/visualizer permission is not yet granted
-                        // 1. Bass / Highest Beat Zone (bars 0..32%)
-                        val bassWeight = (1f - (norm / 0.32f)).coerceIn(0f, 1f)
-                        val beatResponse = (highestBeat * bassWeight * 0.95f) + (rms * bassWeight * 0.70f)
+                        // Fallback synthesized spectrum: Center is bass/kick, Edges are harmonics and highs
+                        val centerWeight = (1f - (distanceFromCenter / 0.35f)).coerceIn(0f, 1f)
+                        val beatResponse = (highestBeat * centerWeight * 0.95f) + (rms * centerWeight * 0.70f)
 
-                        // 2. Highs / Highest Sound Zone (bars 50..100%)
-                        val trebleWeight = ((norm - 0.48f) / 0.52f).coerceIn(0f, 1f)
-                        val snarePulse = if (isSnare && norm in 0.52f..0.85f) 0.75f else 0f
-                        val soundResponse = (highestSound * trebleWeight * 0.90f) + snarePulse
+                        val edgeWeight = ((distanceFromCenter - 0.45f) / 0.55f).coerceIn(0f, 1f)
+                        val snarePulse = if (isSnare && distanceFromCenter in 0.45f..0.85f) 0.75f else 0f
+                        val soundResponse = (highestSound * edgeWeight * 0.90f) + snarePulse
 
-                        // 3. Mids / Body Zone (bars 22..75%)
-                        val midWeight = sin(norm * 3.14159f).coerceAtLeast(0f)
+                        val midWeight = sin(distanceFromCenter * 3.14159f).coerceAtLeast(0f)
                         val midResponse = (telemetry.sustainedEnergy * 0.45f + rms * 0.40f) * midWeight
 
-                        // 4. Acoustic pitch resonance around current dominant frequency
-                        val distToDom = abs(norm - domNorm)
-                        val resonanceBoost = (1f - (distToDom / 0.22f)).coerceAtLeast(0f) * rms * 0.38f
-
-                        // 5. Subtle micro-harmonic rhythm variation
-                        val harmonic = sin(i * 0.42f + timeSeconds).toFloat() * 0.06f
-
-                        (restingProfile[i] * 0.30f + beatResponse + soundResponse + midResponse + resonanceBoost + harmonic).coerceIn(0.06f, 1.0f)
+                        val harmonic = sin(i * 0.42f + timeSeconds).toFloat() * 0.05f
+                        (restingProfile[i] * 0.28f + beatResponse + soundResponse + midResponse + harmonic).coerceIn(0.06f, 1.0f)
                     }
+
+                    // Stepped Water-Wave Ripple on Kick Drops:
+                    // Generates a stepped stair arch centered in the middle of the screen
+                    var steppedRipple = 0f
+                    if (isKick || peakBass > 0.42f) {
+                        val waveRadiusBars = 5.5f
+                        val distFromCenterBars = abs(i - centerIndex)
+                        if (distFromCenterBars <= waveRadiusBars) {
+                            // Stepped stair falloff: 100% center, down to sides
+                            val stepFactor = 1.0f - (distFromCenterBars / (waveRadiusBars + 1f))
+                            steppedRipple = peakBass * stepFactor * 0.90f
+                        }
+                    }
+
+                    maxOf(baseHeight, steppedRipple).coerceIn(0.06f, 1.0f)
                 } else {
                     // Freezing entirely when paused: hold previous frame
                     liveAmplitudes[i]
                 }
 
-                // Studio attack/decay physics:
+                // Peak Velocity Physics:
+                // 100% Instant Attack (zero lag on beat pop) & Fast Gravitational Snapping Down
                 val current = liveAmplitudes[i]
                 val updated = if (isPlaying) {
                     if (targetFraction > current) {
-                        // Fast Attack: snappy jump on beat / transient drop
-                        current + (targetFraction - current) * 0.60f
+                        // 100% Instant peak pop
+                        targetFraction
                     } else {
-                        // Slow Decay: fluid drop
-                        current - (current - targetFraction) * 0.15f
+                        // Fast gravitational snapping falloff (v = v + g feel)
+                        current - (current - targetFraction) * 0.35f
                     }
                 } else {
-                    // FREEZING ENTIRELY WHEN PAUSED:
-                    // Maintain current amplitude without decaying or moving
+                    // FREEZING ENTIRELY WHEN PAUSED
                     current
                 }
                 liveAmplitudes[i] = updated.coerceIn(0f, 1f)
