@@ -33,7 +33,6 @@ object VelvetMediaSessionManager {
     private var notificationManager: NotificationManager? = null
     private var isInitialized = false
 
-    // Callbacks to the app's audio engine
     var onPlayAction: (() -> Unit)? = null
     var onPauseAction: (() -> Unit)? = null
     var onNextAction: (() -> Unit)? = null
@@ -49,25 +48,11 @@ object VelvetMediaSessionManager {
 
         mediaSession = MediaSession(appContext, "VelvetMediaSession").apply {
             setCallback(object : MediaSession.Callback() {
-                override fun onPlay() {
-                    onPlayAction?.invoke()
-                }
-
-                override fun onPause() {
-                    onPauseAction?.invoke()
-                }
-
-                override fun onSkipToNext() {
-                    onNextAction?.invoke()
-                }
-
-                override fun onSkipToPrevious() {
-                    onPreviousAction?.invoke()
-                }
-
-                override fun onSeekTo(pos: Long) {
-                    onSeekAction?.invoke(pos)
-                }
+                override fun onPlay() { onPlayAction?.invoke() }
+                override fun onPause() { onPauseAction?.invoke() }
+                override fun onSkipToNext() { onNextAction?.invoke() }
+                override fun onSkipToPrevious() { onPreviousAction?.invoke() }
+                override fun onSeekTo(pos: Long) { onSeekAction?.invoke(pos) }
             })
             isActive = true
         }
@@ -90,33 +75,26 @@ object VelvetMediaSessionManager {
         }
     }
 
-    /**
-     * Updates the system media session metadata and lock screen notification.
-     * This triggers the native Android 13+ dynamic lock screen player.
-     */
     fun updatePlaybackState(
         context: Context,
         track: Track,
         isPlaying: Boolean,
         playbackPositionMs: Long
     ) {
-        if (!isInitialized) {
-            initialize(context)
-        }
+        if (!isInitialized) initialize(context)
 
         val session = mediaSession ?: return
         val appContext = context.applicationContext
 
-        // 1. Configure PlaybackState with all lock screen actions
         val state = if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
         val actions = (
             PlaybackState.ACTION_PLAY_PAUSE or
-            PlaybackState.ACTION_PLAY or
-            PlaybackState.ACTION_PAUSE or
-            PlaybackState.ACTION_SKIP_TO_NEXT or
-            PlaybackState.ACTION_SKIP_TO_PREVIOUS or
-            PlaybackState.ACTION_SEEK_TO
-        )
+                PlaybackState.ACTION_PLAY or
+                PlaybackState.ACTION_PAUSE or
+                PlaybackState.ACTION_SKIP_TO_NEXT or
+                PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                PlaybackState.ACTION_SEEK_TO
+            )
 
         val playbackState = PlaybackState.Builder()
             .setActions(actions)
@@ -124,26 +102,26 @@ object VelvetMediaSessionManager {
             .build()
         session.setPlaybackState(playbackState)
 
-        // 2. Configure MediaMetadata (Title, Artist, Album, Art Bitmap)
         val albumArtBitmap = ArtworkColorExtractor.resolveTrackBitmap(appContext, track)
         val metadataBuilder = MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, track.title.substringBefore(" - "))
             .putString(MediaMetadata.METADATA_KEY_ARTIST, track.artist)
             .putString(MediaMetadata.METADATA_KEY_ALBUM, track.album)
             .putLong(MediaMetadata.METADATA_KEY_DURATION, track.durationMs)
-            // System / Dynamic Island reads these bitmap keys directly
-            .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, albumArtBitmap)
-            .putBitmap(MediaMetadata.METADATA_KEY_ART, albumArtBitmap)
-            .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, albumArtBitmap)
+
+        if (albumArtBitmap != null) {
+            metadataBuilder
+                .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, albumArtBitmap)
+                .putBitmap(MediaMetadata.METADATA_KEY_ART, albumArtBitmap)
+                .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, albumArtBitmap)
+        }
 
         session.setMetadata(metadataBuilder.build())
 
-        // 3. Build Lock Screen Notification with Notification.MediaStyle
         val notification = buildLockScreenNotification(appContext, track, isPlaying, albumArtBitmap, session)
         try {
             notificationManager?.notify(NOTIFICATION_ID, notification)
         } catch (_: SecurityException) {
-            // Notification permission might be pending on Android 13+
         }
     }
 
@@ -158,33 +136,25 @@ object VelvetMediaSessionManager {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val contentPendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            openAppIntent,
+            context, 0, openAppIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val prevIntent = Intent(context, MediaControlReceiver::class.java).apply { action = ACTION_PREVIOUS }
         val prevPendingIntent = PendingIntent.getBroadcast(
-            context,
-            1,
-            prevIntent,
+            context, 1, prevIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val toggleIntent = Intent(context, MediaControlReceiver::class.java).apply { action = ACTION_TOGGLE_PLAY }
         val togglePendingIntent = PendingIntent.getBroadcast(
-            context,
-            2,
-            toggleIntent,
+            context, 2, toggleIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val nextIntent = Intent(context, MediaControlReceiver::class.java).apply { action = ACTION_NEXT }
         val nextPendingIntent = PendingIntent.getBroadcast(
-            context,
-            3,
-            nextIntent,
+            context, 3, nextIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -192,21 +162,13 @@ object VelvetMediaSessionManager {
         val playPauseTitle = if (isPlaying) "Pause" else "Play"
 
         val actionPrev = Notification.Action.Builder(
-            android.R.drawable.ic_media_previous,
-            "Previous",
-            prevPendingIntent
+            android.R.drawable.ic_media_previous, "Previous", prevPendingIntent
         ).build()
-
         val actionToggle = Notification.Action.Builder(
-            playPauseIcon,
-            playPauseTitle,
-            togglePendingIntent
+            playPauseIcon, playPauseTitle, togglePendingIntent
         ).build()
-
         val actionNext = Notification.Action.Builder(
-            android.R.drawable.ic_media_next,
-            "Next",
-            nextPendingIntent
+            android.R.drawable.ic_media_next, "Next", nextPendingIntent
         ).build()
 
         val mediaStyle = Notification.MediaStyle()
@@ -220,7 +182,7 @@ object VelvetMediaSessionManager {
             .setSubText(track.album)
             .setLargeIcon(artBitmap)
             .setContentIntent(contentPendingIntent)
-            .setVisibility(Notification.VISIBILITY_PUBLIC) // Dynamic Lock Screen Control
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(isPlaying)
             .addAction(actionPrev)
             .addAction(actionToggle)
@@ -229,26 +191,21 @@ object VelvetMediaSessionManager {
             .build()
     }
 
-    /**
-     * Updates MediaSession metadata directly with a resolved artwork bitmap.
-     * System media controls and Dynamic Island read ALBUM_ART and DISPLAY_ICON directly.
-     */
     fun updateMediaSessionMetadata(title: String, artist: String, artworkBitmap: Bitmap) {
         val session = mediaSession ?: return
         val metadata = MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, title)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
-            // System / Dynamic Island reads THIS bitmap key directly
             .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, artworkBitmap)
             .putBitmap(MediaMetadata.METADATA_KEY_ART, artworkBitmap)
             .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, artworkBitmap)
             .build()
-
         session.setMetadata(metadata)
     }
 
     private fun loadTrackArtBitmap(context: Context, track: Track): Bitmap {
         return ArtworkColorExtractor.resolveTrackBitmap(context, track)
+            ?: ArtworkColorExtractor.getDefaultBitmap(context)
     }
 
     fun dismissNotification() {
