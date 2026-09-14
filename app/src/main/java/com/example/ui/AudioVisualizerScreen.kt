@@ -101,8 +101,10 @@ fun RealTimeAudioPlayerVisualizer(
         fun attachVisualizer(sessionId: Int) {
             if (sessionId <= 0 || visualizer != null) return
             try {
+                val range = Visualizer.getCaptureSizeRange()
+                val targetCaptureSize = range[1].coerceAtMost(1024)
                 visualizer = Visualizer(sessionId).apply {
-                    captureSize = Visualizer.getCaptureSizeRange()[0] // Smallest capture size for responsiveness
+                    captureSize = targetCaptureSize
 
                     setDataCaptureListener(
                         object : Visualizer.OnDataCaptureListener {
@@ -119,24 +121,44 @@ fun RealTimeAudioPlayerVisualizer(
                             ) {
                                 if (fft == null || fft.isEmpty()) return
 
-                                // FFT returns pairs of [Real, Imaginary] values per frequency bin
-                                val numBins = fft.size / 2
-                                val step = (numBins / barCount).coerceAtLeast(1)
+                                val fftSize = fft.size / 2
+                                if (fftSize < 4) return
+
+                                val minFreqBin = 1.0
+                                val maxFreqBin = (fftSize - 1).toDouble()
 
                                 for (i in 0 until barCount) {
-                                    val index = i * step * 2
-                                    if (index + 1 < fft.size) {
-                                        val real = fft[index].toFloat()
-                                        val imag = fft[index + 1].toFloat()
-                                        // Calculate magnitude: sqrt(real^2 + imag^2)
-                                        val magnitude = hypot(real, imag)
+                                    val fracStart = i.toDouble() / barCount
+                                    val fracEnd = (i + 1).toDouble() / barCount
 
-                                        // Normalize amplitude roughly between 0.0f and 1.0f
-                                        val normalized = (magnitude / 128f).coerceIn(0.05f, 1.0f)
+                                    val logStart = (minFreqBin * Math.pow(maxFreqBin / minFreqBin, fracStart)).toInt().coerceIn(1, fftSize - 1)
+                                    val logEnd = (minFreqBin * Math.pow(maxFreqBin / minFreqBin, fracEnd)).toInt().coerceIn(logStart + 1, fftSize)
 
-                                        // Smooth out values to prevent aggressive jitter
-                                        fftMagnitudes[i] = (fftMagnitudes[i] * 0.4f) + (normalized * 0.6f)
+                                    var sum = 0.0
+                                    var count = 0
+                                    for (j in logStart until logEnd) {
+                                        val r = fft[2 * j].toDouble()
+                                        val img = fft[2 * j + 1].toDouble()
+                                        sum += hypot(r, img)
+                                        count++
                                     }
+
+                                    val avgMagnitude = if (count > 0) sum / count else 0.0
+                                    val db = 20.0 * kotlin.math.log10(avgMagnitude.coerceAtLeast(1.0))
+                                    val norm = i.toDouble() / (barCount - 1).coerceAtLeast(1)
+                                    val trebleTiltDb = norm * 14.0
+
+                                    val minDb = 8.0
+                                    val maxDb = 48.0
+                                    val targetNormalized = (((db + trebleTiltDb) - minDb) / (maxDb - minDb)).coerceIn(0.05, 1.0).toFloat()
+
+                                    val current = fftMagnitudes[i]
+                                    val smoothed = if (targetNormalized > current) {
+                                        current + (targetNormalized - current) * 0.60f
+                                    } else {
+                                        current - (current - targetNormalized) * 0.15f
+                                    }
+                                    fftMagnitudes[i] = smoothed.coerceIn(0.05f, 1.0f)
                                 }
                             }
                         },

@@ -1801,11 +1801,12 @@ fun AudioVisualizerBottomSheet(
         for (b in 0 until bands) {
             val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
             val target = if (hasFft) {
-                // Low frequencies (bass) on the left, high frequencies (treble) on the right
-                val fftBin = (norm * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
-                val rawMag = fft[fftBin]
-                val boost = 1.0f + (1f - norm) * 0.30f
-                (rawMag * boost).coerceIn(0.06f, 1.0f)
+                val fftIndex = norm * (fft.size - 1).toFloat()
+                val low = fftIndex.toInt().coerceIn(0, fft.size - 1)
+                val high = (low + 1).coerceAtMost(fft.size - 1)
+                val frac = fftIndex - low
+                val rawMag = fft[low] * (1f - frac) + fft[high] * frac
+                rawMag.coerceIn(0.06f, 1.0f)
             } else {
                 val wave = kotlin.math.abs(kotlin.math.sin(norm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
                 (0.20f + 0.60f * telemetry.rmsLevel * wave).coerceIn(0.10f, 1.0f)
@@ -1813,11 +1814,11 @@ fun AudioVisualizerBottomSheet(
 
             val current = liveBandHeights[b]
             val updated = if (target > current) {
-                current * 0.25f + target * 0.75f
+                current + (target - current) * 0.60f
             } else {
-                maxOf(target, current * 0.85f)
+                current - (current - target) * 0.15f
             }
-            liveBandHeights[b] = updated.coerceIn(0.05f, 1.0f)
+            liveBandHeights[b] = updated.coerceIn(0.06f, 1.0f)
         }
     }
     // When isPlaying == false: FREEZE ENTIRELY! Maintain current liveBandHeights values.

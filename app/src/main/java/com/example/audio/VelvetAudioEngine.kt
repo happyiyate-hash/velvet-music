@@ -356,8 +356,10 @@ class VelvetAudioEngine(
             return
         }
         try {
+            val range = Visualizer.getCaptureSizeRange()
+            val targetSize = range[1].coerceAtMost(1024)
             audioVisualizer = Visualizer(audioSessionId).apply {
-                captureSize = Visualizer.getCaptureSizeRange()[0]
+                captureSize = targetSize
                 setDataCaptureListener(
                     object : Visualizer.OnDataCaptureListener {
                         override fun onWaveFormDataCapture(
@@ -369,36 +371,77 @@ class VelvetAudioEngine(
                         ) {
                             if (fft == null || fft.isEmpty()) return
 
-                            // FFT returns pairs of [Real, Imaginary] values per frequency bin
-                            val barCount = 64
-                            val numBins = fft.size / 2
-                            val step = (numBins / barCount).coerceAtLeast(1)
+                            // Logarithmic frequency binning & dB scaling across 64 bars
+                            val barCount = liveFftBars.size
+                            val fftSize = fft.size / 2
+                            if (fftSize >= 4) {
+                                val minFreqBin = 1.0
+                                val maxFreqBin = (fftSize - 1).toDouble()
 
-                            for (i in 0 until barCount) {
-                                val index = i * step * 2
-                                if (index + 1 < fft.size) {
-                                    val real = fft[index].toFloat()
-                                    val imag = fft[index + 1].toFloat()
-                                    // Calculate magnitude: sqrt(real^2 + imag^2)
-                                    val magnitude = hypot(real, imag)
+                                for (i in 0 until barCount) {
+                                    val fracStart = i.toDouble() / barCount
+                                    val fracEnd = (i + 1).toDouble() / barCount
 
-                                    // Normalize amplitude roughly between 0.0f and 1.0f
-                                    val normalized = (magnitude / 128f).coerceIn(0.05f, 1.0f)
+                                    // Log-spaced start and end bin indices in FFT buffer
+                                    val logStart = (minFreqBin * Math.pow(maxFreqBin / minFreqBin, fracStart)).toInt().coerceIn(1, fftSize - 1)
+                                    val logEnd = (minFreqBin * Math.pow(maxFreqBin / minFreqBin, fracEnd)).toInt().coerceIn(logStart + 1, fftSize)
 
-                                    // Smooth out values to prevent aggressive jitter
-                                    liveFftBars[i] = (liveFftBars[i] * 0.4f) + (normalized * 0.6f)
+                                    var sum = 0.0
+                                    var count = 0
+                                    for (j in logStart until logEnd) {
+                                        val r = fft[2 * j].toDouble()
+                                        val img = fft[2 * j + 1].toDouble()
+                                        sum += hypot(r, img)
+                                        count++
+                                    }
+
+                                    val avgMagnitude = if (count > 0) sum / count else 0.0
+
+                                    // Apply Logarithmic scaling & dB conversion to boost quiet frequencies
+                                    val db = 20.0 * kotlin.math.log10(avgMagnitude.coerceAtLeast(1.0))
+
+                                    // Natural treble roll-off compensation:
+                                    // High frequencies have naturally lower energy in music.
+                                    // A progressive tilt (+0 to +14 dB) normalizes perceived amplitude across the spectrum.
+                                    val norm = i.toDouble() / (barCount - 1).coerceAtLeast(1)
+                                    val trebleTiltDb = norm * 14.0
+
+                                    // Calibrated dynamic range floor & ceiling:
+                                    // 8 dB noise floor to 48 dB max peak
+                                    val minDb = 8.0
+                                    val maxDb = 48.0
+                                    val targetNormalized = (((db + trebleTiltDb) - minDb) / (maxDb - minDb)).coerceIn(0.06, 1.0).toFloat()
+
+                                    // Fast Attack (snappy response on beat) and Slow Decay (fluid release)
+                                    val current = liveFftBars[i]
+                                    val smoothed = if (targetNormalized > current) {
+                                        current + (targetNormalized - current) * 0.65f
+                                    } else {
+                                        current - (current - targetNormalized) * 0.16f
+                                    }
+                                    liveFftBars[i] = smoothed.coerceIn(0.06f, 1.0f)
                                 }
                             }
 
-                            val bassEnergy = (liveFftBars[0] + liveFftBars[1] + liveFftBars[2] + liveFftBars[3]) / 4f
-                            val midEnergy = (liveFftBars[8] + liveFftBars[9] + liveFftBars[10] + liveFftBars[11]) / 4f
-                            val trebleEnergy = (liveFftBars[24] + liveFftBars[25] + liveFftBars[26] + liveFftBars[27]) / 4f
+                            // Split zones from the logarithmic spectrum:
+                            // Low bass (bars 0..10), Mids (bars 11..38), Treble (bars 39..63)
+                            var bassSum = 0f
+                            for (b in 0..minOf(10, liveFftBars.size - 1)) bassSum += liveFftBars[b]
+                            val bassEnergy = bassSum / 11f
 
-                            liveRms = (bassEnergy * 0.5f + midEnergy * 0.35f + trebleEnergy * 0.15f).coerceIn(0.05f, 1.0f)
-                            liveTransient = maxOf(liveTransient * 0.70f, bassEnergy)
-                            liveKick = bassEnergy > midEnergy * 1.25f && bassEnergy > 0.28f
-                            liveSnare = midEnergy > bassEnergy * 1.10f && midEnergy > 0.30f
-                            liveFrequencyHz = (55f + bassEnergy * 80f + midEnergy * 400f + trebleEnergy * 3000f).coerceIn(20f, 20_000f)
+                            var midSum = 0f
+                            for (m in 11..minOf(38, liveFftBars.size - 1)) midSum += liveFftBars[m]
+                            val midEnergy = midSum / 28f
+
+                            var trebleSum = 0f
+                            for (t in 39..minOf(63, liveFftBars.size - 1)) trebleSum += liveFftBars[t]
+                            val trebleEnergy = trebleSum / 25f
+
+                            liveRms = (bassEnergy * 0.45f + midEnergy * 0.35f + trebleEnergy * 0.20f).coerceIn(0.05f, 1.0f)
+                            liveTransient = maxOf(bassEnergy, midEnergy * 0.90f, trebleEnergy * 0.85f)
+                            liveKick = bassEnergy > 0.42f && bassEnergy > midEnergy * 1.12f
+                            liveSnare = midEnergy > 0.36f && (midEnergy > bassEnergy * 0.88f || trebleEnergy > 0.34f)
+                            liveFrequencyHz = (40f * Math.pow(16000.0 / 40.0, ((liveFftBars.indices.maxByOrNull { liveFftBars[it] } ?: 0).toFloat() / (barCount - 1)).toDouble())).toFloat().coerceIn(20f, 20_000f)
                         }
                     },
                     Visualizer.getMaxCaptureRate() / 2,

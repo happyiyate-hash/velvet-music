@@ -173,27 +173,25 @@ fun ExactAudioWaveformProgress(
 
                 val targetFraction = if (isPlaying) {
                     if (hasLiveFft) {
-                        // FFT frequency mapping:
-                        // Low frequencies (bass) on the left (norm ~ 0)
-                        // High frequencies (treble) on the right (norm ~ 1)
-                        val fftBin = (norm * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
-                        val fftMag = fft[fftBin]
-                        val spectralCurve = 1.0f + (1f - norm) * 0.35f
-                        (fftMag * spectralCurve).coerceIn(0.06f, 1.0f)
+                        // Smoothly interpolate across the 64 log-spaced, dB-scaled frequency bins
+                        val fftIndex = (norm * (fft.size - 1)).coerceIn(0f, (fft.size - 1).toFloat())
+                        val low = fftIndex.toInt().coerceIn(0, fft.size - 1)
+                        val high = (low + 1).coerceAtMost(fft.size - 1)
+                        val frac = fftIndex - low
+                        val interpolated = fft[low] * (1f - frac) + fft[high] * frac
+                        interpolated.coerceIn(0.06f, 1.0f)
                     } else {
+                        // Fallback synthesized spectrum when microphone/visualizer permission is not yet granted
                         // 1. Bass / Highest Beat Zone (bars 0..32%)
-                        // Responds decisively to kick drums and sub bass
                         val bassWeight = (1f - (norm / 0.32f)).coerceIn(0f, 1f)
                         val beatResponse = (highestBeat * bassWeight * 0.95f) + (rms * bassWeight * 0.70f)
 
                         // 2. Highs / Highest Sound Zone (bars 50..100%)
-                        // Responds decisively to crisp transient peaks, snares, and cymbals
                         val trebleWeight = ((norm - 0.48f) / 0.52f).coerceIn(0f, 1f)
                         val snarePulse = if (isSnare && norm in 0.52f..0.85f) 0.75f else 0f
                         val soundResponse = (highestSound * trebleWeight * 0.90f) + snarePulse
 
                         // 3. Mids / Body Zone (bars 22..75%)
-                        // Melodic harmonic resonance and vocal sustained warmth
                         val midWeight = sin(norm * 3.14159f).coerceAtLeast(0f)
                         val midResponse = (telemetry.sustainedEnergy * 0.45f + rms * 0.40f) * midWeight
 
@@ -215,11 +213,11 @@ fun ExactAudioWaveformProgress(
                 val current = liveAmplitudes[i]
                 val updated = if (isPlaying) {
                     if (targetFraction > current) {
-                        // Instantaneous attack: leap up with the beat
-                        current * 0.20f + targetFraction * 0.80f
+                        // Fast Attack: snappy jump on beat / transient drop
+                        current + (targetFraction - current) * 0.60f
                     } else {
-                        // Smooth, fluid studio decay
-                        maxOf(targetFraction, current * 0.88f)
+                        // Slow Decay: fluid drop
+                        current - (current - targetFraction) * 0.15f
                     }
                 } else {
                     // FREEZING ENTIRELY WHEN PAUSED:
