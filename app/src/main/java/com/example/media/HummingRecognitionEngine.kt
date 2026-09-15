@@ -80,20 +80,25 @@ class HummingRecognitionEngine(
     private var activeJob: Job? = null
     private var lastContext: Context? = null
 
+    /** Auto mode: identify music playing nearby first, then fall back to humming recognition. */
     fun startListening(context: Context, libraryTracks: List<Track> = emptyList()) {
-        startRecognition(context, libraryTracks, RecognitionMode.HUMMING)
+        startRecognition(context, libraryTracks, RecognitionMode.AUTO)
     }
 
     fun startAmbientListening(context: Context, libraryTracks: List<Track> = emptyList()) {
         startRecognition(context, libraryTracks, RecognitionMode.AMBIENT)
     }
 
-    /** Kept for compatibility with the existing UI; this is now real recognition, never a demo result. */
+    fun startHummingListening(context: Context, libraryTracks: List<Track> = emptyList()) {
+        startRecognition(context, libraryTracks, RecognitionMode.HUMMING)
+    }
+
+    /** Kept for compatibility with the existing UI; this now restarts real auto recognition. */
     fun triggerDemoMatch(index: Int = 0, libraryTracks: List<Track> = emptyList()) {
         lastContext?.let { startListening(it, libraryTracks) }
     }
 
-    private enum class RecognitionMode { HUMMING, AMBIENT }
+    private enum class RecognitionMode { AUTO, HUMMING, AMBIENT }
 
     private fun startRecognition(context: Context, libraryTracks: List<Track>, mode: RecognitionMode) {
         stopListening()
@@ -111,13 +116,29 @@ class HummingRecognitionEngine(
             }
 
             _state.value = HumRecognitionState.Analyzing(
-                if (mode == RecognitionMode.HUMMING) "Matching your melody with Velvet's music recognition service..."
-                else "Identifying the music you are hearing..."
+                when (mode) {
+                    RecognitionMode.HUMMING -> "Matching your melody with Velvet's recognition service..."
+                    RecognitionMode.AMBIENT -> "Identifying the music you are hearing..."
+                    RecognitionMode.AUTO -> "Identifying the music you are hearing..."
+                }
             )
 
             val result = withContext(Dispatchers.IO) {
-                if (mode == RecognitionMode.HUMMING) repository.recognizeHumming(capture.wavData)
-                else repository.recognizeAmbientAudio(capture.wavData)
+                when (mode) {
+                    RecognitionMode.HUMMING -> repository.recognizeHumming(capture.wavData)
+                    RecognitionMode.AMBIENT -> repository.recognizeAmbientAudio(capture.wavData)
+                    RecognitionMode.AUTO -> {
+                        val ambient = repository.recognizeAmbientAudio(capture.wavData)
+                        if (ambient is RecognitionResult.Match) {
+                            ambient
+                        } else {
+                            _state.value = HumRecognitionState.Analyzing(
+                                "Trying melody recognition..."
+                            )
+                            repository.recognizeHumming(capture.wavData)
+                        }
+                    }
+                }
             }
 
             when (result) {
