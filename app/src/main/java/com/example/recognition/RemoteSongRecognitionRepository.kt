@@ -1,5 +1,6 @@
 package com.example.recognition
 
+import android.util.Log
 import com.example.BuildConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -10,6 +11,7 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
+import retrofit2.converter.moshi.MoshiJsonAdapterFactory
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
@@ -45,28 +47,38 @@ class RemoteSongRecognitionRepository(
 ) : SongRecognitionRepository {
 
     override suspend fun recognizeHumming(wavAudio: ByteArray): RecognitionResult =
-        recognize(wavAudio) { part -> api!!.recognizeHum(part) }
+        recognize(wavAudio, "HUM") { part -> api!!.recognizeHum(part) }
 
     override suspend fun recognizeAmbientAudio(wavAudio: ByteArray): RecognitionResult =
-        recognize(wavAudio) { part -> api!!.recognizeAudio(part) }
+        recognize(wavAudio, "AUDIO") { part -> api!!.recognizeAudio(part) }
 
     private suspend fun recognize(
         wavAudio: ByteArray,
+        mode: String,
         call: suspend (MultipartBody.Part) -> RecognitionResponse
     ): RecognitionResult = withContext(Dispatchers.IO) {
         if (wavAudio.isEmpty()) {
+            Log.e(TAG, "RECOGNITION_ABORTED mode=$mode reason=empty_audio")
             return@withContext RecognitionResult.Error("No audio was captured.")
         }
         if (api == null) {
+            Log.e(TAG, "RECOGNITION_ABORTED mode=$mode reason=missing_base_url")
             return@withContext RecognitionResult.Error(
                 "Velvet recognition is not configured yet. Set VELVET_RECOGNITION_BASE_URL."
             )
         }
 
+        val startedAt = System.currentTimeMillis()
+        Log.d(TAG, "UPLOAD_STARTED mode=$mode bytes=${wavAudio.size}")
         try {
             val body = wavAudio.toRequestBody("audio/wav".toMediaType())
             val part = MultipartBody.Part.createFormData("audio", "velvet-capture.wav", body)
             val response = call(part)
+            val elapsed = System.currentTimeMillis() - startedAt
+            Log.d(
+                TAG,
+                "RECOGNITION_RESPONSE_RECEIVED mode=$mode requestId=${response.requestId ?: "none"} success=${response.success} elapsedMs=$elapsed error=${response.error ?: "none"}"
+            )
 
             if (!response.success || response.song == null) {
                 return@withContext RecognitionResult.NoMatch(
@@ -84,6 +96,7 @@ class RemoteSongRecognitionRepository(
                 )
             }
 
+            Log.d(TAG, "MATCH_DISPLAY_READY mode=$mode requestId=${response.requestId ?: "none"} title=$title artist=$artist")
             RecognitionResult.Match(
                 RecognizedSong(
                     id = dto.id?.takeIf { it.isNotBlank() } ?: "$artist:$title",
@@ -101,6 +114,7 @@ class RemoteSongRecognitionRepository(
                 )
             )
         } catch (e: Exception) {
+            Log.e(TAG, "RECOGNITION_FAILED mode=$mode elapsedMs=${System.currentTimeMillis() - startedAt} message=${e.message}", e)
             RecognitionResult.Error(
                 e.message?.takeIf { it.isNotBlank() } ?: "Recognition service is unavailable."
             )
@@ -108,6 +122,8 @@ class RemoteSongRecognitionRepository(
     }
 
     companion object {
+        private const val TAG = "VelvetRecognition"
+
         private fun createApiOrNull(): SongRecognitionApi? {
             val configuredBaseUrl = BuildConfig.VELVET_RECOGNITION_BASE_URL.trim()
             if (configuredBaseUrl.isBlank()) return null
