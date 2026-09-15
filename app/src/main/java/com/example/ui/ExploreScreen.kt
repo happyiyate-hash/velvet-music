@@ -502,7 +502,11 @@ fun ExploreScreen(
             }
 
             // 7. LIGHTWEIGHT RESULT ITEMS (Artwork, hierarchy, far-right menu icon, refined padding)
-            items(filteredTracks) { track ->
+            items(
+                items = filteredTracks,
+                key = { it.id },
+                contentType = { "explore_track_row" }
+            ) { track ->
                 val isCurrent = track.id == currentTrack.id
                 SearchTrackResultRow(
                     track = track,
@@ -591,6 +595,8 @@ private fun SearchTrackResultRow(
                 track = track,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
+                thumbnailSizePx = 120,
+                crossfade = false,
                 modifier = Modifier.fillMaxSize()
             )
             if (isCurrent && isPlaying) {

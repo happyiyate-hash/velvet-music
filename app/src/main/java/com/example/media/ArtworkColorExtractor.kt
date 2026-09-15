@@ -8,10 +8,126 @@ import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.palette.graphics.Palette
 import com.example.R
 import com.example.model.Track
 import kotlin.math.max
 import kotlin.math.min
+
+object DynamicThemeExtractor {
+
+    /**
+     * Extracts the primary dominant theme color prioritizing dominant & high-population chromatic swatches,
+     * sampling edge borders for promotional cover art, and clamping HSV brightness for dark mode surfaces.
+     */
+    fun extractDominantThemeColor(bitmap: Bitmap, defaultColor: Color = Color(0xFF121212)): Color {
+        try {
+            val sampleBitmap = if (bitmap.width > 160 || bitmap.height > 160) {
+                Bitmap.createScaledBitmap(bitmap, 128, 128, true)
+            } else {
+                bitmap
+            }
+
+            val palette = Palette.from(sampleBitmap)
+                .maximumColorCount(32) // Increases color sampling accuracy
+                .generate()
+
+            // 1. Edge & Outer sampling: sample perimeter pixels (outer 8%)
+            // Many promotional covers (e.g. green Naira Marley) have logos/text in the center,
+            // while the true artwork background spans the edges.
+            val perimeterColorInt = samplePerimeterColor(sampleBitmap)
+
+            // Filter out near-pure-black (value < 0.10) and near-pure-white/gray (sat < 0.15 && val > 0.85)
+            // so chromatic tones (e.g. red circular logo on black, bright green) are never masked.
+            val chromaticSwatches = palette.swatches.filter { swatch ->
+                val hsv = FloatArray(3)
+                android.graphics.Color.colorToHSV(swatch.rgb, hsv)
+                hsv[1] >= 0.15f && hsv[2] >= 0.10f
+            }
+
+            // If perimeter has a distinct chromatic saturation, prioritize swatches close to that hue
+            val candidateSwatch = if (perimeterColorInt != null) {
+                val edgeHsv = FloatArray(3)
+                android.graphics.Color.colorToHSV(perimeterColorInt, edgeHsv)
+                if (edgeHsv[1] >= 0.20f) {
+                    chromaticSwatches.minByOrNull { swatch ->
+                        val sHsv = FloatArray(3)
+                        android.graphics.Color.colorToHSV(swatch.rgb, sHsv)
+                        val hueDiff = Math.abs(sHsv[0] - edgeHsv[0]).let { if (it > 180f) 360f - it else it }
+                        hueDiff
+                    } ?: chromaticSwatches.maxByOrNull { it.population }
+                } else {
+                    chromaticSwatches.maxByOrNull { it.population }
+                }
+            } else {
+                chromaticSwatches.maxByOrNull { it.population }
+            }
+                ?: palette.swatches.maxByOrNull { it.population }
+                ?: palette.dominantSwatch
+                ?: palette.vibrantSwatch
+                ?: palette.mutedSwatch
+
+            val rawColorInt = candidateSwatch?.rgb ?: perimeterColorInt ?: defaultColor.toArgb()
+
+            // 2. Convert to HSV to clamp brightness for comfortable dark-mode surfaces
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(rawColorInt, hsv)
+
+            // Preserve Hue (hsv[0]), balance Saturation (hsv[1]), clamp max Brightness (hsv[2])
+            hsv[1] = hsv[1].coerceIn(0.3f, 0.85f) // Ensures color isn't completely washed out or gray
+            hsv[2] = hsv[2].coerceIn(0.12f, 0.28f) // Keeps player background dark & readable
+
+            return Color(android.graphics.Color.HSVToColor(hsv))
+        } catch (_: Exception) {
+            return defaultColor
+        }
+    }
+
+    private fun samplePerimeterColor(bitmap: Bitmap): Int? {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w < 10 || h < 10) return null
+
+        val insetX = (w * 0.08f).toInt().coerceAtLeast(1)
+        val insetY = (h * 0.08f).toInt().coerceAtLeast(1)
+
+        var totalR = 0L
+        var totalG = 0L
+        var totalB = 0L
+        var count = 0
+
+        for (x in insetX until (w - insetX) step 2) {
+            val topP = bitmap.getPixel(x, insetY)
+            val botP = bitmap.getPixel(x, h - 1 - insetY)
+            for (p in intArrayOf(topP, botP)) {
+                if ((p ushr 24) >= 128) {
+                    totalR += (p shr 16) and 0xFF
+                    totalG += (p shr 8) and 0xFF
+                    totalB += p and 0xFF
+                    count++
+                }
+            }
+        }
+        for (y in insetY until (h - insetY) step 2) {
+            val leftP = bitmap.getPixel(insetX, y)
+            val rightP = bitmap.getPixel(w - 1 - insetX, y)
+            for (p in intArrayOf(leftP, rightP)) {
+                if ((p ushr 24) >= 128) {
+                    totalR += (p shr 16) and 0xFF
+                    totalG += (p shr 8) and 0xFF
+                    totalB += p and 0xFF
+                    count++
+                }
+            }
+        }
+        if (count == 0) return null
+        return android.graphics.Color.rgb(
+            (totalR / count).toInt().coerceIn(0, 255),
+            (totalG / count).toInt().coerceIn(0, 255),
+            (totalB / count).toInt().coerceIn(0, 255)
+        )
+    }
+}
 
 data class TrackThemeColors(
     val dominant: Color,
@@ -32,16 +148,33 @@ data class TrackThemeColors(
 
 object ArtworkColorExtractor {
 
+    private val paletteCache = android.util.LruCache<String, TrackThemeColors>(100)
+    private val bitmapCache = android.util.LruCache<String, Bitmap>(40)
+
+    fun getCachedPalette(trackId: String): TrackThemeColors? {
+        return paletteCache.get(trackId)
+    }
+
     fun extractColors(context: Context, track: Track): TrackThemeColors {
+        paletteCache.get(track.id)?.let { return it }
         val bitmap = resolveTrackBitmap(context, track)
-        return extractColorsFromBitmap(bitmap)
+        val colors = extractColorsFromBitmap(bitmap)
+        paletteCache.put(track.id, colors)
+        return colors
     }
 
     /**
      * Resolves the artwork bitmap used both by color extraction and Android media metadata.
      */
     fun resolveTrackBitmap(context: Context, track: Track): Bitmap? {
-        return loadThumbnailBitmap(context, track)
+        val cacheKey = track.artworkUri ?: track.contentUri ?: "res_${track.coverResId}_${track.id}"
+        bitmapCache.get(cacheKey)?.let { return it }
+
+        val loaded = loadThumbnailBitmap(context, track)
+        if (loaded != null) {
+            bitmapCache.put(cacheKey, loaded)
+        }
+        return loaded
     }
 
     /**
@@ -57,10 +190,8 @@ object ArtworkColorExtractor {
      */
     fun extractColorsFromBitmap(bitmap: Bitmap?): TrackThemeColors {
         if (bitmap != null) {
-            val sampled = sampleDominantColor(bitmap)
-            if (sampled != null) {
-                return generateThemePalette(sampled)
-            }
+            val dominant = DynamicThemeExtractor.extractDominantThemeColor(bitmap)
+            return generateThemePalette(dominant)
         }
         return generateThemePalette(Color(0xFF880E2F))
     }
@@ -78,10 +209,8 @@ object ArtworkColorExtractor {
                 }
             }
             if (bitmap != null) {
-                val sampled = sampleDominantColor(bitmap)
-                if (sampled != null) {
-                    return generateThemePalette(sampled)
-                }
+                val dominant = DynamicThemeExtractor.extractDominantThemeColor(bitmap)
+                return generateThemePalette(dominant)
             }
         } catch (_: Exception) {}
         return generateThemePalette(Color(0xFF880E2F))
@@ -92,10 +221,8 @@ object ArtworkColorExtractor {
             val options = BitmapFactory.Options().apply { inSampleSize = 8 }
             val bitmap = BitmapFactory.decodeResource(context.resources, resId, options)
             if (bitmap != null) {
-                val sampled = sampleDominantColor(bitmap)
-                if (sampled != null) {
-                    return generateThemePalette(sampled)
-                }
+                val dominant = DynamicThemeExtractor.extractDominantThemeColor(bitmap)
+                return generateThemePalette(dominant)
             }
         } catch (_: Exception) {}
         return generateThemePalette(Color(0xFF880E2F))
@@ -129,64 +256,6 @@ object ArtworkColorExtractor {
             } else if (track.coverResId != 0) {
                 val options = BitmapFactory.Options().apply { inSampleSize = 8 }
                 return BitmapFactory.decodeResource(context.resources, track.coverResId, options)
-            }
-        } catch (_: Exception) {}
-        return null
-    }
-
-    private fun sampleDominantColor(bitmap: Bitmap): Color? {
-        try {
-            val width = bitmap.width
-            val height = bitmap.height
-            if (width <= 0 || height <= 0) return null
-
-            var totalR = 0L
-            var totalG = 0L
-            var totalB = 0L
-            var sampleCount = 0
-
-            var maxVibrancy = -1f
-            var vibrantColor: Color? = null
-
-            val stepX = max(1, width / 12)
-            val stepY = max(1, height / 12)
-
-            for (x in 0 until width step stepX) {
-                for (y in 0 until height step stepY) {
-                    val pixel = bitmap.getPixel(x, y)
-                    val a = (pixel shr 24) and 0xFF
-                    if (a < 128) continue
-
-                    val r = (pixel shr 16) and 0xFF
-                    val g = (pixel shr 8) and 0xFF
-                    val b = pixel and 0xFF
-
-                    val brightness = (r * 0.299f + g * 0.587f + b * 0.114f)
-                    if (brightness in 5.0..250.0) {
-                        totalR += r
-                        totalG += g
-                        totalB += b
-                        sampleCount++
-
-                        val maxC = max(r, max(g, b)).toFloat()
-                        val minC = min(r, min(g, b)).toFloat()
-                        val saturation = if (maxC > 0) (maxC - minC) / maxC else 0f
-
-                        if (saturation > maxVibrancy && saturation > 0.18f) {
-                            maxVibrancy = saturation
-                            vibrantColor = Color(r, g, b)
-                        }
-                    }
-                }
-            }
-
-            if (vibrantColor != null && maxVibrancy > 0.22f) return vibrantColor
-
-            if (sampleCount > 0) {
-                val avgR = (totalR / sampleCount).toInt().coerceIn(0, 255)
-                val avgG = (totalG / sampleCount).toInt().coerceIn(0, 255)
-                val avgB = (totalB / sampleCount).toInt().coerceIn(0, 255)
-                return Color(avgR, avgG, avgB)
             }
         } catch (_: Exception) {}
         return null

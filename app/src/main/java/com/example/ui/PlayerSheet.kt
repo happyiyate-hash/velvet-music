@@ -188,11 +188,9 @@ fun PlayerSheet(
         mutableStateOf<Bitmap?>(null)
     }
     var themeColors by remember(track.id) {
-        val initial = ArtworkColorExtractor.resolveTrackBitmap(context, track)
-            ?: if (track.coverResId != 0) {
-                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-            } else null
-        mutableStateOf(ArtworkColorExtractor.extractColorsFromBitmap(initial))
+        val cached = ArtworkColorExtractor.getCachedPalette(track.id)
+            ?: ArtworkColorExtractor.generateThemePalette(Color(0xFF880E2F))
+        mutableStateOf(cached)
     }
 
     LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
@@ -231,16 +229,12 @@ fun PlayerSheet(
         }
     }
 
-    // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
-    // YouTube Music Hierarchy: Index 0 is currently playing track, Index 1 is Up Next, etc.
-    val queueItems = remember(queueTracks, track.id) {
+    // Up Next Queue items (preserves exact natural list order; playing track stays at its clicked position)
+    val queueItems = remember(queueTracks) {
         val raw = if (queueTracks.isNotEmpty()) queueTracks.distinctBy { it.id }
         else com.example.model.SampleData.starterTracks.distinctBy { it.id }
-        val trackIndex = raw.indexOfFirst { it.id == track.id }
-        if (trackIndex > 0) {
-            raw.drop(trackIndex) + raw.take(trackIndex)
-        } else if (trackIndex == -1) {
-            listOf(track) + raw
+        if (raw.none { it.id == track.id }) {
+            raw + track
         } else {
             raw
         }
@@ -260,7 +254,7 @@ fun PlayerSheet(
     }
 
     fun beginQueueDrag(id: String, index: Int, canDrag: Boolean) {
-        if (!canDrag || index <= 0 || activeQueueDragId != null) return
+        if (!canDrag || index < 0 || activeQueueDragId != null) return
         activeQueueDragId = id
         activeQueueDragIndex = index
         queueDragOffsetY = 0f
@@ -273,13 +267,13 @@ fun PlayerSheet(
         queueDragOffsetY += deltaY
         val step = with(queueDragDensity) { 64.dp.toPx() }
         val raw = activeQueueDragIndex + (queueDragOffsetY / step).roundToInt()
-        queueDragTargetIndex = raw.coerceIn(1, orderedQueueItems.lastIndex.coerceAtLeast(1))
+        queueDragTargetIndex = raw.coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
     }
 
     fun finishQueueDrag() {
         val from = activeQueueDragIndex
         val to = queueDragTargetIndex
-        if (activeQueueDragId != null && from >= 1 && to >= 1 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
+        if (activeQueueDragId != null && from >= 0 && to >= 0 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
             // 1. Update Kotlin UI List State
             val updatedQueue = orderedQueueItems.toMutableList().apply {
                 add(to, removeAt(from))
@@ -927,21 +921,43 @@ fun PlayerSheet(
                 .fillMaxWidth()
                 .height(upNextHeight.coerceAtLeast(54.dp))
                 .background(Color.Transparent)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = { onDragFinish() },
-                        onDragCancel = { onDragFinish() },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            onDragDelta(dragAmount)
+                .then(
+                    if (p < 0.95f) {
+                        Modifier.pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onDragEnd = { onDragFinish() },
+                                onDragCancel = { onDragFinish() },
+                                onVerticalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    onDragDelta(dragAmount)
+                                }
+                            )
                         }
-                    )
-                }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
-            // Subtle Gesture Handle
+            // Subtle Gesture Handle & Header (handles vertical collapse drag when expanded)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(
+                        if (p >= 0.95f) {
+                            Modifier.pointerInput(Unit) {
+                                detectVerticalDragGestures(
+                                    onDragEnd = { onDragFinish() },
+                                    onDragCancel = { onDragFinish() },
+                                    onVerticalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        onDragDelta(dragAmount)
+                                    }
+                                )
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .padding(top = 2.dp, bottom = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -1224,13 +1240,15 @@ private fun UpNextTrackRow(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
-    val thresholdPx = with(density) { 90.dp.toPx() }
-    val dismissPx = with(density) { 600.dp.toPx() }
+    val thresholdPx = with(density) { 85.dp.toPx() }
+    val dismissPx = with(density) { 550.dp.toPx() }
 
-    val isSwiping = swipeOffset < -1f
+    val isSwipingLeft = swipeOffset < -1f
+    val isSwipingRight = swipeOffset > 1f
+    val isSwiping = isSwipingLeft || isSwipingRight
     val isPastThreshold = abs(swipeOffset) >= thresholdPx
 
-    // Trigger haptic vibration when threshold is crossed into deletion mode
+    // Trigger haptic vibration when threshold is crossed
     LaunchedEffect(isPastThreshold) {
         if (isPastThreshold && !thresholdLatched) {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1240,36 +1258,33 @@ private fun UpNextTrackRow(
         }
     }
 
-    // Dynamic background transition from dark ash (#16181A) to deep deletion red (#D32F2F)
-    val bgColor by animateColorAsState(
-        targetValue = if (isPastThreshold) Color(0xFFD32F2F) else Color(0xFF16181A),
-        animationSpec = tween(150),
-        label = "SwipeRedBackground"
-    )
+    val displacement = if (virtualDisplacementY != 0f) {
+        animateFloatAsState(
+            targetValue = virtualDisplacementY,
+            animationSpec = androidx.compose.animation.core.spring(
+                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+            ),
+            label = "queue_virtual_displacement"
+        ).value
+    } else 0f
+    val scale = if (isDragging) {
+        animateFloatAsState(1.02f, tween(120), label = "queue_drag_scale").value
+    } else 1f
+    val elevation = if (isDragging) {
+        animateFloatAsState(8f, tween(120), label = "queue_drag_elevation").value
+    } else 0f
 
-    val displacement by animateFloatAsState(
-        targetValue = virtualDisplacementY,
-        animationSpec = androidx.compose.animation.core.spring(
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
-            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
-        ),
-        label = "queue_virtual_displacement"
-    )
-    val scale by animateFloatAsState(if (isDragging) 1.02f else 1f, tween(120), label = "queue_drag_scale")
-    val elevation by animateFloatAsState(if (isDragging) 8f else 0f, tween(120), label = "queue_drag_elevation")
-
-    // Active Item Highlight:
-    // Remove the hardcoded gray block from the active track row.
-    // For the currently playing track, use a slightly brighter variant of extracted artwork color composited over dark background
+    // Active Item Highlight: Displays the rich extracted colors of the music playing in the player sheet page, not black
     val activeRowBg = if (isCurrent) {
-        accentColor.copy(alpha = 0.18f).compositeOver(Color(0xFF101215))
+        accentColor.copy(alpha = 0.28f).compositeOver(surfaceColor)
     } else if (isDragging || isDropTarget) {
-        Color(0xFF1F2227)
+        accentColor.copy(alpha = 0.16f).compositeOver(surfaceColor)
     } else {
-        Color(0xFF0F1113) // Continuous solid dark surface, prevents background bleed
+        surfaceColor // Extracted artwork theme color of the music in the player sheet
     }
 
-    // Full-Bleed Surface Layer: Spans 100% width, no rounded card wrapper, no list margin
+    // Full-Bleed Surface Layer: Spans 100% width
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1283,85 +1298,136 @@ private fun UpNextTrackRow(
             .shadow(elevation.dp, clip = false)
     ) {
         // Step 1: Background Reveal Stack
-        // Sits strictly on background layer BEHIND the row, revealed only during swipe
+        // Sits strictly on background layer BEHIND the row, revealed only when swiping left or right.
+        // As specified, the under beneath shows solid black.
         if (isSwiping && !isCurrent) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(bgColor)
-                    .padding(end = 20.dp), // Trash icon pinned near right edge
-                contentAlignment = Alignment.CenterEnd
+                    .background(Color.Black) // Under beneath is solid black
             ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Remove Track",
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
+                if (isSwipingLeft) {
+                    // Swiping Left -> Delete / Trash icon on right
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(end = 22.dp),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Remove Track",
+                            tint = if (isPastThreshold) Color(0xFFFF5252) else Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                } else if (isSwipingRight) {
+                    // Swiping Right -> Up Next icon & label on left
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(start = 22.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QueueMusic,
+                            contentDescription = "Play Next",
+                            tint = if (isPastThreshold) accentColor else Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = "Up Next",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isPastThreshold) accentColor else Color.White
+                        )
+                    }
+                }
             }
         }
 
-        // Step 2: Track Row Content ONLY (Album art, text, drag handle - strictly NO trash icon inside)
+        // Step 2: Track Row Content ONLY (showing extracted music colors)
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
                 .background(activeRowBg)
-                .pointerInput(track.id, isDragging) {
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            thresholdLatched = false
-                        },
-                        onDragCancel = {
-                            scope.launch {
-                                swipeSettle.snapTo(swipeOffset)
-                                swipeSettle.animateTo(0f, tween(180)) { swipeOffset = value }
-                                thresholdLatched = false
-                            }
-                        },
-                        onDragEnd = {
-                            val releaseOffset = swipeOffset
-                            val crossed = abs(releaseOffset) >= thresholdPx
-                            if (!crossed) {
-                                scope.launch {
-                                    swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(
-                                        0f,
-                                        androidx.compose.animation.core.spring(
-                                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
-                                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
-                                        )
-                                    ) { swipeOffset = value }
+                .then(
+                    if (!isCurrent) {
+                        Modifier.pointerInput(track.id, isDragging) {
+                            detectHorizontalDragGestures(
+                                onDragStart = {
                                     thresholdLatched = false
+                                },
+                                onDragCancel = {
+                                    scope.launch {
+                                        swipeSettle.snapTo(swipeOffset)
+                                        swipeSettle.animateTo(0f, tween(160)) { swipeOffset = value }
+                                        thresholdLatched = false
+                                    }
+                                },
+                                onDragEnd = {
+                                    val releaseOffset = swipeOffset
+                                    val crossed = abs(releaseOffset) >= thresholdPx
+                                    if (!crossed) {
+                                        scope.launch {
+                                            swipeSettle.snapTo(releaseOffset)
+                                            swipeSettle.animateTo(
+                                                0f,
+                                                androidx.compose.animation.core.spring(
+                                                    stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+                                                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+                                                )
+                                            ) { swipeOffset = value }
+                                            thresholdLatched = false
+                                        }
+                                    } else {
+                                        if (releaseOffset < 0f) {
+                                            // Swiped Left: Remove / Delete
+                                            scope.launch {
+                                                swipeSettle.snapTo(releaseOffset)
+                                                swipeSettle.animateTo(
+                                                    -dismissPx,
+                                                    tween(180, easing = FastOutSlowInEasing)
+                                                ) { swipeOffset = value }
+                                                onDelete()
+                                                swipeOffset = 0f
+                                                thresholdLatched = false
+                                            }
+                                        } else {
+                                            // Swiped Right: Automatically takes itself to bottom of music currently playing
+                                            scope.launch {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                onPlayNext()
+                                                swipeSettle.snapTo(releaseOffset)
+                                                swipeSettle.animateTo(0f, tween(200, easing = FastOutSlowInEasing)) {
+                                                    swipeOffset = value
+                                                }
+                                                thresholdLatched = false
+                                            }
+                                        }
+                                    }
+                                },
+                                onHorizontalDrag = { change, amount ->
+                                    if (!isDragging) {
+                                        val next = (swipeOffset + amount).coerceIn(-dismissPx, dismissPx)
+                                        swipeOffset = next
+                                        change.consume()
+                                    }
                                 }
-                            } else {
-                                scope.launch {
-                                    swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(
-                                        -dismissPx,
-                                        tween(190, easing = FastOutSlowInEasing)
-                                    ) { swipeOffset = value }
-                                    onDelete()
-                                    swipeOffset = 0f
-                                    thresholdLatched = false
-                                }
-                            }
-                        },
-                        onHorizontalDrag = { change, amount ->
-                            change.consume()
-                            if (!isDragging && !isCurrent) {
-                                val next = (swipeOffset + amount).coerceIn(-dismissPx, 0f)
-                                swipeOffset = next
-                            }
+                            )
                         }
-                    )
-                }
+                    } else {
+                        Modifier
+                    }
+                )
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick
                 )
-                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), // Reaching almost edge to edge with slight spacing
+                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Album Art with sharp edges (2.dp) instead of full rounded corner

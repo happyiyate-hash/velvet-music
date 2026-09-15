@@ -16,6 +16,26 @@
 # debugging stack traces.
 #-keepattributes SourceFile,LineNumberTable
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Optimization and R8 keep rules for Velvet Music
+-keepattributes SourceFile,LineNumberTable
+-keepattributes *Annotation*
+
+# Moshi and Models
+-keep class com.example.model.** { *; }
+-keepclassmembers class * {
+    @com.squareup.moshi.Json *;
+}
+-keep class com.squareup.moshi.** { *; }
+
+# Room
+-keep class androidx.room.RoomDatabase
+-dontwarn androidx.room.paging.**
+
+# Media3 & ExoPlayer
+-keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**
+
+# Coil Image Loading
+-keep class coil.** { *; }
+-dontwarn coil.**
+
