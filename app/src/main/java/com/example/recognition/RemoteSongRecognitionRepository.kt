@@ -11,7 +11,6 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiJsonAdapterFactory
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
@@ -48,16 +47,11 @@ class RemoteSongRecognitionRepository(private val api: SongRecognitionApi? = cre
             val part = MultipartBody.Part.createFormData("audio", "velvet-capture.wav", body)
             val response = remote.recognizeBatch(part)
             Log.d(TAG, "BATCH_RESPONSE_RECEIVED requestId=${response.requestId ?: "none"} auddSuccess=${response.results.audd.success} acrcloudSuccess=${response.results.acrcloud.success} elapsedMs=${System.currentTimeMillis() - startedAt}")
-
-            val candidates = listOfNotNull(
-                response.results.audd.toCandidate("AudD"),
-                response.results.acrcloud.toCandidate("ACRCloud")
-            )
+            val candidates = listOfNotNull(response.results.audd.toCandidate("AudD"), response.results.acrcloud.toCandidate("ACRCloud"))
             if (candidates.isEmpty()) {
                 val providerErrors = listOfNotNull(response.results.audd.error, response.results.acrcloud.error).joinToString("; ")
                 return@withContext if (response.error.isNullOrBlank()) RecognitionResult.NoMatch(providerErrors.ifBlank { "No confident song match was found." }) else RecognitionResult.Error(response.error)
             }
-
             val selected = selectDisplayCandidate(candidates)
             Log.d(TAG, "BATCH_DISPLAY_RESULT requestId=${response.requestId ?: "none"} provider=${selected.provider} title=${selected.song.title} artist=${selected.song.artist} confidence=${selected.song.confidence}")
             RecognitionResult.Match(selected.song)
@@ -75,31 +69,25 @@ class RemoteSongRecognitionRepository(private val api: SongRecognitionApi? = cre
         return Candidate(provider, dto.toRecognizedSong(confidence.coerceIn(0, 100)))
     }
 
-    /** Compare only objective recognition data; no provider is preferred by default. */
+    /** Compare objective recognition data: shared ISRC, then title/artist agreement, then metadata and confidence. */
     private fun selectDisplayCandidate(candidates: List<Candidate>): Candidate {
         if (candidates.size == 1) return candidates.first()
         val isrcs = candidates.mapNotNull { it.song.isrc?.trim()?.lowercase()?.takeIf(String::isNotBlank) }.distinct()
         val sameIsrc = isrcs.size == 1
         val keys = candidates.map { normalizeKey(it.song.artist, it.song.title) }.distinct()
         val sameTrack = keys.size == 1
-        return candidates.maxWithOrNull(compareBy<Candidate> {
-            when {
-                sameIsrc -> 3
-                sameTrack -> 2
-                else -> 0
-            }
-        }.thenBy { metadataScore(it.song) }.thenBy { it.song.confidence }) ?: candidates.first()
+        return candidates.maxWithOrNull(compareBy<Candidate> { when { sameIsrc -> 3; sameTrack -> 2; else -> 0 } }.thenBy { metadataScore(it.song) }.thenBy { it.song.confidence }) ?: candidates.first()
     }
 
     private fun normalizeKey(artist: String, title: String) = "$artist $title".lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
     private fun metadataScore(song: RecognizedSong) = listOf(song.album.isNotBlank(), song.isrc != null, song.artworkUrl != null, song.spotifyUrl != null, song.appleMusicUrl != null, song.youtubeMusicUrl != null, song.audiomackUrl != null).count { it }
 
     private fun RecognizedSongDto.toRecognizedSong(confidence: Int) = RecognizedSong(
-        id = id?.takeIf { it.isNotBlank() } ?: "${artist.orEmpty()}:${title.orEmpty()}",
-        title = title!!.trim(), artist = artist!!.trim(), album = album?.trim().orEmpty().ifBlank { "Unknown Album" },
-        artworkUrl = artworkUrl?.trim()?.takeIf { it.isNotBlank() }, durationMs = durationMs?.coerceAtLeast(0L) ?: 0L,
-        confidence = confidence, isrc = isrc?.trim()?.takeIf { it.isNotBlank() }, spotifyUrl = spotifyUrl?.trim()?.takeIf { it.isNotBlank() },
-        appleMusicUrl = appleMusicUrl?.trim()?.takeIf { it.isNotBlank() }, youtubeMusicUrl = youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() }, audiomackUrl = audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
+        id = id?.takeIf { it.isNotBlank() } ?: "${artist.orEmpty()}:${title.orEmpty()}", title = title!!.trim(), artist = artist!!.trim(),
+        album = album?.trim().orEmpty().ifBlank { "Unknown Album" }, artworkUrl = artworkUrl?.trim()?.takeIf { it.isNotBlank() },
+        durationMs = durationMs?.coerceAtLeast(0L) ?: 0L, confidence = confidence, isrc = isrc?.trim()?.takeIf { it.isNotBlank() },
+        spotifyUrl = spotifyUrl?.trim()?.takeIf { it.isNotBlank() }, appleMusicUrl = appleMusicUrl?.trim()?.takeIf { it.isNotBlank() },
+        youtubeMusicUrl = youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() }, audiomackUrl = audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
     )
 
     private suspend fun recognizeSingle(wavAudio: ByteArray, mode: String, call: suspend (MultipartBody.Part) -> RecognitionResponse): RecognitionResult = withContext(Dispatchers.IO) {
