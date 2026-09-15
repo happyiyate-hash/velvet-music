@@ -1,39 +1,42 @@
 package com.example.media
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.net.Uri
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.example.R
 import com.example.model.Track
+import com.example.recognition.RecognitionResult
+import com.example.recognition.RecognizedSong
+import com.example.recognition.RemoteSongRecognitionRepository
+import com.example.recognition.SongRecognitionRepository
+import com.example.ui.theme.VelvetBloodPlum
+import com.example.ui.theme.VelvetDeepCrimson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
+import java.io.ByteArrayOutputStream
+import kotlin.math.log2
 import kotlin.math.sqrt
 
-/**
- * Represents the recognized track from the Humming / Pitch Detection Query-by-Humming (QBH) engine.
- */
 data class HumMatchResult(
     val id: String,
     val title: String,
     val artist: String,
     val album: String,
     val coverResId: Int,
-    val matchPercentage: Int = 98,
-    val matchedSnippet: String = "Vocal contour matched via QBH scale sequence",
-    val isrc: String = "US-UM7-22-04981",
+    val matchPercentage: Int = 0,
+    val matchedSnippet: String = "",
+    val isrc: String = "",
     val track: Track? = null
 ) {
     val spotifyUri: String get() = "spotify:search:${Uri.encode("$artist $title")}"
@@ -47,263 +50,192 @@ sealed class HumRecognitionState {
     object Idle : HumRecognitionState()
     data class Listening(
         val elapsedSeconds: Int,
-        val maxSeconds: Int = 6,
+        val maxSeconds: Int = 8,
         val amplitude: Float = 0f,
         val detectedPitchHz: Float = 0f,
         val noteName: String = ""
     ) : HumRecognitionState()
-
-    data class Analyzing(
-        val message: String = "Matching pitch contours with master QBH melody index..."
-    ) : HumRecognitionState()
-
-    data class Matched(
-        val result: HumMatchResult
-    ) : HumRecognitionState()
-
-    data class NoMatch(
-        val reason: String = "No confident pitch match found. Try humming louder, closer to the microphone, or a longer melody phrase."
-    ) : HumRecognitionState()
+    data class Analyzing(val message: String = "Sending audio to Velvet recognition...") : HumRecognitionState()
+    data class Matched(val result: HumMatchResult) : HumRecognitionState()
+    data class NoMatch(val reason: String = "No confident song match found. Try humming a longer, clearer melody.") : HumRecognitionState()
 }
 
-/**
- * HummingRecognitionEngine
- *
- * Implements Query-by-Humming (QBH) audio capture, real-time PCM pitch/amplitude tracking,
- * melody contour analysis, and cross-platform deep linking (Spotify, Audiomack, YouTube Music, Apple Music).
- */
+/** Real microphone capture and server-side recognition. No hardcoded song catalog or fake matches. */
 class HummingRecognitionEngine(
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val repository: SongRecognitionRepository = RemoteSongRecognitionRepository()
 ) {
-    private val _state = MutableStateFlow<HumRecognitionState>(HumRecognitionState.Idle)
-    val state: StateFlow<HumRecognitionState> = _state.asStateFlow()
-
-    private val _liveAmplitude = MutableStateFlow(0f)
-    val liveAmplitude: StateFlow<Float> = _liveAmplitude.asStateFlow()
-
-    private val _livePitchHz = MutableStateFlow(0f)
-    val livePitchHz: StateFlow<Float> = _livePitchHz.asStateFlow()
-
+    private val _state = kotlinx.coroutines.flow.MutableStateFlow<HumRecognitionState>(HumRecognitionState.Idle)
+    val state: kotlinx.coroutines.flow.StateFlow<HumRecognitionState> = _state
+    private val _liveAmplitude = kotlinx.coroutines.flow.MutableStateFlow(0f)
+    val liveAmplitude: kotlinx.coroutines.flow.StateFlow<Float> = _liveAmplitude
+    private val _livePitchHz = kotlinx.coroutines.flow.MutableStateFlow(0f)
+    val livePitchHz: kotlinx.coroutines.flow.StateFlow<Float> = _livePitchHz
     private var activeJob: Job? = null
-    private var isRecording = false
+    private var lastContext: Context? = null
 
-    // Master catalog of recognizable songs for Query-by-Humming
-    private val recognizedCatalog = listOf(
-        HumMatchResult(
-            id = "hum_match_blinding_lights",
-            title = "Blinding Lights",
-            artist = "The Weeknd",
-            album = "After Hours",
-            coverResId = R.drawable.art_blinding_lights,
-            matchPercentage = 99,
-            matchedSnippet = "Synthesizer hook & melodic pitch contour (Key of F minor)"
-        ),
-        HumMatchResult(
-            id = "hum_match_calm_down",
-            title = "Calm Down",
-            artist = "Rema",
-            album = "Rave & Climax",
-            coverResId = R.drawable.art_sunset_beats,
-            matchPercentage = 97,
-            matchedSnippet = "Vocal vocalization scale contour (B minor pentatonic)"
-        ),
-        HumMatchResult(
-            id = "hum_match_last_last",
-            title = "Last Last",
-            artist = "Burna Boy",
-            album = "Love, Damini",
-            coverResId = R.drawable.art_after_hours,
-            matchPercentage = 98,
-            matchedSnippet = "Toni Braxton sample melody pitch sequence"
-        ),
-        HumMatchResult(
-            id = "hum_match_lonely_top",
-            title = "Lonely At The Top",
-            artist = "Asake",
-            album = "Work of Art",
-            coverResId = R.drawable.art_night_grooves,
-            matchPercentage = 96,
-            matchedSnippet = "Acoustic log-drum vocal cadence (C# minor)"
-        ),
-        HumMatchResult(
-            id = "hum_match_essence",
-            title = "Essence",
-            artist = "Wizkid ft. Tems",
-            album = "Made in Lagos",
-            coverResId = R.drawable.art_luminous_echoes,
-            matchPercentage = 99,
-            matchedSnippet = "Sensual chord scale & vocal melody contour"
-        ),
-        HumMatchResult(
-            id = "starter_velvet_echo",
-            title = "Midnight Echoes",
-            artist = "Velvet Soundscape",
-            album = "Midnight Sessions",
-            coverResId = R.drawable.art_after_hours,
-            matchPercentage = 100,
-            matchedSnippet = "Velvet signature atmospheric crimson chord progression"
-        )
-    )
-
-    /**
-     * Start humming capture and recognition.
-     */
     fun startListening(context: Context, libraryTracks: List<Track> = emptyList()) {
-        stopListening()
-
-        activeJob = scope.launch {
-            val hasMicPermission = DeviceMediaManager.hasRecordAudioPermission(context)
-            val sampleRate = 16000
-            val channelConfig = AudioFormat.CHANNEL_IN_MONO
-            val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-            val minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-
-            var audioRecord: AudioRecord? = null
-            if (hasMicPermission) {
-                try {
-                    val bufferSize = (minBufSize * 2).coerceAtLeast(4096)
-                    audioRecord = AudioRecord(
-                        MediaRecorder.AudioSource.MIC,
-                        sampleRate,
-                        channelConfig,
-                        audioFormat,
-                        bufferSize
-                    )
-                    if (audioRecord.state == AudioRecord.STATE_INITIALIZED) {
-                        audioRecord.startRecording()
-                        isRecording = true
-                    } else {
-                        audioRecord.release()
-                        audioRecord = null
-                    }
-                } catch (e: Exception) {
-                    audioRecord = null
-                }
-            }
-
-            val maxSeconds = 6
-            val startTime = System.currentTimeMillis()
-            val audioBuffer = ShortArray(1024)
-
-            // Audio capture loop
-            while (isActive) {
-                val elapsed = ((System.currentTimeMillis() - startTime) / 1000L).toInt()
-
-                if (elapsed >= maxSeconds) {
-                    break
-                }
-
-                var currentAmp = 0f
-                var currentPitch = 0f
-
-                if (audioRecord != null && isRecording) {
-                    val read = withContext(Dispatchers.IO) {
-                        audioRecord.read(audioBuffer, 0, audioBuffer.size)
-                    }
-                    if (read > 0) {
-                        var sum = 0.0
-                        var zeroCrossings = 0
-                        for (i in 0 until read) {
-                            val sample = audioBuffer[i].toInt()
-                            sum += sample * sample
-                            if (i > 0 && ((audioBuffer[i - 1] > 0 && audioBuffer[i] <= 0) || (audioBuffer[i - 1] < 0 && audioBuffer[i] >= 0))) {
-                                zeroCrossings++
-                            }
-                        }
-                        val rms = sqrt(sum / read).toFloat()
-                        // Normalize 16-bit PCM RMS (0..32767) to 0f..1f with boost
-                        currentAmp = (rms / 3500f).coerceIn(0f, 1f)
-
-                        // Estimate fundamental pitch from zero crossings
-                        val durationSec = read.toFloat() / sampleRate
-                        currentPitch = (zeroCrossings / (2f * durationSec)).coerceIn(80f, 1200f)
-                    }
-                } else {
-                    // Simulated natural hum / vocal frequency variations
-                    val t = (System.currentTimeMillis() - startTime) / 1000f
-                    val humWave = (kotlin.math.sin(t * 3.5f) * 0.5f + 0.5f).toFloat()
-                    val voiceBurst = if ((elapsed % 2) == 0) 0.65f else 0.45f
-                    currentAmp = (humWave * voiceBurst + 0.15f).coerceIn(0f, 1f)
-                    currentPitch = (220f + kotlin.math.sin(t * 2.0f) * 90f).toFloat()
-                    delay(50)
-                }
-
-                _liveAmplitude.value = currentAmp
-                _livePitchHz.value = currentPitch
-
-                val noteName = frequencyToNote(currentPitch)
-                _state.value = HumRecognitionState.Listening(
-                    elapsedSeconds = elapsed,
-                    maxSeconds = maxSeconds,
-                    amplitude = currentAmp,
-                    detectedPitchHz = currentPitch,
-                    noteName = noteName
-                )
-
-                if (audioRecord == null) {
-                    delay(40)
-                }
-            }
-
-            // Safely stop and release AudioRecord
-            try {
-                if (audioRecord != null) {
-                    audioRecord.stop()
-                    audioRecord.release()
-                }
-            } catch (_: Exception) {}
-            isRecording = false
-
-            // Transition to Analyzing
-            _state.value = HumRecognitionState.Analyzing("Comparing melody contour against Query-by-Humming (QBH) database...")
-            delay(1400)
-
-            // Select best match (picks from recognized catalog or library tracks)
-            val matchedResult = selectBestMatch(libraryTracks)
-            _state.value = HumRecognitionState.Matched(matchedResult)
-        }
+        startRecognition(context, libraryTracks, RecognitionMode.HUMMING)
     }
 
-    /**
-     * Manually trigger demo recognition of a specific song for quick verification.
-     */
+    fun startAmbientListening(context: Context, libraryTracks: List<Track> = emptyList()) {
+        startRecognition(context, libraryTracks, RecognitionMode.AMBIENT)
+    }
+
+    /** Kept for compatibility with the existing UI; this is now real recognition, never a demo result. */
     fun triggerDemoMatch(index: Int = 0, libraryTracks: List<Track> = emptyList()) {
+        lastContext?.let { startListening(it, libraryTracks) }
+    }
+
+    private enum class RecognitionMode { HUMMING, AMBIENT }
+
+    private fun startRecognition(context: Context, libraryTracks: List<Track>, mode: RecognitionMode) {
         stopListening()
+        lastContext = context.applicationContext
         activeJob = scope.launch {
-            _state.value = HumRecognitionState.Listening(
-                elapsedSeconds = 2,
-                maxSeconds = 3,
-                amplitude = 0.85f,
-                detectedPitchHz = 349.23f, // F4
-                noteName = "F4"
-            )
-            _liveAmplitude.value = 0.85f
-            _livePitchHz.value = 349.23f
-            delay(1200)
-
-            _state.value = HumRecognitionState.Analyzing("Extracting pitch intervals and matching QBH scale sequence...")
-            delay(1000)
-
-            val safeIndex = abs(index) % recognizedCatalog.size
-            val baseMatch = recognizedCatalog[safeIndex]
-            val libraryEquivalent = libraryTracks.find {
-                it.title.contains(baseMatch.title, ignoreCase = true) ||
-                it.artist.contains(baseMatch.artist, ignoreCase = true)
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                _state.value = HumRecognitionState.NoMatch("Microphone permission is required to identify a song.")
+                return@launch
             }
 
-            _state.value = HumRecognitionState.Matched(
-                baseMatch.copy(track = libraryEquivalent)
+            val capture = captureAudio()
+            if (capture == null || capture.wavData.isEmpty()) {
+                _state.value = HumRecognitionState.NoMatch("Velvet could not capture microphone audio. Check microphone permission and try again.")
+                return@launch
+            }
+
+            _state.value = HumRecognitionState.Analyzing(
+                if (mode == RecognitionMode.HUMMING) "Matching your melody with Velvet's music recognition service..."
+                else "Identifying the music you are hearing..."
             )
+
+            val result = withContext(Dispatchers.IO) {
+                if (mode == RecognitionMode.HUMMING) repository.recognizeHumming(capture.wavData)
+                else repository.recognizeAmbientAudio(capture.wavData)
+            }
+
+            when (result) {
+                is RecognitionResult.Match -> _state.value = HumRecognitionState.Matched(toHumMatchResult(result.song, libraryTracks))
+                is RecognitionResult.NoMatch -> _state.value = HumRecognitionState.NoMatch(result.reason)
+                is RecognitionResult.Error -> _state.value = HumRecognitionState.NoMatch(result.reason)
+            }
         }
     }
 
-    /**
-     * Stop active audio recording and reset.
-     */
+    private suspend fun captureAudio(): AudioCapture? = withContext(Dispatchers.IO) {
+        val sampleRate = 16_000
+        val channelConfig = AudioFormat.CHANNEL_IN_MONO
+        val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+        val minimum = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        if (minimum <= 0) return@withContext null
+
+        val recorder = try {
+            AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                sampleRate,
+                channelConfig,
+                audioFormat,
+                (minimum * 2).coerceAtLeast(4096)
+            )
+        } catch (_: Throwable) {
+            return@withContext null
+        }
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            recorder.release()
+            return@withContext null
+        }
+
+        val pcm = ByteArrayOutputStream(sampleRate * 2 * MAX_CAPTURE_SECONDS)
+        val samples = ShortArray(1024)
+        val startedAt = System.currentTimeMillis()
+        var lastPublishedSecond = -1
+
+        try {
+            recorder.startRecording()
+            while (scope.coroutineContext.isActive) {
+                val elapsedMs = System.currentTimeMillis() - startedAt
+                if (elapsedMs >= MAX_CAPTURE_SECONDS * 1000L) break
+                val read = recorder.read(samples, 0, samples.size)
+                if (read <= 0) continue
+
+                var sumSquares = 0.0
+                var crossings = 0
+                for (i in 0 until read) {
+                    val sample = samples[i].toInt()
+                    sumSquares += sample.toDouble() * sample.toDouble()
+                    if (i > 0) {
+                        val previous = samples[i - 1].toInt()
+                        if ((previous < 0 && sample >= 0) || (previous >= 0 && sample < 0)) crossings++
+                    }
+                    pcm.write(sample and 0xFF)
+                    pcm.write((sample ushr 8) and 0xFF)
+                }
+
+                val rms = sqrt(sumSquares / read).toFloat()
+                val amplitude = (rms / 3500f).coerceIn(0f, 1f)
+                val durationSeconds = read.toFloat() / sampleRate
+                val pitch = if (durationSeconds > 0f) (crossings / (2f * durationSeconds)).coerceIn(55f, 1200f) else 0f
+                _liveAmplitude.value = amplitude
+                _livePitchHz.value = pitch
+
+                val second = (elapsedMs / 1000L).toInt()
+                if (second != lastPublishedSecond) {
+                    lastPublishedSecond = second
+                    _state.value = HumRecognitionState.Listening(
+                        elapsedSeconds = second.coerceAtMost(MAX_CAPTURE_SECONDS),
+                        maxSeconds = MAX_CAPTURE_SECONDS,
+                        amplitude = amplitude,
+                        detectedPitchHz = pitch,
+                        noteName = frequencyToNote(pitch)
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+            // The caller converts an empty/short capture into a visible no-match state.
+        } finally {
+            runCatching { recorder.stop() }
+            recorder.release()
+        }
+
+        _liveAmplitude.value = 0f
+        _livePitchHz.value = 0f
+        if (pcm.size() < MIN_PCM_BYTES) return@withContext null
+        AudioCapture(pcm.toWav(sampleRate, 1, 16), System.currentTimeMillis() - startedAt)
+    }
+
+    private fun toHumMatchResult(song: RecognizedSong, libraryTracks: List<Track>): HumMatchResult {
+        val local = libraryTracks.firstOrNull {
+            it.title.equals(song.title, true) && it.artist.equals(song.artist, true)
+        }
+        val fallbackCover = local?.coverResId ?: R.drawable.art_luminous_echoes
+        val track = local ?: Track(
+            id = "recognized:${song.id}",
+            title = song.title,
+            artist = song.artist,
+            album = song.album,
+            durationMs = song.durationMs,
+            coverResId = fallbackCover,
+            dominantColor = VelvetDeepCrimson,
+            secondaryColor = VelvetBloodPlum,
+            catalogSource = "Velvet Recognition",
+            artworkUri = song.artworkUrl
+        )
+        return HumMatchResult(
+            id = song.id,
+            title = song.title,
+            artist = song.artist,
+            album = song.album,
+            coverResId = track.coverResId,
+            matchPercentage = song.confidence,
+            matchedSnippet = "Matched by Velvet's remote music recognition service",
+            isrc = song.isrc.orEmpty(),
+            track = track
+        )
+    }
+
     fun stopListening() {
         activeJob?.cancel()
         activeJob = null
-        isRecording = false
         _liveAmplitude.value = 0f
         _livePitchHz.value = 0f
     }
@@ -313,91 +245,78 @@ class HummingRecognitionEngine(
         _state.value = HumRecognitionState.Idle
     }
 
-    private fun selectBestMatch(libraryTracks: List<Track>): HumMatchResult {
-        // Find if any library track matches our catalog or use top catalog hit
-        val catalogItem = recognizedCatalog.random()
-        val libraryEquivalent = libraryTracks.find {
-            it.title.contains(catalogItem.title, ignoreCase = true) ||
-            it.artist.contains(catalogItem.artist, ignoreCase = true)
-        } ?: libraryTracks.firstOrNull()
-
-        return catalogItem.copy(track = libraryEquivalent)
-    }
-
     private fun frequencyToNote(freqHz: Float): String {
         if (freqHz < 55f) return ""
-        val noteNames = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-        val midiNote = (69 + 12 * kotlin.math.log2(freqHz / 440.0)).toInt()
-        if (midiNote < 12 || midiNote > 120) return ""
-        val note = noteNames[midiNote % 12]
-        val octave = (midiNote / 12) - 1
-        return "$note$octave"
+        val notes = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+        val midi = (69 + 12 * log2(freqHz / 440.0)).toInt()
+        if (midi !in 12..120) return ""
+        return "${notes[midi % 12]}${midi / 12 - 1}"
     }
 
     companion object {
-        /**
-         * Cross-platform deep linking launcher with native app scheme first,
-         * followed by safe web fallback.
-         */
-        fun launchSpotify(context: Context, artist: String, title: String) {
-            val query = "$artist $title"
-            val nativeUri = Uri.parse("spotify:search:${Uri.encode(query)}")
-            val webUri = Uri.parse("https://open.spotify.com/search/${Uri.encode(query)}")
+        private const val MAX_CAPTURE_SECONDS = 8
+        private const val MIN_PCM_BYTES = 8_000
 
+        fun launchSpotify(context: Context, artist: String, title: String) =
+            launchUrl(context, Uri.parse("spotify:search:${Uri.encode("$artist $title")}"), Uri.parse("https://open.spotify.com/search/${Uri.encode("$artist $title")}"), "Spotify")
+
+        fun launchAudiomack(context: Context, artist: String, title: String) =
+            launchUrl(context, Uri.parse("https://audiomack.com/search?q=${Uri.encode("$artist $title")}"), null, "Audiomack")
+
+        fun launchYouTubeMusic(context: Context, artist: String, title: String) =
+            launchUrl(context, Uri.parse("https://music.youtube.com/search?q=${Uri.encode("$artist $title")}"), null, "YouTube Music")
+
+        fun launchAppleMusic(context: Context, artist: String, title: String) =
+            launchUrl(context, Uri.parse("https://music.apple.com/us/search?term=${Uri.encode("$artist $title")}"), null, "Apple Music")
+
+        private fun launchUrl(context: Context, uri: Uri, fallback: Uri?, label: String) {
             try {
-                val intent = Intent(Intent.ACTION_VIEW, nativeUri).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
+                context.startActivity(Intent(Intent.ACTION_VIEW, uri).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK })
             } catch (_: Exception) {
-                try {
-                    val webIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(webIntent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Cannot open Spotify link", Toast.LENGTH_SHORT).show()
+                if (fallback != null) {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, fallback).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK })
+                        return
+                    } catch (_: Exception) { }
                 }
-            }
-        }
-
-        fun launchAudiomack(context: Context, artist: String, title: String) {
-            val query = "$artist $title"
-            val webUri = Uri.parse("https://audiomack.com/search?q=${Uri.encode(query)}")
-            try {
-                val intent = Intent(Intent.ACTION_VIEW, webUri).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                Toast.makeText(context, "Cannot open Audiomack link", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        fun launchYouTubeMusic(context: Context, artist: String, title: String) {
-            val query = "$artist $title"
-            val webUri = Uri.parse("https://music.youtube.com/search?q=${Uri.encode(query)}")
-            try {
-                val intent = Intent(Intent.ACTION_VIEW, webUri).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                Toast.makeText(context, "Cannot open YouTube Music link", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        fun launchAppleMusic(context: Context, artist: String, title: String) {
-            val query = "$artist $title"
-            val webUri = Uri.parse("https://music.apple.com/us/search?term=${Uri.encode(query)}")
-            try {
-                val intent = Intent(Intent.ACTION_VIEW, webUri).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                Toast.makeText(context, "Cannot open Apple Music link", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Cannot open $label link", Toast.LENGTH_SHORT).show()
             }
         }
     }
+}
+
+private data class AudioCapture(val wavData: ByteArray, val durationMs: Long)
+
+private fun ByteArrayOutputStream.toWav(sampleRate: Int, channels: Int, bitsPerSample: Int): ByteArray {
+    val pcm = toByteArray()
+    val header = ByteArray(44)
+    val byteRate = sampleRate * channels * bitsPerSample / 8
+    val blockAlign = channels * bitsPerSample / 8
+
+    fun intLE(offset: Int, value: Int) {
+        header[offset] = (value and 0xFF).toByte()
+        header[offset + 1] = ((value ushr 8) and 0xFF).toByte()
+        header[offset + 2] = ((value ushr 16) and 0xFF).toByte()
+        header[offset + 3] = ((value ushr 24) and 0xFF).toByte()
+    }
+    fun shortLE(offset: Int, value: Int) {
+        header[offset] = (value and 0xFF).toByte()
+        header[offset + 1] = ((value ushr 8) and 0xFF).toByte()
+    }
+    fun ascii(offset: Int, value: String) = value.toByteArray(Charsets.US_ASCII).copyInto(header, offset)
+
+    ascii(0, "RIFF")
+    intLE(4, 36 + pcm.size)
+    ascii(8, "WAVE")
+    ascii(12, "fmt ")
+    intLE(16, 16)
+    shortLE(20, 1)
+    shortLE(22, channels)
+    intLE(24, sampleRate)
+    intLE(28, byteRate)
+    shortLE(32, blockAlign)
+    shortLE(34, bitsPerSample)
+    ascii(36, "data")
+    intLE(40, pcm.size)
+    return header + pcm
 }
