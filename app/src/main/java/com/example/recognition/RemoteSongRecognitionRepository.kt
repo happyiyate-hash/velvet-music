@@ -7,13 +7,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
-/** Result returned by the real remote recognition service. */
 data class RecognizedSong(
     val id: String,
     val title: String,
@@ -41,26 +40,30 @@ interface SongRecognitionRepository {
 }
 
 /**
- * HTTP implementation used by the Android client.
- *
- * The provider is deliberately hidden behind this repository. A Velvet backend can
- * switch between AudD, ACRCloud, ShazamKit or another provider without changing the UI.
+ * Remote recognition client. Provider credentials are never stored in the APK.
+ * The Velvet server can route these requests to AudD, ACRCloud, ShazamKit, etc.
  */
 class RemoteSongRecognitionRepository(
-    private val api: SongRecognitionApi = createApi()
+    private val api: SongRecognitionApi? = createApiOrNull()
 ) : SongRecognitionRepository {
 
     override suspend fun recognizeHumming(wavAudio: ByteArray): RecognitionResult =
-        recognize { part -> api.recognizeHum(part) }
+        recognize(wavAudio) { part -> api!!.recognizeHum(part) }
 
     override suspend fun recognizeAmbientAudio(wavAudio: ByteArray): RecognitionResult =
-        recognize { part -> api.recognizeAudio(part) }
+        recognize(wavAudio) { part -> api!!.recognizeAudio(part) }
 
     private suspend fun recognize(
+        wavAudio: ByteArray,
         call: suspend (MultipartBody.Part) -> RecognitionResponse
     ): RecognitionResult = withContext(Dispatchers.IO) {
-        if (wavAudioIsEmpty()) {
+        if (wavAudio.isEmpty()) {
             return@withContext RecognitionResult.Error("No audio was captured.")
+        }
+        if (api == null) {
+            return@withContext RecognitionResult.Error(
+                "Velvet recognition is not configured yet. Set VELVET_RECOGNITION_BASE_URL."
+            )
         }
 
         try {
@@ -79,7 +82,9 @@ class RemoteSongRecognitionRepository(
             val title = dto.title?.trim().orEmpty()
             val artist = dto.artist?.trim().orEmpty()
             if (title.isBlank() || artist.isBlank()) {
-                return@withContext RecognitionResult.NoMatch("The recognition service returned incomplete song metadata.")
+                return@withContext RecognitionResult.NoMatch(
+                    "The recognition service returned incomplete song metadata."
+                )
             }
 
             RecognitionResult.Match(
@@ -92,10 +97,10 @@ class RemoteSongRecognitionRepository(
                     durationMs = dto.durationMs?.coerceAtLeast(0L) ?: 0L,
                     confidence = response.confidence.coerceIn(0, 100),
                     isrc = dto.isrc?.trim()?.takeIf { it.isNotBlank() },
-                    spotifyUrl = dto.spotifyUrl,
-                    appleMusicUrl = dto.appleMusicUrl,
-                    youtubeMusicUrl = dto.youtubeMusicUrl,
-                    audiomackUrl = dto.audiomackUrl
+                    spotifyUrl = dto.spotifyUrl?.trim()?.takeIf { it.isNotBlank() },
+                    appleMusicUrl = dto.appleMusicUrl?.trim()?.takeIf { it.isNotBlank() },
+                    youtubeMusicUrl = dto.youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() },
+                    audiomackUrl = dto.audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
                 )
             )
         } catch (e: Exception) {
@@ -105,16 +110,12 @@ class RemoteSongRecognitionRepository(
         }
     }
 
-    private fun wavAudioIsEmpty(): Boolean = false
-
     companion object {
-        private fun createApi(): SongRecognitionApi {
+        private fun createApiOrNull(): SongRecognitionApi? {
             val configuredBaseUrl = BuildConfig.VELVET_RECOGNITION_BASE_URL.trim()
-            require(configuredBaseUrl.isNotBlank()) {
-                "VELVET_RECOGNITION_BASE_URL is not configured"
-            }
-            val baseUrl = if (configuredBaseUrl.endsWith('/')) configuredBaseUrl else "$configuredBaseUrl/"
+            if (configuredBaseUrl.isBlank()) return null
 
+            val baseUrl = if (configuredBaseUrl.endsWith('/')) configuredBaseUrl else "$configuredBaseUrl/"
             val client = OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)
