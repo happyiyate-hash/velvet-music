@@ -39,10 +39,7 @@ interface SongRecognitionRepository {
     suspend fun recognizeAmbientAudio(wavAudio: ByteArray): RecognitionResult
 }
 
-/**
- * Remote recognition client. Provider credentials are never stored in the APK.
- * The Velvet server can route these requests to AudD, ACRCloud, ShazamKit, etc.
- */
+/** Remote recognition client. Provider credentials are never stored in the APK. */
 class RemoteSongRecognitionRepository(
     private val api: SongRecognitionApi? = createApiOrNull()
 ) : SongRecognitionRepository {
@@ -122,10 +119,7 @@ class RemoteSongRecognitionRepository(
                 .readTimeout(20, TimeUnit.SECONDS)
                 .callTimeout(30, TimeUnit.SECONDS)
                 .build()
-
-            val moshi = Moshi.Builder()
-                .add(KotlinJsonAdapterFactory())
-                .build()
+            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
             return Retrofit.Builder()
                 .baseUrl(baseUrl)
