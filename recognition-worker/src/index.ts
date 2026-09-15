@@ -5,28 +5,43 @@ interface Env {
   ACRCLOUD_ACCESS_SECRET: string
 }
 
+type RecognitionSong = {
+  id: string
+  title: string
+  artist: string
+  album: string
+  artworkUrl: string | null
+  durationMs: number
+  isrc: string | null
+  spotifyUrl: string | null
+  appleMusicUrl: string | null
+  youtubeMusicUrl: string | null
+  audiomackUrl: string | null
+}
+
 type RecognitionResponse = {
   success: boolean
   confidence: number
   requestId?: string
-  song?: {
-    id: string
-    title: string
-    artist: string
-    album: string
-    artworkUrl: string | null
-    durationMs: number
-    isrc: string | null
-    spotifyUrl: string | null
-    appleMusicUrl: string | null
-    youtubeMusicUrl: string | null
-    audiomackUrl: string | null
+  song?: RecognitionSong
+  error?: string
+}
+
+type BatchProviderResult = RecognitionResponse
+
+type BatchResponse = {
+  success: boolean
+  requestId: string
+  results: {
+    audd: BatchProviderResult
+    acrcloud: BatchProviderResult
   }
   error?: string
 }
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" }
 const PROVIDER_TIMEOUT_MS = 18_000
+const MAX_AUDIO_BYTES = 5_000_000
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -42,9 +57,7 @@ export default {
 
     log(requestId, "REQUEST_RECEIVED", { method: request.method, path })
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: cors })
-    }
+    if (request.method === "OPTIONS") return new Response(null, { headers: cors })
 
     if (request.method === "GET" && path === "/health") {
       log(requestId, "HEALTH_OK", { elapsedMs: Date.now() - startedAt })
@@ -55,7 +68,7 @@ export default {
       return json({ success: false, confidence: 0, requestId, error: "POST required" }, 405, cors, requestId)
     }
 
-    if (!path.endsWith("/hum") && !path.endsWith("/audio")) {
+    if (!path.endsWith("/hum") && !path.endsWith("/audio") && !path.endsWith("/batch")) {
       log(requestId, "INVALID_ENDPOINT", { path })
       return json({ success: false, confidence: 0, requestId, error: "Unknown recognition endpoint" }, 404, cors, requestId)
     }
@@ -75,15 +88,24 @@ export default {
         name: audio.name || "unknown",
       })
 
-      if (audio.size > 5_000_000) {
+      if (audio.size > MAX_AUDIO_BYTES) {
         log(requestId, "AUDIO_VALIDATION_FAILED", { reason: "too_large", bytes: audio.size })
         return json({ success: false, confidence: 0, requestId, error: "Audio file is too large" }, 413, cors, requestId)
+      }
+
+      if (path.endsWith("/batch")) {
+        const result = await recognizeBatch(audio, env, requestId)
+        log(requestId, "BATCH_RESPONSE_SENT", {
+          elapsedMs: Date.now() - startedAt,
+          auddSuccess: result.results.audd.success,
+          acrcloudSuccess: result.results.acrcloud.success,
+        })
+        return json(result, 200, cors, requestId)
       }
 
       const result = path.endsWith("/hum")
         ? await recognizeHumming(audio, env, requestId)
         : await recognizeAmbient(audio, env, requestId)
-
       const finalResult = { ...result, requestId }
       log(requestId, result.success ? "MATCH_FOUND" : "NO_MATCH", {
         elapsedMs: Date.now() - startedAt,
@@ -96,6 +118,35 @@ export default {
       return json({ success: false, confidence: 0, requestId, error: message }, 502, cors, requestId)
     }
   },
+}
+
+async function recognizeBatch(audio: File, env: Env, requestId: string): Promise<BatchResponse> {
+  log(requestId, "AUDD_REQUEST_STARTED", { provider: "AudD" })
+  log(requestId, "ACRCLOUD_REQUEST_STARTED", { provider: "ACRCloud" })
+
+  const [audd, acrcloud] = await Promise.allSettled([
+    recognizeAmbient(audio, env, requestId),
+    recognizeHumming(audio, env, requestId),
+  ])
+
+  const auddResult = settledProviderResult(audd, "AudD")
+  const acrcloudResult = settledProviderResult(acrcloud, "ACRCloud")
+
+  return {
+    success: auddResult.success || acrcloudResult.success,
+    requestId,
+    results: {
+      audd: auddResult,
+      acrcloud: acrcloudResult,
+    },
+  }
+}
+
+function settledProviderResult(result: PromiseSettledResult<RecognitionResponse>, provider: string): BatchProviderResult {
+  if (result.status === "fulfilled") return result.value
+  const message = result.reason instanceof Error ? result.reason.message : `${provider} request failed`
+  log("batch", "PROVIDER_REQUEST_FAILED", { provider, error: message })
+  return { success: false, confidence: 0, error: `${provider}: ${message}` }
 }
 
 async function recognizeAmbient(audio: File, env: Env, requestId: string): Promise<RecognitionResponse> {
@@ -179,11 +230,7 @@ async function recognizeHumming(audio: File, env: Env, requestId: string): Promi
   })
 
   if (!response.ok || data?.status?.code !== 0) {
-    return {
-      success: false,
-      confidence: 0,
-      error: `ACRCloud: ${data?.status?.msg || `HTTP ${response.status}`}`,
-    }
+    return { success: false, confidence: 0, error: `ACRCloud: ${data?.status?.msg || `HTTP ${response.status}`}` }
   }
 
   const candidate = data?.metadata?.humming?.[0] || data?.metadata?.music?.[0]
@@ -241,13 +288,7 @@ async function readJsonSafely(response: Response): Promise<any> {
 
 async function hmacSha1Base64(secret: string, message: string): Promise<string> {
   const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"],
-  )
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message))
   let binary = ""
   for (const byte of new Uint8Array(signature)) binary += String.fromCharCode(byte)
@@ -261,10 +302,6 @@ function log(requestId: string, stage: string, details: Record<string, unknown> 
 function json(payload: unknown, status: number, extraHeaders: Record<string, string> = {}, requestId?: string) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: {
-      ...JSON_HEADERS,
-      ...extraHeaders,
-      ...(requestId ? { "x-velvet-request-id": requestId } : {}),
-    },
+    headers: { ...JSON_HEADERS, ...extraHeaders, ...(requestId ? { "x-velvet-request-id": requestId } : {}) },
   })
 }
