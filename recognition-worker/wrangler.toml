@@ -1,0 +1,10 @@
+name = "velvet-recognition"
+main = "src/index.ts"
+compatibility_date = "2026-09-15"
+
+[vars]
+# Set these as Cloudflare Worker secrets, not in this file:
+# AUDD_API_TOKEN
+# ACRCLOUD_HOST
+# ACRCLOUD_ACCESS_KEY
+# ACRCLOUD_ACCESS_SECRET
