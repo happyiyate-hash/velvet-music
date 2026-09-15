@@ -58,19 +58,19 @@ fun TrackArtworkImage(
                     }
                     .build()
             }
-            val placeholderPainter = if (track.coverResId != 0) painterResource(id = track.coverResId) else null
             AsyncImage(
                 model = request,
                 contentDescription = contentDescription,
                 modifier = modifier,
                 contentScale = contentScale,
-                placeholder = placeholderPainter,
-                error = placeholderPainter,
-                fallback = placeholderPainter
+                placeholder = painterResource(id = track.coverResId),
+                error = painterResource(id = track.coverResId),
+                fallback = painterResource(id = track.coverResId)
             )
-        } else if (track.coverResId != 0) {
+        } else {
+            val fallbackRes = remember(track.id, track.coverResId) { track.coverResId }
             Image(
-                painter = painterResource(id = track.coverResId),
+                painter = painterResource(id = fallbackRes),
                 contentDescription = contentDescription,
                 modifier = modifier,
                 contentScale = contentScale

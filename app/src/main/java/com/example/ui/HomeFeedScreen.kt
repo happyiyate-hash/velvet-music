@@ -348,27 +348,19 @@ fun HomeFeedScreen(
                             }
                         }
                     }
+                } else {
+                    allTracks.forEach { track ->
+                        val isCurrent = track.id == currentTrack.id
+                        StandaloneMusicRow(
+                            track = track,
+                            isCurrent = isCurrent,
+                            isPlaying = isPlaying && isCurrent,
+                            onClick = { onSelectTrack(track) },
+                            onMenuClick = { onTrackMenuClick(track) }
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
                 }
-            }
-        }
-
-        if (allTracks.isNotEmpty()) {
-            items(
-                items = allTracks,
-                key = { it.id },
-                contentType = { "home_track_row" }
-            ) { track ->
-                val isCurrent = track.id == currentTrack.id
-                Box(modifier = Modifier.padding(horizontal = 8.dp)) {
-                    StandaloneMusicRow(
-                        track = track,
-                        isCurrent = isCurrent,
-                        isPlaying = isPlaying && isCurrent,
-                        onClick = { onSelectTrack(track) },
-                        onMenuClick = { onTrackMenuClick(track) }
-                    )
-                }
-                Spacer(modifier = Modifier.height(6.dp))
             }
         }
     }
@@ -412,8 +404,6 @@ fun StandaloneMusicRow(
                 track = track,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
-                thumbnailSizePx = 140,
-                crossfade = false,
                 modifier = Modifier.fillMaxSize()
             )
             if (isCurrent && isPlaying) {
@@ -508,8 +498,6 @@ fun CompactMostPlayedRow(
                 track = track,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
-                thumbnailSizePx = 140,
-                crossfade = false,
                 modifier = Modifier.fillMaxSize()
             )
             if (isCurrent && isPlaying) {

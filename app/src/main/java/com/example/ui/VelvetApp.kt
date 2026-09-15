@@ -9,8 +9,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
@@ -187,7 +185,6 @@ fun VelvetApp() {
     var isProTierOpen by remember { mutableStateOf(false) }
     var isSettingsOpen by remember { mutableStateOf(false) }
     var isMediaDownloaderOpen by remember { mutableStateOf(false) }
-    var isSingToSearchOpen by remember { mutableStateOf(false) }
     var mediaDownloaderInitialUrl by remember { mutableStateOf<String?>(null) }
     var actionSheetTrack by remember { mutableStateOf<Track?>(null) }
 
@@ -231,9 +228,6 @@ fun VelvetApp() {
                         onOpenMediaDownloader = { url ->
                             mediaDownloaderInitialUrl = url
                             isMediaDownloaderOpen = true
-                        },
-                        onOpenSingToSearch = {
-                            isSingToSearchOpen = true
                         }
                     )
                     2 -> VideoLibraryScreen()
@@ -330,31 +324,6 @@ fun VelvetApp() {
                 onDismiss = {
                     isMediaDownloaderOpen = false
                     mediaDownloaderInitialUrl = null
-                }
-            )
-        }
-
-        AnimatedVisibility(
-            visible = isSingToSearchOpen,
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = tween(520, easing = FastOutSlowInEasing)
-            ) + fadeIn(animationSpec = tween(420)),
-            exit = slideOutVertically(
-                targetOffsetY = { it },
-                animationSpec = tween(400, easing = FastOutSlowInEasing)
-            ) + fadeOut(animationSpec = tween(300))
-        ) {
-            SingToSearchSheet(
-                libraryTracks = allTracks,
-                onPlayTrack = { track ->
-                    audioEngine.addDeviceTrack(track)
-                    audioEngine.playTrack(track)
-                    isSingToSearchOpen = false
-                    isPlayerExpanded = true
-                },
-                onDismiss = {
-                    isSingToSearchOpen = false
                 }
             )
         }
