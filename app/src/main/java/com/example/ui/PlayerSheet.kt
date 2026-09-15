@@ -200,6 +200,7 @@ fun PlayerSheet(
                     runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
                 } else null
             val extractedColors = ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+            ArtworkColorExtractor.putCachedPalette(track.id, extractedColors)
             withContext(Dispatchers.Main) {
                 resolvedArtworkBitmap = bitmap
                 themeColors = extractedColors

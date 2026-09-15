@@ -32,16 +32,37 @@ data class TrackThemeColors(
 
 object ArtworkColorExtractor {
 
+    private val paletteCache = android.util.LruCache<String, TrackThemeColors>(100)
+    private val bitmapCache = android.util.LruCache<String, Bitmap>(40)
+
+    fun getCachedPalette(trackId: String): TrackThemeColors? {
+        return paletteCache.get(trackId)
+    }
+
+    fun putCachedPalette(trackId: String, colors: TrackThemeColors) {
+        paletteCache.put(trackId, colors)
+    }
+
     fun extractColors(context: Context, track: Track): TrackThemeColors {
+        paletteCache.get(track.id)?.let { return it }
         val bitmap = resolveTrackBitmap(context, track)
-        return extractColorsFromBitmap(bitmap)
+        val colors = extractColorsFromBitmap(bitmap)
+        paletteCache.put(track.id, colors)
+        return colors
     }
 
     /**
      * Resolves the artwork bitmap used both by color extraction and Android media metadata.
      */
     fun resolveTrackBitmap(context: Context, track: Track): Bitmap? {
-        return loadThumbnailBitmap(context, track)
+        val cacheKey = track.artworkUri ?: track.contentUri ?: "res_${track.coverResId}_${track.id}"
+        bitmapCache.get(cacheKey)?.let { return it }
+
+        val loaded = loadThumbnailBitmap(context, track)
+        if (loaded != null) {
+            bitmapCache.put(cacheKey, loaded)
+        }
+        return loaded
     }
 
     /**
