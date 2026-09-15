@@ -37,13 +37,19 @@ data class HumMatchResult(
     val matchPercentage: Int = 0,
     val matchedSnippet: String = "",
     val isrc: String = "",
-    val track: Track? = null
+    val track: Track? = null,
+    val artworkUrl: String? = null,
+    val spotifyUrl: String? = null,
+    val appleMusicUrl: String? = null,
+    val youtubeMusicUrl: String? = null,
+    val audiomackUrl: String? = null
 ) {
-    val spotifyUri: String get() = "spotify:search:${Uri.encode("$artist $title")}"
-    val spotifyWebUrl: String get() = "https://open.spotify.com/search/${Uri.encode("$artist $title")}"
-    val audiomackUrl: String get() = "https://audiomack.com/search?q=${Uri.encode("$artist $title")}"
-    val youtubeMusicUrl: String get() = "https://music.youtube.com/search?q=${Uri.encode("$artist $title")}"
-    val appleMusicUrl: String get() = "https://music.apple.com/us/search?term=${Uri.encode("$artist $title")}"
+    private val searchQuery: String get() = Uri.encode("$artist $title")
+    val spotifyUri: String get() = "spotify:search:$searchQuery"
+    val spotifyWebUrl: String get() = spotifyUrl ?: "https://open.spotify.com/search/$searchQuery"
+    val audiomackUrlResolved: String get() = audiomackUrl ?: "https://audiomack.com/search?q=$searchQuery"
+    val youtubeMusicUrlResolved: String get() = youtubeMusicUrl ?: "https://music.youtube.com/search?q=$searchQuery"
+    val appleMusicUrlResolved: String get() = appleMusicUrl ?: "https://music.apple.com/us/search?term=$searchQuery"
 }
 
 sealed class HumRecognitionState {
@@ -229,7 +235,12 @@ class HummingRecognitionEngine(
             matchPercentage = song.confidence,
             matchedSnippet = "Matched by Velvet's remote music recognition service",
             isrc = song.isrc.orEmpty(),
-            track = track
+            track = track,
+            artworkUrl = song.artworkUrl,
+            spotifyUrl = song.spotifyUrl,
+            appleMusicUrl = song.appleMusicUrl,
+            youtubeMusicUrl = song.youtubeMusicUrl,
+            audiomackUrl = song.audiomackUrl
         )
     }
 
