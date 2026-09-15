@@ -220,14 +220,10 @@ class VelvetAudioEngine(
         _playbackPositionMs.value = 0L
 
         if (updateQueue) {
+            // Selecting a track must never reorder the visible queue.
             val current = _activeQueue.value
-            val existingIndex = current.indexOfFirst { it.id == track.id }
-            if (existingIndex >= 0) {
-                // Rotate queue so selected track becomes index 0, and upcoming tracks follow
-                _activeQueue.value = current.drop(existingIndex) + current.take(existingIndex)
-            } else {
-                val all = getAllAvailableTracks().filterNot { it.id == track.id }
-                _activeQueue.value = listOf(track) + all
+            if (current.none { it.id == track.id }) {
+                _activeQueue.value = current + track
             }
         }
 

@@ -233,17 +233,11 @@ fun PlayerSheet(
 
     // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
     // YouTube Music Hierarchy: Index 0 is currently playing track, Index 1 is Up Next, etc.
+    // Preserve the queue's physical order. Selecting a track must not move it to the top.
     val queueItems = remember(queueTracks, track.id) {
         val raw = if (queueTracks.isNotEmpty()) queueTracks.distinctBy { it.id }
         else com.example.model.SampleData.starterTracks.distinctBy { it.id }
-        val trackIndex = raw.indexOfFirst { it.id == track.id }
-        if (trackIndex > 0) {
-            raw.drop(trackIndex) + raw.take(trackIndex)
-        } else if (trackIndex == -1) {
-            listOf(track) + raw
-        } else {
-            raw
-        }
+        if (raw.any { it.id == track.id }) raw else raw + track
     }
     var orderedQueueItems by remember(queueItems) { mutableStateOf(queueItems) }
     val queueListState = rememberLazyListState()
@@ -259,8 +253,8 @@ fun PlayerSheet(
         }
     }
 
-    fun beginQueueDrag(id: String, index: Int, canDrag: Boolean) {
-        if (!canDrag || index <= 0 || activeQueueDragId != null) return
+    fun beginQueueDrag(id: String, index: Int, canDrag: Boolean = true) {
+        if (!canDrag || index < 0 || activeQueueDragId != null) return
         activeQueueDragId = id
         activeQueueDragIndex = index
         queueDragOffsetY = 0f
@@ -273,20 +267,17 @@ fun PlayerSheet(
         queueDragOffsetY += deltaY
         val step = with(queueDragDensity) { 64.dp.toPx() }
         val raw = activeQueueDragIndex + (queueDragOffsetY / step).roundToInt()
-        queueDragTargetIndex = raw.coerceIn(1, orderedQueueItems.lastIndex.coerceAtLeast(1))
+        queueDragTargetIndex = raw.coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
     }
 
     fun finishQueueDrag() {
         val from = activeQueueDragIndex
         val to = queueDragTargetIndex
-        if (activeQueueDragId != null && from >= 1 && to >= 1 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
-            // 1. Update Kotlin UI List State
+        if (activeQueueDragId != null && from >= 0 && to >= 0 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
             val updatedQueue = orderedQueueItems.toMutableList().apply {
                 add(to, removeAt(from))
             }
             orderedQueueItems = updatedQueue
-
-            // 2. Sync directly with Audio Engine
             onReorderQueue?.invoke(from, to)
             onUpdateQueue?.invoke(updatedQueue)
         }
@@ -980,14 +971,14 @@ fun PlayerSheet(
                         Column {
                             Text(
                                 text = "Playing from",
-                                fontSize = 10.5.sp,
-                                letterSpacing = 1.sp,
+                                fontSize = 9.5.sp,
+                                letterSpacing = 0.7.sp,
                                 color = Color.White.copy(alpha = 0.50f),
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
                                 text = if (track.catalogSource.isNotBlank()) track.catalogSource else "Queue",
-                                fontSize = 15.sp,
+                                fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
@@ -1028,35 +1019,6 @@ fun PlayerSheet(
             // Scrollable Queue List inside the SAME surface (interactive when reached stage 1)
             if (p > 0.40f) {
                 val listAlpha = ((p - 0.40f) / 0.40f).coerceIn(0f, 1f)
-                var selectedQueueFilter by remember { mutableStateOf("All") }
-                val queueFilterChips = remember { listOf("All", "Familiar", "Popular", "Discover", "Deep cuts") }
-
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .graphicsLayer { alpha = listAlpha }
-                        .padding(bottom = 6.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(queueFilterChips) { chip ->
-                        val isSelected = chip == selectedQueueFilter
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.08f))
-                                .clickable { selectedQueueFilter = chip }
-                                .padding(horizontal = 14.dp, vertical = 7.dp)
-                        ) {
-                            Text(
-                                text = chip,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (isSelected) Color.Black else Color.White
-                            )
-                        }
-                    }
-                }
 
                 LazyColumn(
                     state = queueListState,
@@ -1101,7 +1063,7 @@ fun PlayerSheet(
                                     onUpdateQueue?.invoke(updated)
                                 }
                             },
-                            onDragStart = { beginQueueDrag(queueTrack.id, queueIndex, !isCurrent) },
+                            onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
                             onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
                             onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
                             isDragging = isDragging,
@@ -1225,9 +1187,9 @@ private fun UpNextTrackRow(
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val thresholdPx = with(density) { 90.dp.toPx() }
-    val dismissPx = with(density) { 600.dp.toPx() }
+    val swipeLimitPx = with(density) { 600.dp.toPx() }
 
-    val isSwiping = swipeOffset < -1f
+    val isSwiping = abs(swipeOffset) > 1f
     val isPastThreshold = abs(swipeOffset) >= thresholdPx
 
     // Trigger haptic vibration when threshold is crossed into deletion mode
@@ -1241,10 +1203,14 @@ private fun UpNextTrackRow(
     }
 
     // Dynamic background transition from dark ash (#16181A) to deep deletion red (#D32F2F)
-    val bgColor by animateColorAsState(
-        targetValue = if (isPastThreshold) Color(0xFFD32F2F) else Color(0xFF16181A),
+    val actionBackground by animateColorAsState(
+        targetValue = when {
+            swipeOffset > 1f -> accentColor.copy(alpha = 0.32f).compositeOver(surfaceColor)
+            swipeOffset < -1f -> Color(0xFFD32F2F)
+            else -> surfaceColor
+        },
         animationSpec = tween(150),
-        label = "SwipeRedBackground"
+        label = "SwipeActionBackground"
     )
 
     val displacement by animateFloatAsState(
@@ -1261,12 +1227,11 @@ private fun UpNextTrackRow(
     // Active Item Highlight:
     // Remove the hardcoded gray block from the active track row.
     // For the currently playing track, use a slightly brighter variant of extracted artwork color composited over dark background
-    val activeRowBg = if (isCurrent) {
-        accentColor.copy(alpha = 0.18f).compositeOver(Color(0xFF101215))
-    } else if (isDragging || isDropTarget) {
-        Color(0xFF1F2227)
-    } else {
-        Color(0xFF0F1113) // Continuous solid dark surface, prevents background bleed
+    val rowAccent = track.dominantColor
+    val activeRowBg = when {
+        isDragging || isDropTarget -> rowAccent.copy(alpha = 0.28f).compositeOver(surfaceColor)
+        isCurrent -> rowAccent.copy(alpha = 0.22f).compositeOver(surfaceColor)
+        else -> rowAccent.copy(alpha = 0.10f).compositeOver(surfaceColor)
     }
 
     // Full-Bleed Surface Layer: Spans 100% width, no rounded card wrapper, no list margin
@@ -1285,19 +1250,33 @@ private fun UpNextTrackRow(
         // Step 1: Background Reveal Stack
         // Sits strictly on background layer BEHIND the row, revealed only during swipe
         if (isSwiping && !isCurrent) {
+            val showingUpNext = swipeOffset > 1f
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(bgColor)
-                    .padding(end = 20.dp), // Trash icon pinned near right edge
-                contentAlignment = Alignment.CenterEnd
+                    .background(actionBackground),
+                contentAlignment = if (showingUpNext) Alignment.CenterEnd else Alignment.CenterStart
             ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Remove Track",
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Icon(
+                        imageVector = if (showingUpNext) Icons.Default.QueueMusic else Icons.Default.Delete,
+                        contentDescription = if (showingUpNext) "Play Next" else "Remove Track",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    if (abs(swipeOffset) >= thresholdPx * 0.65f) {
+                        Text(
+                            text = if (showingUpNext) "Up Next" else "Remove",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    }
+                }
             }
         }
 
@@ -1325,22 +1304,25 @@ private fun UpNextTrackRow(
                             if (!crossed) {
                                 scope.launch {
                                     swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(
-                                        0f,
-                                        androidx.compose.animation.core.spring(
-                                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
-                                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
-                                        )
-                                    ) { swipeOffset = value }
+                                    swipeSettle.animateTo(0f, androidx.compose.animation.core.spring(
+                                        stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+                                    )) { swipeOffset = value }
+                                    thresholdLatched = false
+                                }
+                            } else if (releaseOffset > 0f) {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
+                                    onPlayNext()
+                                    swipeSettle.snapTo(0f)
+                                    swipeOffset = 0f
                                     thresholdLatched = false
                                 }
                             } else {
                                 scope.launch {
                                     swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(
-                                        -dismissPx,
-                                        tween(190, easing = FastOutSlowInEasing)
-                                    ) { swipeOffset = value }
+                                    swipeSettle.animateTo(-swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
                                     onDelete()
                                     swipeOffset = 0f
                                     thresholdLatched = false
@@ -1350,7 +1332,7 @@ private fun UpNextTrackRow(
                         onHorizontalDrag = { change, amount ->
                             change.consume()
                             if (!isDragging && !isCurrent) {
-                                val next = (swipeOffset + amount).coerceIn(-dismissPx, 0f)
+                                val next = (swipeOffset + amount).coerceIn(-swipeLimitPx, swipeLimitPx)
                                 swipeOffset = next
                             }
                         }
