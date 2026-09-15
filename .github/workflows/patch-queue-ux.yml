@@ -13,7 +13,7 @@ jobs:
           ref: main
           fetch-depth: 1
       - name: Patch queue behavior and visuals
-        run: python3 scripts/patch_queue_ux.py
+        run: python3 scripts/patch_queue_ux_v2.py
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
