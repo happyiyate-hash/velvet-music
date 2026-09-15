@@ -8,6 +8,12 @@ import retrofit2.http.Part
 /** Server-side recognition contract. Provider credentials stay on the server. */
 interface SongRecognitionApi {
     @Multipart
+    @POST("v1/recognition/batch")
+    suspend fun recognizeBatch(
+        @Part audio: MultipartBody.Part
+    ): BatchRecognitionResponse
+
+    @Multipart
     @POST("v1/recognition/hum")
     suspend fun recognizeHum(
         @Part audio: MultipartBody.Part
@@ -26,6 +32,18 @@ data class RecognitionResponse(
     val requestId: String? = null,
     val song: RecognizedSongDto? = null,
     val error: String? = null
+)
+
+data class BatchRecognitionResponse(
+    val success: Boolean = false,
+    val requestId: String? = null,
+    val results: BatchRecognitionResults = BatchRecognitionResults(),
+    val error: String? = null
+)
+
+data class BatchRecognitionResults(
+    val audd: RecognitionResponse = RecognitionResponse(),
+    val acrcloud: RecognitionResponse = RecognitionResponse()
 )
 
 data class RecognizedSongDto(
