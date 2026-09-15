@@ -86,13 +86,6 @@ import com.example.ui.theme.VelvetDeepCrimson
 import kotlin.math.cos
 import kotlin.math.sin
 
-/**
- * Redesigned Sing It screen.
- *
- * The important visual change is intentional: the lower atmosphere is no longer
- * a solid red water-fill. It is a layered, translucent, slowly moving red smoke
- * field with large areas of black negative space, matching Velvet's luxury look.
- */
 @Composable
 fun SingToSearchSheetV2(
     libraryTracks: List<Track>,
@@ -146,10 +139,7 @@ fun SingToSearchSheetV2(
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             val micY = maxHeight * 0.35f
 
-            AtmosphericRedRibbons(
-                amplitude = amplitude,
-                modifier = Modifier.fillMaxSize()
-            )
+            AtmosphericRedRibbons(amplitude, Modifier.fillMaxSize())
 
             if (!isMatched) {
                 Text(
@@ -191,16 +181,16 @@ fun SingToSearchSheetV2(
                 visible = isMatched,
                 enter = slideInVertically(
                     initialOffsetY = { it },
-                    animationSpec = tween(420, easing = FastOutSlowInEasing)
-                ) + fadeIn(tween(260)),
+                    animationSpec = tween(380, easing = FastOutSlowInEasing)
+                ) + fadeIn(tween(220)),
                 exit = slideOutVertically(
                     targetOffsetY = { it },
-                    animationSpec = tween(320, easing = FastOutSlowInEasing)
-                ) + fadeOut(tween(220)),
+                    animationSpec = tween(280, easing = FastOutSlowInEasing)
+                ) + fadeOut(tween(180)),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 if (matched != null) {
-                    PremiumMatchSheet(
+                    CompactPremiumMatchSheet(
                         result = matched,
                         onPlayInVelvet = {
                             val track = matched.track ?: Track(
@@ -251,10 +241,8 @@ private fun AtmosphericRedRibbons(amplitude: Float, modifier: Modifier = Modifie
     Canvas(modifier) {
         val w = size.width
         val h = size.height
-        val baseY = h * 0.79f
         val motion = smoothAmplitude * 18f
 
-        // Very soft vertical haze. It never becomes an opaque red block.
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
@@ -268,13 +256,7 @@ private fun AtmosphericRedRibbons(amplitude: Float, modifier: Modifier = Modifie
             )
         )
 
-        fun ribbon(
-            yFactor: Float,
-            heightFactor: Float,
-            opacity: Float,
-            speed: Float,
-            thickness: Float
-        ) {
+        fun ribbon(yFactor: Float, heightFactor: Float, opacity: Float, speed: Float, thickness: Float) {
             val path = Path()
             path.moveTo(-40f, h)
             val top = h * yFactor
@@ -283,12 +265,12 @@ private fun AtmosphericRedRibbons(amplitude: Float, modifier: Modifier = Modifie
                 val y = top +
                     sin(nx * 5.0f + phaseA * speed) * (h * heightFactor + motion) +
                     cos(nx * 8.0f + phaseB * speed) * (h * heightFactor * 0.45f)
-                if (x == -40) path.lineTo(x.toFloat(), y) else path.lineTo(x.toFloat(), y)
+                path.lineTo(x.toFloat(), y)
             }
             path.lineTo(w + 40f, h)
             path.close()
             drawPath(
-                path = path,
+                path,
                 brush = Brush.verticalGradient(
                     colors = listOf(
                         Color(0x00FF163C),
@@ -301,19 +283,17 @@ private fun AtmosphericRedRibbons(amplitude: Float, modifier: Modifier = Modifie
                 )
             )
             drawPath(
-                path = path,
+                path,
                 color = Color(0x22D8002B).copy(alpha = opacity),
                 style = Stroke(width = thickness)
             )
         }
 
-        // Multiple very soft ribbons. The dark gaps between them are intentional.
         ribbon(0.78f, 0.045f, 0.55f, 0.45f, 24f)
         ribbon(0.70f, 0.065f, 0.42f, 0.30f, 18f)
         ribbon(0.86f, 0.055f, 0.36f, 0.58f, 28f)
         ribbon(0.63f, 0.035f, 0.25f, 0.22f, 14f)
 
-        // Thin illuminated folds — deliberately sparse, not a solid outline.
         val highlight = Path()
         for (x in 0..w.toInt() step 8) {
             val nx = x / w
@@ -322,16 +302,8 @@ private fun AtmosphericRedRibbons(amplitude: Float, modifier: Modifier = Modifie
                 cos(nx * 7.1f + phaseB * 0.25f) * h * 0.022f
             if (x == 0) highlight.moveTo(0f, y) else highlight.lineTo(x.toFloat(), y)
         }
-        drawPath(
-            highlight,
-            color = Color(0x45FF3B5D),
-            style = Stroke(width = 3.2f, cap = StrokeCap.Round)
-        )
-        drawPath(
-            highlight,
-            color = Color(0x16FF123C),
-            style = Stroke(width = 18f, cap = StrokeCap.Round)
-        )
+        drawPath(highlight, color = Color(0x45FF3B5D), style = Stroke(width = 3.2f, cap = StrokeCap.Round))
+        drawPath(highlight, color = Color(0x16FF123C), style = Stroke(width = 18f, cap = StrokeCap.Round))
     }
 }
 
@@ -352,7 +324,7 @@ private fun ListeningVisualizer(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        VoiceBars(amplitude, mirrored = true, modifier = Modifier.width(108.dp).height(82.dp))
+        VoiceBars(amplitude, Modifier.width(108.dp).height(82.dp))
         Spacer(Modifier.width(8.dp))
         Box(
             modifier = Modifier
@@ -365,19 +337,11 @@ private fun ListeningVisualizer(
                 val base = size.minDimension * 0.34f
                 for (i in 0..2) {
                     val r = base + i * 11.dp.toPx() + pulse * 4.dp.toPx()
-                    drawCircle(
-                        color = Color(0x25FF163D),
-                        radius = r,
-                        style = Stroke(width = if (i == 0) 2.2f else 1.1f)
-                    )
+                    drawCircle(Color(0x25FF163D), r, style = Stroke(width = if (i == 0) 2.2f else 1.1f))
                 }
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0x38FF2448),
-                            Color(0x22C5002B),
-                            Color(0x05000000)
-                        )
+                        colors = listOf(Color(0x38FF2448), Color(0x22C5002B), Color(0x05000000))
                     ),
                     radius = base + 8.dp.toPx(),
                     center = center
@@ -388,20 +352,15 @@ private fun ListeningVisualizer(
                     style = Stroke(width = 2.5f)
                 )
             }
-            Icon(
-                Icons.Default.Mic,
-                contentDescription = "Microphone",
-                tint = Color(0xFFFFF5F7),
-                modifier = Modifier.size(36.dp)
-            )
+            Icon(Icons.Default.Mic, "Microphone", tint = Color(0xFFFFF5F7), modifier = Modifier.size(36.dp))
         }
         Spacer(Modifier.width(8.dp))
-        VoiceBars(amplitude, mirrored = false, modifier = Modifier.width(108.dp).height(82.dp))
+        VoiceBars(amplitude, Modifier.width(108.dp).height(82.dp))
     }
 }
 
 @Composable
-private fun VoiceBars(amplitude: Float, mirrored: Boolean, modifier: Modifier) {
+private fun VoiceBars(amplitude: Float, modifier: Modifier) {
     Canvas(modifier) {
         val count = 17
         val center = (count - 1) / 2f
@@ -411,12 +370,10 @@ private fun VoiceBars(amplitude: Float, mirrored: Boolean, modifier: Modifier) {
             val taper = 1f - distance * 0.78f
             val h = (maxHeight * taper).coerceAtLeast(3.dp.toPx())
             val x = size.width * i / (count - 1f)
-            val y1 = size.height / 2f - h / 2f
-            val y2 = size.height / 2f + h / 2f
             drawLine(
                 color = Color(0xFFFF1744).copy(alpha = 0.22f + taper * 0.65f),
-                start = Offset(x, y1),
-                end = Offset(x, y2),
+                start = Offset(x, size.height / 2f - h / 2f),
+                end = Offset(x, size.height / 2f + h / 2f),
                 strokeWidth = if (distance < 0.25f) 2.8f else 2f,
                 cap = StrokeCap.Round
             )
@@ -428,21 +385,27 @@ private fun VoiceBars(amplitude: Float, mirrored: Boolean, modifier: Modifier) {
 private fun CloseButton(bottomPadding: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(52.dp)
-            .align(Alignment.BottomCenter)
-            .offset(y = -bottomPadding)
-            .clip(CircleShape)
-            .background(Color(0x35120008))
-            .border(1.dp, Color(0x50FF3A59), CircleShape)
-            .clickable(onClick = onClick),
+            .fillMaxWidth()
+            .height(52.dp)
+            .padding(bottom = bottomPadding),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Default.Close, "Close", tint = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(20.dp))
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(Color(0x35120008))
+                .border(1.dp, Color(0x50FF3A59), CircleShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Close, "Close", tint = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(19.dp))
+        }
     }
 }
 
 @Composable
-private fun PremiumMatchSheet(
+private fun CompactPremiumMatchSheet(
     result: HumMatchResult,
     onPlayInVelvet: () -> Unit,
     onHumAnother: () -> Unit,
@@ -457,113 +420,158 @@ private fun PremiumMatchSheet(
             .clip(sheetShape)
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF17151A), Color(0xFF111014), Color(0xFF0C0B0F))
+                    listOf(Color(0xFF160B10), Color(0xFF11090D), Color(0xFF0C080B))
                 )
             )
-            .border(1.dp, Color(0x22FFFFFF), sheetShape)
-            .shadow(24.dp, sheetShape)
-            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 22.dp)
+            .border(1.dp, Color(0x20FFFFFF), sheetShape)
+            .shadow(22.dp, sheetShape)
+            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 14.dp)
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 Modifier
-                    .width(54.dp)
-                    .height(5.dp)
+                    .width(52.dp)
+                    .height(4.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0x55FFFFFF))
+                    .background(Color(0x52FFFFFF))
             )
-            Spacer(Modifier.height(20.dp))
 
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Image(
                     painter = painterResource(result.coverResId),
                     contentDescription = result.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(88.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .border(1.dp, Color(0x35FFFFFF), RoundedCornerShape(18.dp))
+                        .size(76.dp)
+                        .clip(RoundedCornerShape(15.dp))
+                        .border(1.dp, Color(0x30FFFFFF), RoundedCornerShape(15.dp))
                 )
-                Spacer(Modifier.width(16.dp))
+
+                Spacer(Modifier.width(14.dp))
+
                 Column(Modifier.weight(1f)) {
                     Text(
                         "${result.matchPercentage}% Match • Found",
-                        color = Color(0xFFFF4564),
-                        fontSize = 13.sp,
+                        color = Color(0xFFFF4262),
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.3.sp
+                        letterSpacing = 0.25.sp,
+                        maxLines = 1
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         result.title,
-                        color = Color(0xFFF8F6F8),
-                        fontSize = 22.sp,
+                        color = Color(0xFFF7F4F6),
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(Modifier.height(3.dp))
-                    Text(result.artist, color = Color(0xFFB7B2BA), fontSize = 15.sp)
-                    Text(result.album, color = Color(0xFF77727B), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        result.artist,
+                        color = Color(0xFFB8B0B5),
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        result.album,
+                        color = Color(0xFF777075),
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
+
                 Box(
-                    Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onDismiss),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onDismiss),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Close, "Close", tint = Color(0xFFAAA5AD), modifier = Modifier.size(21.dp))
+                    Icon(
+                        Icons.Default.Close,
+                        "Close",
+                        tint = Color(0xFFAAA3AA),
+                        modifier = Modifier.size(21.dp)
+                    )
                 }
             }
 
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(18.dp))
+
             Text(
-                "LISTEN ON",
-                color = Color(0xFF77727B),
-                fontSize = 11.sp,
+                "LISTEN ON STREAMING PLATFORMS",
+                color = Color(0xFF8A8289),
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.8.sp,
+                letterSpacing = 1.45.sp,
                 modifier = Modifier.align(Alignment.Start)
             )
-            Spacer(Modifier.height(12.dp))
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Top
+            ) {
                 PlatformButton("S", "Spotify", Color(0xFF1DB954)) { uriHandler.openUri(result.spotifyWebUrl) }
                 PlatformButton("", "Apple Music", Color(0xFFFF375F)) { uriHandler.openUri(result.appleMusicUrl) }
-                PlatformButton("▶", "YouTube", Color(0xFFFF1744)) { uriHandler.openUri(result.youtubeMusicUrl) }
+                PlatformButton("▶", "YouTube Music", Color(0xFFFF1744)) { uriHandler.openUri(result.youtubeMusicUrl) }
                 PlatformButton("A", "Audiomack", Color(0xFFFF9D16)) { uriHandler.openUri(result.audiomackUrl) }
             }
 
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(16.dp))
+
             Box(
-                Modifier
+                modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(17.dp))
                     .background(
                         Brush.horizontalGradient(
-                            listOf(Color(0xFFF51D45), Color(0xFFD90D35))
+                            listOf(Color(0xFFF21D45), Color(0xFFD90D35))
                         )
                     )
                     .clickable(onClick = onPlayInVelvet),
                 contentAlignment = Alignment.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(23.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Play in Velvet Music", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        "Play in Velvet Music",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(9.dp))
+
             Row(
-                Modifier
-                    .clip(RoundedCornerShape(14.dp))
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
                     .clickable(onClick = onHumAnother)
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Refresh, null, tint = Color(0xFF96919A), modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Hum or Sing Another Song", color = Color(0xFFAAA5AE), fontSize = 14.sp)
+                Icon(Icons.Default.Refresh, null, tint = Color(0xFF969097), modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    "Hum or Sing Another Song",
+                    color = Color(0xFFA8A0A7),
+                    fontSize = 13.sp
+                )
             }
         }
     }
@@ -571,23 +579,31 @@ private fun PremiumMatchSheet(
 
 @Composable
 private fun PlatformButton(label: String, name: String, color: Color, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp)) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(70.dp)
+    ) {
         Box(
-            Modifier
-                .size(54.dp)
+            modifier = Modifier
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(color.copy(alpha = 0.94f))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), CircleShape)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Text(label, color = Color.White, fontSize = if (label == "") 25.sp else 19.sp, fontWeight = FontWeight.Bold)
+            Text(
+                label,
+                color = if (label == "S") Color.Black else Color.White,
+                fontSize = if (label == "") 22.sp else 17.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
-        Spacer(Modifier.height(7.dp))
+        Spacer(Modifier.height(5.dp))
         Text(
             name,
-            color = Color(0xFFB6B1B9),
-            fontSize = 11.sp,
+            color = Color(0xFFB2ABB1),
+            fontSize = 10.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center
