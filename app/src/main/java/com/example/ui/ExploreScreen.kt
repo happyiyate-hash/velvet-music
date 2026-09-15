@@ -91,6 +91,7 @@ fun ExploreScreen(
     onTrackMenuClick: (Track) -> Unit,
     onAddTrack: ((Track) -> Unit)? = null,
     onOpenMediaDownloader: (initialUrl: String?) -> Unit = {},
+    onOpenSingToSearch: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -333,8 +334,8 @@ fun ExploreScreen(
                         RedGlassActionCard(
                             title = "Sing it",
                             icon = Icons.Default.GraphicEq,
-                            isComingSoon = true,
-                            onClick = { showComingSoonDialog = "Sing it" },
+                            isComingSoon = false,
+                            onClick = onOpenSingToSearch,
                             tag = "action_sing_it"
                         )
                     }
