@@ -91,6 +91,7 @@ fun ExploreScreen(
     onTrackMenuClick: (Track) -> Unit,
     onAddTrack: ((Track) -> Unit)? = null,
     onOpenMediaDownloader: (initialUrl: String?) -> Unit = {},
+    onOpenSingToSearch: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -333,8 +334,8 @@ fun ExploreScreen(
                         RedGlassActionCard(
                             title = "Sing it",
                             icon = Icons.Default.GraphicEq,
-                            isComingSoon = true,
-                            onClick = { showComingSoonDialog = "Sing it" },
+                            isComingSoon = false,
+                            onClick = onOpenSingToSearch,
                             tag = "action_sing_it"
                         )
                     }
@@ -502,7 +503,11 @@ fun ExploreScreen(
             }
 
             // 7. LIGHTWEIGHT RESULT ITEMS (Artwork, hierarchy, far-right menu icon, refined padding)
-            items(filteredTracks) { track ->
+            items(
+                items = filteredTracks,
+                key = { it.id },
+                contentType = { "explore_track_row" }
+            ) { track ->
                 val isCurrent = track.id == currentTrack.id
                 SearchTrackResultRow(
                     track = track,
@@ -591,6 +596,8 @@ private fun SearchTrackResultRow(
                 track = track,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
+                thumbnailSizePx = 120,
+                crossfade = false,
                 modifier = Modifier.fillMaxSize()
             )
             if (isCurrent && isPlaying) {
