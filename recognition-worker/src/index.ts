@@ -8,6 +8,7 @@ interface Env {
 type RecognitionResponse = {
   success: boolean
   confidence: number
+  requestId?: string
   song?: {
     id: string
     title: string
@@ -25,46 +26,79 @@ type RecognitionResponse = {
 }
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" }
+const PROVIDER_TIMEOUT_MS = 18_000
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const cors = {
       "access-control-allow-origin": "*",
-      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-methods": "GET, POST, OPTIONS",
       "access-control-allow-headers": "content-type",
     }
+    const requestId = crypto.randomUUID()
+    const startedAt = Date.now()
+    const url = new URL(request.url)
+    const path = url.pathname
 
-    if (request.method === "OPTIONS") return new Response(null, { headers: cors })
-    if (request.method !== "POST") return json({ success: false, confidence: 0, error: "POST required" }, 405, cors)
+    log(requestId, "REQUEST_RECEIVED", { method: request.method, path })
 
-    const path = new URL(request.url).pathname
-    const form = await request.formData()
-    const audio = form.get("audio")
-    if (!(audio instanceof File)) {
-      return json({ success: false, confidence: 0, error: "Missing audio file" }, 400, cors)
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: cors })
     }
 
-    // Keep the mobile capture bounded. The Android client normally sends ~256 KB for 8s WAV.
-    if (audio.size > 5_000_000) {
-      return json({ success: false, confidence: 0, error: "Audio file is too large" }, 413, cors)
+    if (request.method === "GET" && path === "/health") {
+      log(requestId, "HEALTH_OK", { elapsedMs: Date.now() - startedAt })
+      return json({ ok: true, service: "velvet-recognition", requestId }, 200, cors, requestId)
+    }
+
+    if (request.method !== "POST") {
+      return json({ success: false, confidence: 0, requestId, error: "POST required" }, 405, cors, requestId)
+    }
+
+    if (!path.endsWith("/hum") && !path.endsWith("/audio")) {
+      log(requestId, "INVALID_ENDPOINT", { path })
+      return json({ success: false, confidence: 0, requestId, error: "Unknown recognition endpoint" }, 404, cors, requestId)
     }
 
     try {
-      const result = path.endsWith("/hum")
-        ? await recognizeHumming(audio, env)
-        : path.endsWith("/audio")
-          ? await recognizeAmbient(audio, env)
-          : { success: false, confidence: 0, error: "Unknown recognition endpoint" } satisfies RecognitionResponse
+      log(requestId, "FORM_PARSE_STARTED")
+      const form = await request.formData()
+      const audio = form.get("audio")
+      if (!(audio instanceof File)) {
+        log(requestId, "AUDIO_VALIDATION_FAILED", { reason: "missing_file" })
+        return json({ success: false, confidence: 0, requestId, error: "Missing audio file" }, 400, cors, requestId)
+      }
 
-      return json(result, result.success ? 200 : 422, cors)
+      log(requestId, "AUDIO_VALIDATED", {
+        bytes: audio.size,
+        contentType: audio.type || "unknown",
+        name: audio.name || "unknown",
+      })
+
+      if (audio.size > 5_000_000) {
+        log(requestId, "AUDIO_VALIDATION_FAILED", { reason: "too_large", bytes: audio.size })
+        return json({ success: false, confidence: 0, requestId, error: "Audio file is too large" }, 413, cors, requestId)
+      }
+
+      const result = path.endsWith("/hum")
+        ? await recognizeHumming(audio, env, requestId)
+        : await recognizeAmbient(audio, env, requestId)
+
+      const finalResult = { ...result, requestId }
+      log(requestId, result.success ? "MATCH_FOUND" : "NO_MATCH", {
+        elapsedMs: Date.now() - startedAt,
+        error: result.error,
+      })
+      return json(finalResult, result.success ? 200 : 422, cors, requestId)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Recognition provider failed"
-      return json({ success: false, confidence: 0, error: message }, 502, cors)
+      log(requestId, "REQUEST_FAILED", { elapsedMs: Date.now() - startedAt, error: message })
+      return json({ success: false, confidence: 0, requestId, error: message }, 502, cors, requestId)
     }
   },
 }
 
-async function recognizeAmbient(audio: File, env: Env): Promise<RecognitionResponse> {
+async function recognizeAmbient(audio: File, env: Env, requestId: string): Promise<RecognitionResponse> {
   if (!env.AUDD_API_TOKEN) throw new Error("AUDD_API_TOKEN is not configured")
 
   const body = new FormData()
@@ -72,17 +106,25 @@ async function recognizeAmbient(audio: File, env: Env): Promise<RecognitionRespo
   body.append("return", "apple_music,spotify")
   body.append("file", audio, audio.name || "velvet-capture.wav")
 
-  const response = await fetch("https://api.audd.io/", { method: "POST", body })
-  const data = await response.json() as any
+  log(requestId, "PROVIDER_REQUEST_STARTED", { provider: "AudD" })
+  const providerStartedAt = Date.now()
+  const response = await fetchWithTimeout("https://api.audd.io/", { method: "POST", body })
+  const data = await readJsonSafely(response)
+  log(requestId, "PROVIDER_RESPONSE_RECEIVED", {
+    provider: "AudD",
+    status: response.status,
+    elapsedMs: Date.now() - providerStartedAt,
+  })
+
   if (!response.ok || data.status !== "success") {
-    return { success: false, confidence: 0, error: data.error?.error_message || "AudD did not recognize the audio" }
+    return { success: false, confidence: 0, error: `AudD: ${data.error?.error_message || "recognition failed"}` }
   }
-  if (!data.result) return { success: false, confidence: 0, error: "No song match found" }
+  if (!data.result) return { success: false, confidence: 0, error: "AudD: no song match found" }
 
   const result = data.result
   const title = String(result.title || "").trim()
   const artist = String(result.artist || "").trim()
-  if (!title || !artist) return { success: false, confidence: 0, error: "Recognition returned incomplete metadata" }
+  if (!title || !artist) return { success: false, confidence: 0, error: "AudD: recognition returned incomplete metadata" }
 
   return {
     success: true,
@@ -103,7 +145,7 @@ async function recognizeAmbient(audio: File, env: Env): Promise<RecognitionRespo
   }
 }
 
-async function recognizeHumming(audio: File, env: Env): Promise<RecognitionResponse> {
+async function recognizeHumming(audio: File, env: Env, requestId: string): Promise<RecognitionResponse> {
   if (!env.ACRCLOUD_HOST || !env.ACRCLOUD_ACCESS_KEY || !env.ACRCLOUD_ACCESS_SECRET) {
     throw new Error("ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY and ACRCLOUD_ACCESS_SECRET are required")
   }
@@ -126,23 +168,30 @@ async function recognizeHumming(audio: File, env: Env): Promise<RecognitionRespo
   body.append("sample", audio, audio.name || "velvet-hum.wav")
 
   const host = env.ACRCLOUD_HOST.replace(/^https?:\/\//, "").replace(/\/$/, "")
-  const response = await fetch(`https://${host}${httpUri}`, { method: httpMethod, body })
-  const data = await response.json() as any
+  log(requestId, "PROVIDER_REQUEST_STARTED", { provider: "ACRCloud" })
+  const providerStartedAt = Date.now()
+  const response = await fetchWithTimeout(`https://${host}${httpUri}`, { method: httpMethod, body })
+  const data = await readJsonSafely(response)
+  log(requestId, "PROVIDER_RESPONSE_RECEIVED", {
+    provider: "ACRCloud",
+    status: response.status,
+    elapsedMs: Date.now() - providerStartedAt,
+  })
 
   if (!response.ok || data?.status?.code !== 0) {
     return {
       success: false,
       confidence: 0,
-      error: data?.status?.msg || "ACRCloud did not recognize the melody",
+      error: `ACRCloud: ${data?.status?.msg || `HTTP ${response.status}`}`,
     }
   }
 
   const candidate = data?.metadata?.humming?.[0] || data?.metadata?.music?.[0]
-  if (!candidate) return { success: false, confidence: 0, error: "No humming match found" }
+  if (!candidate) return { success: false, confidence: 0, error: "ACRCloud: no humming match found" }
 
   const title = String(candidate.title || "").trim()
   const artist = String(candidate.artists?.[0]?.name || candidate.artist || "").trim()
-  if (!title || !artist) return { success: false, confidence: 0, error: "Recognition returned incomplete metadata" }
+  if (!title || !artist) return { success: false, confidence: 0, error: "ACRCloud: recognition returned incomplete metadata" }
 
   const score = Number(candidate.score)
   const spotifyId = candidate.external_metadata?.spotify?.track?.id
@@ -171,6 +220,25 @@ async function recognizeHumming(audio: File, env: Env): Promise<RecognitionRespo
   }
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS)
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function readJsonSafely(response: Response): Promise<any> {
+  const text = await response.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { error: { error_message: text.slice(0, 300) || `HTTP ${response.status}` } }
+  }
+}
+
 async function hmacSha1Base64(secret: string, message: string): Promise<string> {
   const encoder = new TextEncoder()
   const key = await crypto.subtle.importKey(
@@ -186,9 +254,17 @@ async function hmacSha1Base64(secret: string, message: string): Promise<string> 
   return btoa(binary)
 }
 
-function json(payload: unknown, status: number, extraHeaders: Record<string, string> = {}) {
+function log(requestId: string, stage: string, details: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({ service: "velvet-recognition", requestId, stage, ...details }))
+}
+
+function json(payload: unknown, status: number, extraHeaders: Record<string, string> = {}, requestId?: string) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...JSON_HEADERS, ...extraHeaders },
+    headers: {
+      ...JSON_HEADERS,
+      ...extraHeaders,
+      ...(requestId ? { "x-velvet-request-id": requestId } : {}),
+    },
   })
 }
