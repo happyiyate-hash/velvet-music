@@ -1,0 +1,296 @@
+from pathlib import Path
+import re
+
+player = Path('app/src/main/java/com/example/ui/PlayerSheet.kt')
+s = player.read_text()
+
+old = '''    val queueItems = remember(queueTracks, track.id) {
+        val raw = if (queueTracks.isNotEmpty()) queueTracks.distinctBy { it.id }
+        else com.example.model.SampleData.starterTracks.distinctBy { it.id }
+        val trackIndex = raw.indexOfFirst { it.id == track.id }
+        if (trackIndex > 0) {
+            raw.drop(trackIndex) + raw.take(trackIndex)
+        } else if (trackIndex == -1) {
+            listOf(track) + raw
+        } else {
+            raw
+        }
+    }'''
+new = '''    // Preserve the library/queue's physical order. The currently playing track must
+    // stay exactly where the user selected it instead of jumping to the top.
+    val queueItems = remember(queueTracks, track.id) {
+        val raw = if (queueTracks.isNotEmpty()) queueTracks.distinctBy { it.id }
+        else com.example.model.SampleData.starterTracks.distinctBy { it.id }
+        if (raw.any { it.id == track.id }) raw else raw + track
+    }'''
+assert old in s, 'queueItems block not found'
+s = s.replace(old, new, 1)
+
+old = '''    fun beginQueueDrag(id: String, index: Int, canDrag: Boolean) {
+        if (!canDrag || index <= 0 || activeQueueDragId != null) return
+        activeQueueDragId = id
+        activeQueueDragIndex = index
+        queueDragOffsetY = 0f
+        queueDragTargetIndex = index
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    fun updateQueueDrag(deltaY: Float) {
+        if (activeQueueDragId == null || activeQueueDragIndex < 0) return
+        queueDragOffsetY += deltaY
+        val step = with(queueDragDensity) { 64.dp.toPx() }
+        val raw = activeQueueDragIndex + (queueDragOffsetY / step).roundToInt()
+        queueDragTargetIndex = raw.coerceIn(1, orderedQueueItems.lastIndex.coerceAtLeast(1))
+    }
+
+    fun finishQueueDrag() {
+        val from = activeQueueDragIndex
+        val to = queueDragTargetIndex
+        if (activeQueueDragId != null && from >= 1 && to >= 1 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
+            val updatedQueue = orderedQueueItems.toMutableList().apply {
+                add(to, removeAt(from))
+            }
+            orderedQueueItems = updatedQueue
+            onReorderQueue?.invoke(from, to)
+            onUpdateQueue?.invoke(updatedQueue)
+        }
+        activeQueueDragId = null
+        activeQueueDragIndex = -1
+        queueDragOffsetY = 0f
+        queueDragTargetIndex = -1
+    }'''
+new = '''    fun beginQueueDrag(id: String, index: Int, canDrag: Boolean = true) {
+        if (!canDrag || index < 0 || activeQueueDragId != null) return
+        activeQueueDragId = id
+        activeQueueDragIndex = index
+        queueDragOffsetY = 0f
+        queueDragTargetIndex = index
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    fun updateQueueDrag(deltaY: Float) {
+        if (activeQueueDragId == null || activeQueueDragIndex < 0) return
+        queueDragOffsetY += deltaY
+        val step = with(queueDragDensity) { 64.dp.toPx() }
+        val raw = activeQueueDragIndex + (queueDragOffsetY / step).roundToInt()
+        queueDragTargetIndex = raw.coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
+    }
+
+    fun finishQueueDrag() {
+        val from = activeQueueDragIndex
+        val to = queueDragTargetIndex
+        if (activeQueueDragId != null && from >= 0 && to >= 0 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
+            val updatedQueue = orderedQueueItems.toMutableList().apply {
+                add(to, removeAt(from))
+            }
+            orderedQueueItems = updatedQueue
+            onReorderQueue?.invoke(from, to)
+            onUpdateQueue?.invoke(updatedQueue)
+        }
+        activeQueueDragId = null
+        activeQueueDragIndex = -1
+        queueDragOffsetY = 0f
+        queueDragTargetIndex = -1
+    }'''
+assert old in s, 'queue drag block not found'
+s = s.replace(old, new, 1)
+
+pattern = re.compile(r'''\n                var selectedQueueFilter by remember \{ mutableStateOf\("All"\) \}.*?\n                \}\n\n                LazyColumn''', re.S | re.X)
+s2, n = pattern.subn('''\n\n                LazyColumn''', s, count=1)
+assert n == 1, 'queue filter chips block not found'
+s = s2
+
+s = s.replace('fontSize = 10.5.sp,\n                                letterSpacing = 1.sp,', 'fontSize = 9.5.sp,\n                                letterSpacing = 0.7.sp,', 1)
+s = s.replace('fontSize = 15.sp,\n                                fontWeight = FontWeight.Bold,', 'fontSize = 13.5.sp,\n                                fontWeight = FontWeight.Bold,', 1)
+
+s = s.replace('''    val thresholdPx = with(density) { 90.dp.toPx() }
+    val dismissPx = with(density) { 600.dp.toPx() }
+
+    val isSwiping = swipeOffset < -1f''', '''    val thresholdPx = with(density) { 90.dp.toPx() }
+    val swipeLimitPx = with(density) { 600.dp.toPx() }
+
+    val isSwiping = abs(swipeOffset) > 1f''', 1)
+
+old = '''    val bgColor by animateColorAsState(
+        targetValue = if (isPastThreshold) Color(0xFFD32F2F) else Color(0xFF16181A),
+        animationSpec = tween(150),
+        label = "SwipeRedBackground"
+    )'''
+new = '''    val actionBackground by animateColorAsState(
+        targetValue = when {
+            swipeOffset > 1f -> accentColor.copy(alpha = 0.32f).compositeOver(surfaceColor)
+            swipeOffset < -1f -> Color(0xFFD32F2F)
+            else -> surfaceColor
+        },
+        animationSpec = tween(150),
+        label = "SwipeActionBackground"
+    )'''
+assert old in s, 'swipe background state not found'
+s = s.replace(old, new, 1)
+
+old = '''        if (isSwiping && !isCurrent) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(bgColor)
+                    .padding(end = 20.dp), // Trash icon pinned near right edge
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Remove Track",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }'''
+new = '''        if (isSwiping && !isCurrent) {
+            val showingUpNext = swipeOffset > 1f
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(actionBackground),
+                contentAlignment = if (showingUpNext) Alignment.CenterEnd else Alignment.CenterStart
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Icon(
+                        imageVector = if (showingUpNext) Icons.Default.QueueMusic else Icons.Default.Delete,
+                        contentDescription = if (showingUpNext) "Play Next" else "Remove Track",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    if (abs(swipeOffset) >= thresholdPx * 0.65f) {
+                        Text(
+                            text = if (showingUpNext) "Up Next" else "Remove",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }'''
+assert old in s, 'swipe action background block not found'
+s = s.replace(old, new, 1)
+
+old = '''                        onDragEnd = {
+                            val releaseOffset = swipeOffset
+                            val crossed = abs(releaseOffset) >= thresholdPx
+                            if (!crossed) {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(
+                                        0f,
+                                        androidx.compose.animation.core.spring(
+                                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+                                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+                                        )
+                                    ) { swipeOffset = value }
+                                    thresholdLatched = false
+                                }
+                            } else {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(
+                                        -dismissPx,
+                                        tween(190, easing = FastOutSlowInEasing)
+                                    ) { swipeOffset = value }
+                                    onDelete()
+                                    swipeOffset = 0f
+                                    thresholdLatched = false
+                                }
+                            }
+                        },'''
+new = '''                        onDragEnd = {
+                            val releaseOffset = swipeOffset
+                            val crossed = abs(releaseOffset) >= thresholdPx
+                            if (!crossed) {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(
+                                        0f,
+                                        androidx.compose.animation.core.spring(
+                                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+                                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+                                        )
+                                    ) { swipeOffset = value }
+                                    thresholdLatched = false
+                                }
+                            } else if (releaseOffset > 0f) {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(
+                                        swipeLimitPx,
+                                        tween(190, easing = FastOutSlowInEasing)
+                                    ) { swipeOffset = value }
+                                    onPlayNext()
+                                    swipeSettle.snapTo(0f)
+                                    swipeOffset = 0f
+                                    thresholdLatched = false
+                                }
+                            } else {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(
+                                        -swipeLimitPx,
+                                        tween(190, easing = FastOutSlowInEasing)
+                                    ) { swipeOffset = value }
+                                    onDelete()
+                                    swipeOffset = 0f
+                                    thresholdLatched = false
+                                }
+                            }
+                        },'''
+assert old in s, 'swipe end block not found'
+s = s.replace(old, new, 1)
+
+s = s.replace('val next = (swipeOffset + amount).coerceIn(-dismissPx, 0f)', 'val next = (swipeOffset + amount).coerceIn(-swipeLimitPx, swipeLimitPx)', 1)
+
+old = '''    val activeRowBg = if (isCurrent) {
+        accentColor.copy(alpha = 0.18f).compositeOver(Color(0xFF101215))
+    } else if (isDragging || isDropTarget) {
+        Color(0xFF1F2227)
+    } else {
+        Color(0xFF0F1113) // Continuous solid dark surface, prevents background bleed
+    }'''
+new = '''    val rowAccent = track.dominantColor
+    val activeRowBg = when {
+        isDragging || isDropTarget -> rowAccent.copy(alpha = 0.28f).compositeOver(surfaceColor)
+        isCurrent -> rowAccent.copy(alpha = 0.22f).compositeOver(surfaceColor)
+        else -> rowAccent.copy(alpha = 0.10f).compositeOver(surfaceColor)
+    }'''
+assert old in s, 'row background block not found'
+s = s.replace(old, new, 1)
+
+s = s.replace('onDragStart = { beginQueueDrag(queueTrack.id, queueIndex, !isCurrent) }', 'onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) }', 1)
+player.write_text(s)
+
+engine = Path('app/src/main/java/com/example/audio/VelvetAudioEngine.kt')
+e = engine.read_text()
+old = '''        if (updateQueue) {
+            val current = _activeQueue.value
+            val existingIndex = current.indexOfFirst { it.id == track.id }
+            if (existingIndex >= 0) {
+                // Rotate queue so selected track becomes index 0, and upcoming tracks follow
+                _activeQueue.value = current.drop(existingIndex) + current.take(existingIndex)
+            } else {
+                val all = getAllAvailableTracks().filterNot { it.id == track.id }
+                _activeQueue.value = listOf(track) + all
+            }
+        }'''
+new = '''        if (updateQueue) {
+            // Selecting a track must never reorder the user's visible queue. Keep the track
+            // at its existing position so it can still be dragged relative to its neighbors.
+            val current = _activeQueue.value
+            if (current.none { it.id == track.id }) {
+                _activeQueue.value = current + track
+            }
+        }'''
+assert old in e, 'playTrack queue rotation block not found'
+engine.write_text(e.replace(old, new, 1))
+
+print('Queue UX patch applied successfully.')
