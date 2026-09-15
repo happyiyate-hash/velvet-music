@@ -5,13 +5,7 @@ import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
 
-/**
- * Velvet's server-side recognition contract.
- *
- * The Android app sends captured audio to Velvet's proxy. Provider credentials stay
- * on the server, where the proxy can call AudD/ACRCloud/ShazamKit-backed services
- * without ever shipping a secret inside the APK.
- */
+/** Server-side recognition contract. Provider credentials stay on the server. */
 interface SongRecognitionApi {
     @Multipart
     @POST("v1/recognition/hum")
@@ -29,6 +23,7 @@ interface SongRecognitionApi {
 data class RecognitionResponse(
     val success: Boolean = false,
     val confidence: Int = 0,
+    val requestId: String? = null,
     val song: RecognizedSongDto? = null,
     val error: String? = null
 )
