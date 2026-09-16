@@ -1054,6 +1054,9 @@ fun PlayerSheet(
                                     }
                                     orderedQueueItems = updated
                                     onUpdateQueue?.invoke(updated)
+                                    coroutineScope.launch {
+                                        queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
+                                    }
                                 }
                             },
                             onDelete = {
@@ -1192,7 +1195,7 @@ private fun UpNextTrackRow(
     val isSwiping = abs(swipeOffset) > 1f
     val isPastThreshold = abs(swipeOffset) >= thresholdPx
 
-    // Trigger haptic vibration when threshold is crossed into deletion mode
+    // Trigger haptic vibration when threshold is crossed into action mode
     LaunchedEffect(isPastThreshold) {
         if (isPastThreshold && !thresholdLatched) {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1202,16 +1205,31 @@ private fun UpNextTrackRow(
         }
     }
 
-    // Dynamic background transition from dark ash (#16181A) to deep deletion red (#D32F2F)
-    val actionBackground by animateColorAsState(
-        targetValue = when {
-            swipeOffset > 1f -> accentColor.copy(alpha = 0.32f).compositeOver(surfaceColor)
-            swipeOffset < -1f -> Color(0xFFD32F2F)
-            else -> surfaceColor
-        },
-        animationSpec = tween(150),
-        label = "SwipeActionBackground"
-    )
+    // Dynamic background transition during swipe:
+    // Pure dark (#0C0E10) at rest, smoothly transitioning to vibrant green for Play Next and vibrant red for Delete
+    val swipeProgress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
+    val pureDark = Color(0xFF0C0E10)
+    val actionBackground = when {
+        swipeOffset > 1f -> {
+            // Swipe right: Play Next -> pure dark to vibrant green
+            if (abs(swipeOffset) >= thresholdPx * 0.5f) {
+                val f = ((abs(swipeOffset) - thresholdPx * 0.5f) / (thresholdPx * 0.5f)).coerceIn(0f, 1f)
+                interpolateColor(Color(0xFF1E3A1E), Color(0xFF22C55E), f)
+            } else {
+                interpolateColor(pureDark, Color(0xFF1E3A1E), swipeProgress * 0.7f)
+            }
+        }
+        swipeOffset < -1f -> {
+            // Swipe left: Delete -> pure dark to vibrant red
+            if (abs(swipeOffset) >= thresholdPx * 0.5f) {
+                val f = ((abs(swipeOffset) - thresholdPx * 0.5f) / (thresholdPx * 0.5f)).coerceIn(0f, 1f)
+                interpolateColor(Color(0xFF3B1818), Color(0xFFDC2626), f)
+            } else {
+                interpolateColor(pureDark, Color(0xFF3B1818), swipeProgress * 0.7f)
+            }
+        }
+        else -> pureDark
+    }
 
     val displacement by animateFloatAsState(
         targetValue = virtualDisplacementY,
@@ -1221,20 +1239,20 @@ private fun UpNextTrackRow(
         ),
         label = "queue_virtual_displacement"
     )
-    val scale by animateFloatAsState(if (isDragging) 1.02f else 1f, tween(120), label = "queue_drag_scale")
-    val elevation by animateFloatAsState(if (isDragging) 8f else 0f, tween(120), label = "queue_drag_elevation")
+    val scale by animateFloatAsState(if (isDragging) 1.03f else 1f, tween(120), label = "queue_drag_scale")
+    val elevation by animateFloatAsState(if (isDragging) 10f else 0f, tween(120), label = "queue_drag_elevation")
 
     // Active Item Highlight:
-    // Remove the hardcoded gray block from the active track row.
-    // For the currently playing track, use a slightly brighter variant of extracted artwork color composited over dark background
-    val rowAccent = track.dominantColor
+    // Regular items are transparent, inheriting the player surface and exact lighting.
+    // The currently playing track has an elegant accent tint.
+    // When touched / dragged or drop target: shines brightly with high-contrast accent glow.
     val activeRowBg = when {
-        isDragging || isDropTarget -> rowAccent.copy(alpha = 0.28f).compositeOver(surfaceColor)
-        isCurrent -> rowAccent.copy(alpha = 0.22f).compositeOver(surfaceColor)
-        else -> rowAccent.copy(alpha = 0.10f).compositeOver(surfaceColor)
+        isDragging || isDropTarget -> accentColor.copy(alpha = 0.38f).compositeOver(surfaceColor)
+        isCurrent -> accentColor.copy(alpha = 0.16f).compositeOver(surfaceColor)
+        else -> Color.Transparent
     }
 
-    // Full-Bleed Surface Layer: Spans 100% width, no rounded card wrapper, no list margin
+    // Full-Bleed Surface Layer: Spans 100% width, no margin
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1245,42 +1263,58 @@ private fun UpNextTrackRow(
                 scaleY = scale
             }
             .zIndex(if (isDragging) 10f else 0f)
-            .shadow(elevation.dp, clip = false)
+            .shadow(elevation.dp, shape = RoundedCornerShape(4.dp), spotColor = accentColor, clip = false)
+            .then(
+                if (isDragging) Modifier.border(1.5.dp, accentColor.copy(alpha = 0.85f), RoundedCornerShape(4.dp))
+                else Modifier
+            )
     ) {
-        // Step 1: Background Reveal Stack
-        // Sits strictly on background layer BEHIND the row, revealed only during swipe
+        // Step 1: Background Reveal Layer - revealed during swipe behind the moving row
         if (isSwiping && !isCurrent) {
-            val showingUpNext = swipeOffset > 1f
+            val showingPlayNext = swipeOffset > 1f
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(actionBackground),
-                contentAlignment = if (showingUpNext) Alignment.CenterEnd else Alignment.CenterStart
+                contentAlignment = if (showingPlayNext) Alignment.CenterStart else Alignment.CenterEnd
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier.padding(horizontal = 22.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = if (showingUpNext) Icons.Default.QueueMusic else Icons.Default.Delete,
-                        contentDescription = if (showingUpNext) "Play Next" else "Remove Track",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    if (abs(swipeOffset) >= thresholdPx * 0.65f) {
+                    if (showingPlayNext) {
+                        Icon(
+                            imageVector = Icons.Default.QueueMusic,
+                            contentDescription = "Play Next",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
                         Text(
-                            text = if (showingUpNext) "Up Next" else "Remove",
-                            fontSize = 12.sp,
+                            text = "Play Next",
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White
+                        )
+                    } else {
+                        Text(
+                            text = "Delete",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
             }
         }
 
-        // Step 2: Track Row Content ONLY (Album art, text, drag handle - strictly NO trash icon inside)
+        // Step 2: Track Row Content
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -1324,6 +1358,7 @@ private fun UpNextTrackRow(
                                     swipeSettle.snapTo(releaseOffset)
                                     swipeSettle.animateTo(-swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
                                     onDelete()
+                                    swipeSettle.snapTo(0f)
                                     swipeOffset = 0f
                                     thresholdLatched = false
                                 }
@@ -1338,19 +1373,33 @@ private fun UpNextTrackRow(
                         }
                     )
                 }
+                .pointerInput(track.id, isDragging) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = {
+                            swipeOffset = 0f
+                            onDragStart()
+                        },
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragEnd,
+                        onDrag = { change, amount ->
+                            change.consume()
+                            onDragBy(amount.y)
+                        }
+                    )
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick
                 )
-                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), // Reaching almost edge to edge with slight spacing
+                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Album Art with sharp edges (2.dp) instead of full rounded corner
+            // Album Art with rounded corners
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(2.dp))
+                    .clip(RoundedCornerShape(4.dp))
                     .background(Color.White.copy(alpha = 0.05f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -1361,43 +1410,61 @@ private fun UpNextTrackRow(
                     thumbnailSizePx = 128,
                     crossfade = false
                 )
-                if (isCurrent && isPlaying) {
+                if (isCurrent) {
                     Box(
-                        Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)),
+                        Modifier.fillMaxSize().background(Color.Black.copy(alpha = .38f)),
                         contentAlignment = Alignment.Center
-                    ) { AnimatedPlayingBars(Color.White, Modifier.size(24.dp)) }
+                    ) {
+                        AnimatedPlayingBars(
+                            color = Color.White,
+                            modifier = Modifier.size(24.dp),
+                            isPlaying = isPlaying
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Step 3: Add Title-to-Subtitle Spacing
+            // Title and Subtitle with Live Waveform Indicator for active track
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = track.title.substringBefore(" - "),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = track.title.substringBefore(" - "),
+                        fontSize = 15.sp,
+                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (isCurrent) accentColor else Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isCurrent) {
+                        LiveWaveformIndicator(
+                            isPlaying = isPlaying,
+                            color = accentColor,
+                            modifier = Modifier.size(width = 16.dp, height = 12.dp)
+                        )
+                    }
+                }
 
-                // Spacing between Title and Subtitle line
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Text(
                     text = "${track.artist} • ${track.formattedDuration}",
                     fontSize = 13.sp,
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = if (isCurrent) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.6f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            // Drag Handle: 3 clean lines reaching almost edge to edge
+            // Drag Handle: 3 clean lines
             Box(
                 modifier = Modifier
                     .size(40.dp)
@@ -1421,7 +1488,7 @@ private fun UpNextTrackRow(
                                 .width(18.dp)
                                 .height(2.dp)
                                 .clip(RoundedCornerShape(1.dp))
-                                .background(Color.White.copy(alpha = 0.85f))
+                                .background(if (isDragging) accentColor else Color.White.copy(alpha = 0.85f))
                         )
                     }
                 }
@@ -1529,16 +1596,60 @@ fun UpNextTrackItem(
     }
 }
 
+private fun interpolateColor(start: Color, end: Color, fraction: Float): Color {
+    val f = fraction.coerceIn(0f, 1f)
+    return Color(
+        red = start.red + (end.red - start.red) * f,
+        green = start.green + (end.green - start.green) * f,
+        blue = start.blue + (end.blue - start.blue) * f,
+        alpha = start.alpha + (end.alpha - start.alpha) * f
+    )
+}
+
 @Composable
-private fun AnimatedPlayingBars(color: Color, modifier: Modifier = Modifier) {
+private fun LiveWaveformIndicator(
+    isPlaying: Boolean,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "live_waveform")
+    val a by infinite.animateFloat(0.30f, 1.0f, androidx.compose.animation.core.infiniteRepeatable(tween(380, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w1")
+    val b by infinite.animateFloat(0.85f, 0.25f, androidx.compose.animation.core.infiniteRepeatable(tween(480, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w2")
+    val c by infinite.animateFloat(0.40f, 0.95f, androidx.compose.animation.core.infiniteRepeatable(tween(340, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w3")
+    val d by infinite.animateFloat(0.75f, 0.35f, androidx.compose.animation.core.infiniteRepeatable(tween(440, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w4")
+
+    val h1 = if (isPlaying) a else 0.40f
+    val h2 = if (isPlaying) b else 0.75f
+    val h3 = if (isPlaying) c else 0.50f
+    val h4 = if (isPlaying) d else 0.35f
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Box(Modifier.width(2.5.dp).height((13f * h1).dp).clip(RoundedCornerShape(1.dp)).background(color))
+        Box(Modifier.width(2.5.dp).height((13f * h2).dp).clip(RoundedCornerShape(1.dp)).background(color))
+        Box(Modifier.width(2.5.dp).height((13f * h3).dp).clip(RoundedCornerShape(1.dp)).background(color))
+        Box(Modifier.width(2.5.dp).height((13f * h4).dp).clip(RoundedCornerShape(1.dp)).background(color))
+    }
+}
+
+@Composable
+private fun AnimatedPlayingBars(color: Color, modifier: Modifier = Modifier, isPlaying: Boolean = true) {
     val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "queue_playing")
     val a by infinite.animateFloat(.30f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar1")
     val b by infinite.animateFloat(.75f, .25f, androidx.compose.animation.core.infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar2")
     val c by infinite.animateFloat(.45f, .95f, androidx.compose.animation.core.infiniteRepeatable(tween(360, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar3")
-    Row(modifier, Arrangement.spacedBy(2.dp), Alignment.CenterVertically) {
-        Box(Modifier.width(3.dp).height((18f * a).dp).clip(RoundedCornerShape(2.dp)).background(color))
-        Box(Modifier.width(3.dp).height((18f * b).dp).clip(RoundedCornerShape(2.dp)).background(color))
-        Box(Modifier.width(3.dp).height((18f * c).dp).clip(RoundedCornerShape(2.dp)).background(color))
+
+    val h1 = if (isPlaying) a else 0.40f
+    val h2 = if (isPlaying) b else 0.75f
+    val h3 = if (isPlaying) c else 0.50f
+
+    Row(modifier, Arrangement.spacedBy(2.dp), Alignment.Bottom) {
+        Box(Modifier.width(3.dp).height((18f * h1).dp).clip(RoundedCornerShape(2.dp)).background(color))
+        Box(Modifier.width(3.dp).height((18f * h2).dp).clip(RoundedCornerShape(2.dp)).background(color))
+        Box(Modifier.width(3.dp).height((18f * h3).dp).clip(RoundedCornerShape(2.dp)).background(color))
     }
 }
 

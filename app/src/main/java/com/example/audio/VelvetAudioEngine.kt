@@ -525,19 +525,23 @@ class VelvetAudioEngine(
     }
 
     fun queueNext(track: Track) {
-        _nextQueueTrack.value = track
         val current = _activeQueue.value.filterNot { it.id == track.id }
-        if (current.isNotEmpty()) {
-            _activeQueue.value = listOf(current[0], track) + current.drop(1)
+        val playingIndex = current.indexOfFirst { it.id == _currentTrack.value.id }
+        val updated = if (playingIndex != -1) {
+            current.take(playingIndex + 1) + track + current.drop(playingIndex + 1)
+        } else if (current.isNotEmpty()) {
+            listOf(current[0], track) + current.drop(1)
         } else {
-            _activeQueue.value = listOf(track)
+            listOf(track)
         }
+        _activeQueue.value = updated
+        _nextQueueTrack.value = track
     }
 
     /**
      * Synchronizes UI drag-and-drop directly with the active playback queue.
      * When dragging an item, the active queue order is updated immediately.
-     * If shuffle was enabled, updates shuffleModeEnabled behavior so the queue order remains absolute.
+     * Preserves physical position of all items without unexpected rotation.
      */
     fun reorderQueue(fromIndex: Int, toIndex: Int) {
         if (fromIndex == toIndex) return
@@ -549,15 +553,18 @@ class VelvetAudioEngine(
         current.add(toIndex, item)
         _activeQueue.value = current
 
+        // Clear one-off queued track so explicit drag order takes full priority
+        _nextQueueTrack.value = null
+
         // 2. If shuffle is enabled, update shuffle order or sync active list
         if (_isShuffle.value) {
-            // Keeps the visual drag order prioritized as the next playback order
             _isShuffle.value = false
         }
     }
 
     fun updateQueueList(updatedQueue: List<Track>) {
         _activeQueue.value = updatedQueue
+        _nextQueueTrack.value = null
         if (_isShuffle.value) {
             _isShuffle.value = false
         }
@@ -670,19 +677,24 @@ class VelvetAudioEngine(
         val queued = _nextQueueTrack.value
         if (queued != null) {
             _nextQueueTrack.value = null
-            playTrack(queued)
+            playTrack(queued, updateQueue = false)
             return
         }
         val queue = _activeQueue.value.filterNot { _deletedTrackIds.value.contains(it.id) }
-        if (queue.size > 1) {
-            // In YouTube Music queue hierarchy:
-            // Index 0 is currently playing track, Index 1 is the immediate next track ("Up Next").
-            // When advancing, track at index 1 is played, and the queue rotates.
-            val nextTrack = queue[1]
-            val rotatedQueue = queue.drop(1) + queue.take(1)
-            _activeQueue.value = rotatedQueue
-            playTrack(nextTrack, updateQueue = false)
-            return
+        if (queue.isNotEmpty()) {
+            val currentIndex = queue.indexOfFirst { it.id == _currentTrack.value.id }
+            val nextIndex = if (currentIndex != -1 && currentIndex < queue.lastIndex) {
+                currentIndex + 1
+            } else if (_isRepeat.value || queue.size == 1) {
+                0
+            } else {
+                -1
+            }
+            if (nextIndex != -1) {
+                val nextTrack = queue[nextIndex]
+                playTrack(nextTrack, updateQueue = false)
+                return
+            }
         }
         val all = getAllAvailableTracks()
         if (all.isEmpty()) {
@@ -696,10 +708,16 @@ class VelvetAudioEngine(
 
     fun playPrevious() {
         val queue = _activeQueue.value.filterNot { _deletedTrackIds.value.contains(it.id) }
-        if (queue.size > 1) {
-            val prevTrack = queue.last()
-            val rotatedQueue = listOf(prevTrack) + queue.dropLast(1)
-            _activeQueue.value = rotatedQueue
+        if (queue.isNotEmpty()) {
+            val currentIndex = queue.indexOfFirst { it.id == _currentTrack.value.id }
+            val prevIndex = if (currentIndex > 0) {
+                currentIndex - 1
+            } else if (_isRepeat.value) {
+                queue.lastIndex
+            } else {
+                0
+            }
+            val prevTrack = queue[prevIndex]
             playTrack(prevTrack, updateQueue = false)
             return
         }
