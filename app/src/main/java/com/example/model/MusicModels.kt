@@ -30,7 +30,8 @@ data class Track(
     val playCount: Int = 0,
     val dateAddedMs: Long = System.currentTimeMillis(),
     val contentUri: String? = null,
-    val artworkUri: String? = null
+    val artworkUri: String? = null,
+    val isLossless: Boolean = false
 ) {
     val formattedDuration: String
         get() {

@@ -42,9 +42,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -86,32 +89,60 @@ fun HomeFeedScreen(
     onAddTrack: ((Track) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Two candidates for the Most Played Card: top slot and bottom slot
     val candidatePlayed = mostPlayedTracks.ifEmpty { allTracks }
     val topSlotTrack = candidatePlayed.getOrNull(0)
     val bottomSlotTrack = candidatePlayed.getOrNull(1)
+
+    var activeFilter by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("All Songs") }
+
+    val displayedTracks = androidx.compose.runtime.remember(allTracks, mostPlayedTracks, activeFilter) {
+        when (activeFilter) {
+            "Most Played" -> mostPlayedTracks.ifEmpty { allTracks }
+            "Hi-Res" -> allTracks.filter { it.isLossless || it.durationMs > 180000L }.ifEmpty { allTracks }
+            else -> allTracks
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .testTag("home_feed_screen")
     ) {
+        // Atmospheric Multi-Gradient Canvas Background
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            drawRect(color = Color(0xFF030001))
+            // Base obsidian black
+            drawRect(color = Color(0xFF040002))
+
+            // Upper crimson ambient glow
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x28FF2448),
-                        Color(0x144A000E),
-                        Color(0x06220005),
+                        Color(0x38FF2448),
+                        Color(0x1F4A000E),
+                        Color(0x0C220005),
                         Color.Transparent
                     ),
-                    center = Offset(w * 0.5f, h * 0.08f),
+                    center = Offset(w * 0.5f, h * 0.12f),
+                    radius = w * 0.78f
+                ),
+                center = Offset(w * 0.5f, h * 0.12f),
+                radius = w * 0.78f
+            )
+
+            // Mid-canvas deep wine bloom
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x224A0012),
+                        Color(0x0E240008),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.85f, h * 0.55f),
                     radius = w * 0.65f
                 ),
-                center = Offset(w * 0.5f, h * 0.08f),
+                center = Offset(w * 0.85f, h * 0.55f),
                 radius = w * 0.65f
             )
         }
@@ -120,7 +151,7 @@ fun HomeFeedScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp)
         ) {
-            // 0. Velvet Branding Header
+            // 0. Velvet Signature Branding Header
             item {
                 Column(
                     modifier = Modifier
@@ -148,38 +179,56 @@ fun HomeFeedScreen(
                 }
             }
 
-            // 1. Top Header: "Welcome back, Echo", "Home Feed", Bell, Settings, Search
+            // 1. Top Header: Title with Badge, and Glass Action Buttons
             item {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp)
-                        .padding(top = 4.dp, bottom = 6.dp)
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Welcome back, Echo",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Normal,
-                                color = BrightAshGray.copy(alpha = 0.95f)
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Home Feed",
-                                fontSize = 28.sp,
+                                text = "Music",
+                                fontSize = 26.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = VelvetTextPrimary
+                                color = Color.White
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                Color(0x44FF2448),
+                                                Color(0x224A0012)
+                                            )
+                                        )
+                                    )
+                                    .border(0.8.dp, Color(0x66FF2448), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 7.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "${allTracks.size} tracks",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFFF4D6D)
+                                )
+                            }
                         }
+                        Text(
+                            text = "Your velvet audio sanctuary",
+                            fontSize = 12.sp,
+                            color = Color(0xFF8E8E93)
+                        )
+                    }
 
-                    // Ash Glass Icon Buttons: Bell, Settings, Search
+                    // Glass Icon Buttons
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         AshGlassIconButton(
@@ -202,139 +251,216 @@ fun HomeFeedScreen(
                         )
                     }
                 }
-            }
-        }
 
-        // 2. TOP CARD: "Most Played" (Compact, minimal padding so content enlarges)
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        Color(0x33FFFFFF)
-                    )
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(22.dp))
-                    .padding(8.dp)
-                    .testTag("most_played_container")
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Most Played",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = VelvetTextPrimary
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // 2. HERO GRADIENT CARD: "Most Played / Featured Play"
+            item {
+                val cardShape = RoundedCornerShape(22.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .shadow(
+                            elevation = 16.dp,
+                            shape = cardShape,
+                            spotColor = Color(0x88FF2448),
+                            ambientColor = Color(0x444A0012)
+                        )
+                        .clip(cardShape)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xFF480012),
+                                    Color(0xFF220008),
+                                    Color(0xFF0E0004)
+                                )
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(VelvetBrightCrimson.copy(alpha = 0.22f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
+                        )
+                        .border(
+                            width = 1.2.dp,
+                            brush = Brush.horizontalGradient(
+                                listOf(
+                                    Color(0x88FF2448),
+                                    Color(0x33FFFFFF),
+                                    Color(0x66FF2448)
+                                )
+                            ),
+                            shape = cardShape
+                        )
+                        .padding(14.dp)
+                        .testTag("most_played_container")
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFFF2448))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "FREQUENTLY PLAYED",
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = VelvetBrightCrimson
+                                    color = Color(0xFFFF4D6D),
+                                    letterSpacing = 1.5.sp
+                                )
+                            }
+                            Text(
+                                text = "Velvet Engine",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.55f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (topSlotTrack != null) {
+                            val count1 = playCounts[topSlotTrack.id] ?: topSlotTrack.playCount.coerceAtLeast(1)
+                            GradientMostPlayedTrackRow(
+                                track = topSlotTrack,
+                                rank = 1,
+                                playCount = count1,
+                                isCurrent = topSlotTrack.id == currentTrack.id,
+                                isPlaying = isPlaying && topSlotTrack.id == currentTrack.id,
+                                onClick = { onSelectTrack(topSlotTrack) }
+                            )
+
+                            if (bottomSlotTrack != null) {
+                                HorizontalDivider(
+                                    color = Color(0x33FF2448),
+                                    thickness = 1.dp,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+
+                                val count2 = playCounts[bottomSlotTrack.id] ?: bottomSlotTrack.playCount.coerceAtLeast(1)
+                                GradientMostPlayedTrackRow(
+                                    track = bottomSlotTrack,
+                                    rank = 2,
+                                    playCount = count2,
+                                    isCurrent = bottomSlotTrack.id == currentTrack.id,
+                                    isPlaying = isPlaying && bottomSlotTrack.id == currentTrack.id,
+                                    onClick = { onSelectTrack(bottomSlotTrack) }
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Play music from your device to display your favorites here",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF8E8E93),
+                                    textAlign = TextAlign.Center
                                 )
                             }
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(18.dp))
+            }
 
-                    if (topSlotTrack != null) {
-                        val count1 = playCounts[topSlotTrack.id] ?: topSlotTrack.playCount.coerceAtLeast(1)
-                        // ONE MUSIC AT THE TOP
-                        CompactMostPlayedRow(
-                            track = topSlotTrack,
-                            rank = 1,
-                            playCount = count1,
-                            isCurrent = topSlotTrack.id == currentTrack.id,
-                            isPlaying = isPlaying && topSlotTrack.id == currentTrack.id,
-                            onClick = { onSelectTrack(topSlotTrack) }
-                        )
-
-                        if (bottomSlotTrack != null) {
-                            HorizontalDivider(
-                                color = Color.White.copy(alpha = 0.08f),
-                                thickness = 1.dp,
-                                modifier = Modifier.padding(vertical = 6.dp)
-                            )
-
-                            val count2 = playCounts[bottomSlotTrack.id] ?: bottomSlotTrack.playCount.coerceAtLeast(1)
-                            // ONE MUSIC AT THE BOTTOM
-                            CompactMostPlayedRow(
-                                track = bottomSlotTrack,
-                                rank = 2,
-                                playCount = count2,
-                                isCurrent = bottomSlotTrack.id == currentTrack.id,
-                                isPlaying = isPlaying && bottomSlotTrack.id == currentTrack.id,
-                                onClick = { onSelectTrack(bottomSlotTrack) }
-                            )
-                        }
-                    } else {
-                        // Empty state inside the card when device has no music
+            // 3. GRADIENT FILTER PILLS
+            item {
+                val filters = listOf("All Songs", "Most Played", "Hi-Res")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    filters.forEach { filter ->
+                        val isSelected = activeFilter == filter
+                        val pillShape = RoundedCornerShape(16.dp)
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
+                                .clip(pillShape)
+                                .background(
+                                    if (isSelected) {
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                Color(0xFFE51B3E),
+                                                Color(0xFF880018)
+                                            )
+                                        )
+                                    } else {
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                Color(0x2236000C),
+                                                Color(0x121A0005)
+                                            )
+                                        )
+                                    }
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    brush = if (isSelected) {
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                Color(0xFFFF6B8B),
+                                                Color(0x44FFFFFF)
+                                            )
+                                        )
+                                    } else {
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                Color(0x33FF2448),
+                                                Color(0x15FFFFFF)
+                                            )
+                                        )
+                                    },
+                                    shape = pillShape
+                                )
+                                .clickable { activeFilter = filter }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                text = "Play music from your device to display your favorites here",
+                                text = filter,
                                 fontSize = 12.sp,
-                                color = BrightAshGray.copy(alpha = 0.92f),
-                                textAlign = TextAlign.Center
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) Color.White else Color(0xFF8E8E93)
                             )
                         }
                     }
                 }
-            }
-        }
 
-        // 3. "All Music" (Standalone list with minimal padding)
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .padding(top = 10.dp, bottom = 4.dp)
-            ) {
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+
+            // 4. SECTION HEADER: "All Music / Plays"
+            item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "All Music",
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = VelvetTextPrimary
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "(${allTracks.size})",
-                            fontSize = 14.sp,
-                            color = BrightAshGray.copy(alpha = 0.82f)
-                        )
-                    }
+                    Text(
+                        text = if (activeFilter == "All Songs") "All Music" else activeFilter,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
 
                     if (!hasAudioPermission && onRequestPermission != null) {
                         Button(
                             onClick = { onRequestPermission() },
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = VelvetBrightCrimson,
+                                containerColor = Color(0xFFE51B3E),
                                 contentColor = Color.White
                             ),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
@@ -351,171 +477,278 @@ fun HomeFeedScreen(
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
+            }
 
-                if (allTracks.isEmpty()) {
+            // 5. GRADIENT MUSIC CARDS (Gradient Plays)
+            if (displayedTracks.isEmpty()) {
+                item {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 20.dp)
                             .clip(RoundedCornerShape(18.dp))
-                            .background(Color.White.copy(alpha = 0.03f))
-                            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp))
-                            .padding(18.dp),
+                            .background(Color(0x1F220006))
+                            .border(1.dp, Color(0x33FF2448), RoundedCornerShape(18.dp))
+                            .padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
                                 imageVector = Icons.Default.FolderOpen,
                                 contentDescription = null,
-                                tint = VelvetTextSecondary.copy(alpha = 0.6f),
+                                tint = Color(0xFFFF4D6D),
                                 modifier = Modifier.size(38.dp)
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = if (!hasAudioPermission) "Permission Required" else "No Device Music Found",
+                                text = if (!hasAudioPermission) "Permission Required" else "No Audio Files Found",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = VelvetTextPrimary
+                                color = Color.White
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = if (!hasAudioPermission)
-                                    "Allow Velvet to access your device audio files to play your music"
+                                    "Allow Velvet to access device audio files to play your music"
                                 else
-                                    "Add audio files to your device storage to automatically see them here",
+                                    "Add audio files to your device storage to see them here",
                                 fontSize = 12.sp,
-                                color = VelvetTextSecondary,
+                                color = Color(0xFF8E8E93),
                                 textAlign = TextAlign.Center
                             )
-                            if (!hasAudioPermission && onRequestPermission != null) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(
-                                    onClick = { onRequestPermission() },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = VelvetBrightCrimson)
-                                ) {
-                                    Icon(imageVector = Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Allow Music Access", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
                         }
                     }
-                } else {
-                    allTracks.forEach { track ->
-                        val isCurrent = track.id == currentTrack.id
-                        StandaloneMusicRow(
-                            track = track,
-                            isCurrent = isCurrent,
-                            isPlaying = isPlaying && isCurrent,
-                            onClick = { onSelectTrack(track) },
-                            onMenuClick = { onTrackMenuClick(track) }
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
                 }
-            }
-        }
-    }
-}
-}
-
-/**
- * Standalone music row sitting cleanly in the main background canvas:
- * - Album artwork with crisp border
- * - Clean title and artist
- * - Playing equalizer when active
- * - Clean vertical three dots (standing straight)
- */
-@Composable
-fun StandaloneMusicRow(
-    track: Track,
-    isCurrent: Boolean,
-    isPlaying: Boolean,
-    onClick: () -> Unit,
-    onMenuClick: () -> Unit
-) {
-    val cleanTitle = track.title.substringBefore(" - ")
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isCurrent) Color.White.copy(alpha = 0.04f) else Color.Transparent)
-            .clickable { onClick() }
-            .padding(vertical = 6.dp, horizontal = 4.dp)
-            .testTag("standalone_track_${track.id}"),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-                .background(Color.Transparent)
-        ) {
-            TrackArtworkImage(
-                track = track,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (isCurrent && isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.40f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = "Playing",
-                        tint = VelvetBrightCrimson,
-                        modifier = Modifier.size(22.dp)
+            } else {
+                items(displayedTracks, key = { it.id }) { track ->
+                    val isCurrent = track.id == currentTrack.id
+                    GradientMusicPlayCard(
+                        track = track,
+                        isCurrent = isCurrent,
+                        isPlaying = isPlaying && isCurrent,
+                        onClick = { onSelectTrack(track) },
+                        onMenuClick = { onTrackMenuClick(track) },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.width(14.dp))
+/**
+ * Premium Gradient Music Card (Gradient Play)
+ */
+@Composable
+fun GradientMusicPlayCard(
+    track: Track,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onMenuClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cleanTitle = track.title.substringBefore(" - ")
+    val cardShape = RoundedCornerShape(16.dp)
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = cleanTitle,
-                fontSize = 14.sp,
-                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
-                color = if (isCurrent) VelvetBrightCrimson else VelvetTextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = if (isCurrent) 8.dp else 2.dp,
+                shape = cardShape,
+                spotColor = if (isCurrent) Color(0x77FF2448) else Color(0x2248000C)
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "${track.artist} • ${track.album}",
-                fontSize = 12.sp,
-                color = BrightAshGray.copy(alpha = 0.92f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            .clip(cardShape)
+            .background(
+                if (isCurrent) {
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color(0x554A0012),
+                            Color(0x30230009),
+                            Color(0x180D0004)
+                        )
+                    )
+                } else {
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color(0x2436000C),
+                            Color(0x141A0005),
+                            Color(0x0C080002)
+                        )
+                    )
+                }
             )
-        }
-
-        // STANDING STRAIGHT VERTICAL THREE DOTS (MoreVert)
-        IconButton(
-            onClick = onMenuClick,
-            modifier = Modifier
-                .size(40.dp)
-                .testTag("track_menu_${track.id}")
+            .border(
+                width = if (isCurrent) 1.2.dp else 0.8.dp,
+                brush = if (isCurrent) {
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color(0xFFFF2448),
+                            Color(0x88FF4D6D),
+                            Color(0x44FF2448)
+                        )
+                    )
+                } else {
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color(0x44FF2448),
+                            Color(0x15FFFFFF),
+                            Color(0x22FF2448)
+                        )
+                    )
+                },
+                shape = cardShape
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .testTag("standalone_track_${track.id}"),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "Track Menu",
-                tint = VelvetTextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
+            // Artwork Container with Gradient Rim
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(
+                        1.dp,
+                        if (isCurrent) Color(0xFFFF4D6D) else Color.White.copy(alpha = 0.12f),
+                        RoundedCornerShape(12.dp)
+                    )
+            ) {
+                TrackArtworkImage(
+                    track = track,
+                    contentDescription = track.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (isCurrent && isPlaying) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = "Playing",
+                            tint = Color(0xFFFF2448),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Title, Artist, and Format Pill
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = cleanTitle,
+                    fontSize = 14.5.sp,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (isCurrent) Color(0xFFFF4D6D) else Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = track.artist,
+                        fontSize = 12.sp,
+                        color = Color(0xFF8E8E93),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "•",
+                        fontSize = 11.sp,
+                        color = Color(0xFF555555)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0x28FF2448))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = if (track.isLossless) "FLAC" else "320K",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFF4D6D)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Play / Equalizer Button
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isCurrent && isPlaying) {
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color(0xFFFF2448),
+                                    Color(0xFFB50E29)
+                                )
+                            )
+                        } else {
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color(0x3348000C),
+                                    Color(0x1F220006)
+                                )
+                            )
+                        }
+                    )
+                    .border(
+                        0.8.dp,
+                        if (isCurrent && isPlaying) Color(0xFFFF4D6D) else Color(0x33FF2448),
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isCurrent && isPlaying) Icons.Default.GraphicEq else Icons.Default.PlayArrow,
+                    contentDescription = "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // Standing straight vertical three dots
+            IconButton(
+                onClick = onMenuClick,
+                modifier = Modifier
+                    .size(36.dp)
+                    .testTag("track_menu_${track.id}")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Track Menu",
+                    tint = Color(0xFF8E8E93),
+                    modifier = Modifier.size(19.dp)
+                )
+            }
         }
     }
 }
 
+/**
+ * Top Rank Track Row inside Hero Card
+ */
 @Composable
-fun CompactMostPlayedRow(
+fun GradientMostPlayedTrackRow(
     track: Track,
     rank: Int,
     playCount: Int,
@@ -530,20 +763,20 @@ fun CompactMostPlayedRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(if (isCurrent) Color.White.copy(alpha = 0.05f) else Color.Transparent)
+            .background(if (isCurrent) Color(0x33FF2448) else Color.Transparent)
             .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
             .testTag("compact_most_played_rank_$rank"),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Compact album artwork (48.dp x 48.dp)
+        // Compact artwork (46.dp)
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(46.dp)
                 .clip(RoundedCornerShape(11.dp))
                 .border(
                     1.dp,
-                    if (isCurrent) VelvetBrightCrimson else Color.White.copy(alpha = 0.12f),
+                    if (isCurrent) Color(0xFFFF4D6D) else Color.White.copy(alpha = 0.15f),
                     RoundedCornerShape(11.dp)
                 )
         ) {
@@ -563,7 +796,7 @@ fun CompactMostPlayedRow(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "Playing",
-                        tint = VelvetBrightCrimson,
+                        tint = Color(0xFFFF2448),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -575,9 +808,9 @@ fun CompactMostPlayedRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = cleanTitle,
-                fontSize = 13.sp,
+                fontSize = 13.5.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (isCurrent) VelvetBrightCrimson else VelvetTextPrimary,
+                color = if (isCurrent) Color(0xFFFF4D6D) else Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -586,21 +819,21 @@ fun CompactMostPlayedRow(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(VelvetBrightCrimson.copy(alpha = 0.18f))
+                        .background(Color(0x33FF2448))
                         .padding(horizontal = 5.dp, vertical = 1.dp)
                 ) {
                     Text(
                         text = "TOP #$rank",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        color = VelvetBrightCrimson
+                        color = Color(0xFFFF4D6D)
                     )
                 }
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = if (playCount > 1) "Played ${playCount}x" else track.artist,
-                    fontSize = 11.sp,
-                    color = VelvetTextSecondary.copy(alpha = 0.85f),
+                    fontSize = 11.5.sp,
+                    color = Color(0xFFB0959B),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -609,23 +842,17 @@ fun CompactMostPlayedRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Curved Play Action Button
         Box(
             modifier = Modifier
                 .size(32.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (isCurrent && isPlaying) VelvetBrightCrimson else Color.White.copy(alpha = 0.08f))
-                .border(
-                    1.dp,
-                    if (isCurrent && isPlaying) VelvetBrightCrimson else Color.White.copy(alpha = 0.15f),
-                    RoundedCornerShape(10.dp)
-                ),
+                .clip(CircleShape)
+                .background(if (isCurrent && isPlaying) Color(0xFFE51B3E) else Color(0x33FFFFFF)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = if (isCurrent && isPlaying) Icons.Default.GraphicEq else Icons.Default.PlayArrow,
                 contentDescription = "Play",
-                tint = if (isCurrent && isPlaying) Color.White else VelvetTextPrimary,
+                tint = Color.White,
                 modifier = Modifier.size(16.dp)
             )
         }
@@ -643,8 +870,15 @@ fun AshGlassIconButton(
         modifier = Modifier
             .size(38.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(VelvetAshGray.copy(alpha = 0.50f))
-            .border(1.dp, VelvetCardBorder, RoundedCornerShape(12.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0x3348000C),
+                        Color(0x1F220006)
+                    )
+                )
+            )
+            .border(1.dp, Color(0x33FF2448), RoundedCornerShape(12.dp))
             .clickable { onClick() }
             .testTag(tag),
         contentAlignment = Alignment.Center
@@ -652,10 +886,27 @@ fun AshGlassIconButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = VelvetTextPrimary,
-            modifier = Modifier.size(20.dp)
+            tint = Color.White,
+            modifier = Modifier.size(19.dp)
         )
     }
+}
+
+@Composable
+fun StandaloneMusicRow(
+    track: Track,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onMenuClick: () -> Unit
+) {
+    GradientMusicPlayCard(
+        track = track,
+        isCurrent = isCurrent,
+        isPlaying = isPlaying,
+        onClick = onClick,
+        onMenuClick = onMenuClick
+    )
 }
 
 @Composable
@@ -664,13 +915,15 @@ fun RecentlyPlayedRow(
     isCurrent: Boolean,
     isPlaying: Boolean,
     onClick: () -> Unit,
-    onMenuClick: () -> Unit
+    onMenuClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    StandaloneMusicRow(
+    GradientMusicPlayCard(
         track = track,
         isCurrent = isCurrent,
         isPlaying = isPlaying,
         onClick = onClick,
-        onMenuClick = onMenuClick
+        onMenuClick = onMenuClick,
+        modifier = modifier
     )
 }

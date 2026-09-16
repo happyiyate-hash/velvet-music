@@ -63,116 +63,116 @@ fun AshGlassBottomNavigationBar(
     onSelectTab: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val pillShape = RoundedCornerShape(32.dp)
+    val topCurvedShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 6.dp)
             .shadow(
-                elevation = 18.dp,
-                shape = pillShape,
-                spotColor = Color(0x77FF2448),
-                ambientColor = Color(0x3348000C)
+                elevation = 24.dp,
+                shape = topCurvedShape,
+                spotColor = Color(0x99FF2448),
+                ambientColor = Color(0x6648000C)
             )
-            .clip(pillShape)
+            .clip(topCurvedShape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xF5180309),
-                        Color(0xFB0D0105),
-                        Color(0xFF040002)
+                        Color(0xFF24020A),
+                        Color(0xFF130005),
+                        Color(0xFF060002)
                     )
                 )
             )
             .border(
-                width = 1.dp,
+                width = 1.2.dp,
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0x28FFFFFF),
-                        Color(0x66FF2448),
-                        Color(0x28FFFFFF)
+                        Color(0x15FFFFFF),
+                        Color(0x55FF2448),
+                        Color(0xAAFFFFFF),
+                        Color(0x55FF2448),
+                        Color(0x15FFFFFF)
                     )
                 ),
-                shape = pillShape
+                shape = topCurvedShape
             )
             .testTag("ash_glass_navigation_bar"),
         contentAlignment = Alignment.Center
     ) {
+        // Ambient radial bloom and top glow
         Canvas(modifier = Modifier.matchParentSize()) {
             val w = size.width
             val h = size.height
-            // Radial bloom in center
+
+            // Center-spread crimson ambient glow
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x26FF2448),
-                        Color(0x0F48000C),
+                        Color(0x35FF2448),
+                        Color(0x1548000C),
                         Color.Transparent
                     ),
-                    center = Offset(w * 0.5f, h * 0.5f),
-                    radius = w * 0.45f
+                    center = Offset(w * 0.5f, h * 0.4f),
+                    radius = w * 0.55f
                 ),
-                center = Offset(w * 0.5f, h * 0.5f),
-                radius = w * 0.45f
+                center = Offset(w * 0.5f, h * 0.4f),
+                radius = w * 0.55f
             )
-            // Subtle top highlight reflection line
+
+            // Specular top highlight reflection line
             drawLine(
                 brush = Brush.horizontalGradient(
                     listOf(
                         Color(0x05FFFFFF),
-                        Color(0x40FFFFFF),
-                        Color(0x60FF2448),
-                        Color(0x40FFFFFF),
+                        Color(0x60FFFFFF),
+                        Color(0xFFFF4D6D),
+                        Color(0x60FFFFFF),
                         Color(0x05FFFFFF)
                     )
                 ),
-                start = Offset(16f, 1f),
-                end = Offset(w - 16f, 1f),
-                strokeWidth = 1f
+                start = Offset(24f, 1f),
+                end = Offset(w - 24f, 1f),
+                strokeWidth = 1.2f
             )
         }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp)
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 1. Search
             AshGlassNavTabItem(
-                label = "Home",
+                label = "Search",
                 isSelected = selectedTab == 0,
                 onClick = { onSelectTab(0) },
-                testTag = "nav_tab_music"
+                testTag = "nav_tab_search"
             ) { iconColor ->
-                Icon(Icons.Default.MusicNote, "Home", tint = iconColor, modifier = Modifier.size(21.dp))
+                Icon(Icons.Default.Search, "Search", tint = iconColor, modifier = Modifier.size(23.dp))
             }
+
+            // 2. Music
             AshGlassNavTabItem(
-                label = "Explore",
+                label = "Music",
                 isSelected = selectedTab == 1,
                 onClick = { onSelectTab(1) },
-                testTag = "nav_tab_explore"
+                testTag = "nav_tab_music"
             ) { iconColor ->
-                Icon(Icons.Default.Explore, "Explore", tint = iconColor, modifier = Modifier.size(21.dp))
+                Icon(Icons.Default.MusicNote, "Music", tint = iconColor, modifier = Modifier.size(23.dp))
             }
+
+            // 3. Video
             AshGlassNavTabItem(
-                label = "Library",
+                label = "Video",
                 isSelected = selectedTab == 2,
                 onClick = { onSelectTab(2) },
                 testTag = "nav_tab_videos"
             ) { iconColor ->
-                Icon(Icons.Default.VideoLibrary, "Library", tint = iconColor, modifier = Modifier.size(21.dp))
-            }
-            AshGlassNavTabItem(
-                label = "Premium",
-                isSelected = selectedTab == 3,
-                onClick = { onSelectTab(3) },
-                testTag = "nav_tab_premium"
-            ) { iconColor ->
-                Icon(Icons.Default.GraphicEq, "Premium", tint = iconColor, modifier = Modifier.size(21.dp))
+                Icon(Icons.Default.Videocam, "Video", tint = iconColor, modifier = Modifier.size(23.dp))
             }
         }
     }
@@ -187,29 +187,50 @@ private fun AshGlassNavTabItem(
     content: @Composable (iconColor: Color) -> Unit
 ) {
     val iconColor = if (isSelected) Color(0xFFFF2448) else Color(0xFF8E8E93)
-    val textColor = if (isSelected) Color(0xFFFF2448) else Color(0xFF8E8E93)
+    val textColor = if (isSelected) Color(0xFFFF4D6D) else Color(0xFF8E8E93)
+
+    val tabBgModifier = if (isSelected) {
+        Modifier.background(
+            Brush.verticalGradient(
+                listOf(
+                    Color(0x38FF2448),
+                    Color(0x1848000C)
+                )
+            )
+        )
+    } else Modifier
 
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                if (isSelected) Color(0x22FF2448) else Color.Transparent
+            .clip(RoundedCornerShape(18.dp))
+            .then(tabBgModifier)
+            .border(
+                width = if (isSelected) 1.dp else 0.dp,
+                brush = if (isSelected) {
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0x88FF4D6D),
+                            Color(0x33FF2448)
+                        )
+                    )
+                } else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)),
+                shape = RoundedCornerShape(18.dp)
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onClick() }
-            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .padding(horizontal = 22.dp, vertical = 7.dp)
             .testTag(testTag),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         content(iconColor)
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,
-            fontSize = 10.5.sp,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+            fontSize = 11.5.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             color = textColor,
             maxLines = 1
         )

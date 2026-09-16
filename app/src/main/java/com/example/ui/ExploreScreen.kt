@@ -276,24 +276,58 @@ fun ExploreScreen(
             .fillMaxSize()
             .testTag("explore_screen")
     ) {
-        // Atmospheric Canvas Background from Sing-to-Search aesthetic
+        // Atmospheric Multi-Gradient Canvas Background
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            drawRect(color = Color(0xFF030001))
+
+            // Base deep obsidian velvet
+            drawRect(color = Color(0xFF040002))
+
+            // Upper crimson ambient glow
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x38FF2448),
-                        Color(0x1F4A000E),
-                        Color(0x0C220005),
+                        Color(0x55FF2448),
+                        Color(0x33B50E29),
+                        Color(0x1848000C),
                         Color.Transparent
                     ),
-                    center = Offset(w * 0.5f, h * 0.10f),
-                    radius = w * 0.72f
+                    center = Offset(w * 0.50f, h * 0.08f),
+                    radius = w * 0.90f
                 ),
-                center = Offset(w * 0.5f, h * 0.10f),
-                radius = w * 0.72f
+                center = Offset(w * 0.50f, h * 0.08f),
+                radius = w * 0.90f
+            )
+
+            // Mid-right deep burgundy orb
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x3085001E),
+                        Color(0x123B000B),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.88f, h * 0.42f),
+                    radius = w * 0.70f
+                ),
+                center = Offset(w * 0.88f, h * 0.42f),
+                radius = w * 0.70f
+            )
+
+            // Lower-left subtle warm wine bloom
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x28600015),
+                        Color(0x0E200008),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.15f, h * 0.78f),
+                    radius = w * 0.65f
+                ),
+                center = Offset(w * 0.15f, h * 0.78f),
+                radius = w * 0.65f
             )
         }
 
@@ -781,26 +815,55 @@ fun ExploreScreen(
                     ) {
                         listOf("All", "Music", "Video").forEach { filter ->
                             val isSelected = selectedFilter == filter
+                            val pillShape = RoundedCornerShape(18.dp)
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .shadow(if (isSelected) 4.dp else 0.dp, pillShape, spotColor = Color(0x66FF2448))
+                                    .clip(pillShape)
                                     .background(
-                                        if (isSelected) Color(0xFFE51B3E)
-                                        else Color.White.copy(alpha = 0.06f)
+                                        if (isSelected) {
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color(0xFFFF2448),
+                                                    Color(0xFFB50E29)
+                                                )
+                                            )
+                                        } else {
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color(0x2848000C),
+                                                    Color(0x15220006)
+                                                )
+                                            )
+                                        }
                                     )
                                     .border(
-                                        1.dp,
-                                        if (isSelected) Color.White.copy(alpha = 0.22f) else Color.Transparent,
-                                        RoundedCornerShape(16.dp)
+                                        width = 1.dp,
+                                        brush = if (isSelected) {
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color(0x99FFFFFF),
+                                                    Color(0x66FF4D6D)
+                                                )
+                                            )
+                                        } else {
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color(0x44FF2448),
+                                                    Color(0x18FFFFFF)
+                                                )
+                                            )
+                                        },
+                                        shape = pillShape
                                     )
                                     .clickable { selectedFilter = filter }
-                                    .padding(horizontal = 14.dp, vertical = 5.dp)
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
                             ) {
                                 Text(
                                     text = filter,
                                     fontSize = 11.5.sp,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (isSelected) Color.White else VelvetTextSecondary
+                                    color = if (isSelected) Color.White else Color(0xFF8E8E93)
                                 )
                             }
                         }
@@ -889,11 +952,7 @@ fun ExploreScreen(
 }
 
 /**
- * Lightweight, refined track result row for the Search experience:
- * - [Artwork]  Song title                         ⋮
- *              Artist • Source
- * - Far-right menu action with generous touch target
- * - Reduced vertical padding, no generic heavy dark card
+ * Premium Gradient Music Play Card for the Search / Explore experience
  */
 @Composable
 private fun SearchTrackResultRow(
@@ -903,96 +962,14 @@ private fun SearchTrackResultRow(
     onClick: () -> Unit,
     onMenuClick: () -> Unit
 ) {
-    val cleanTitle = track.title.substringBefore(" - ")
-    val sourceLabel = if (track.catalogSource.isNotBlank()) track.catalogSource else track.album
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (isCurrent) Color(0xFF280C19).copy(alpha = 0.50f)
-                else Color.Transparent
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 5.dp)
-            .testTag("standalone_track_${track.id}"),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Compact Artwork
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(9.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            TrackArtworkImage(
-                track = track,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                thumbnailSizePx = 120,
-                crossfade = false,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (isCurrent && isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.45f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = "Playing",
-                        tint = VelvetBrightCrimson,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Title and Metadata with strong visual hierarchy
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(
-                text = cleanTitle,
-                fontSize = 13.5.sp,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
-                color = if (isCurrent) VelvetBrightCrimson else VelvetTextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Text(
-                text = "${track.artist} • $sourceLabel",
-                fontSize = 11.5.sp,
-                color = VelvetTextSecondary.copy(alpha = 0.75f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        // Far-right three-dot menu button
-        IconButton(
-            onClick = onMenuClick,
-            modifier = Modifier
-                .size(36.dp)
-                .testTag("track_menu_${track.id}")
-        ) {
-            Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "Track options",
-                tint = VelvetTextSecondary.copy(alpha = 0.70f),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
+    GradientMusicPlayCard(
+        track = track,
+        isCurrent = isCurrent,
+        isPlaying = isPlaying,
+        onClick = onClick,
+        onMenuClick = onMenuClick,
+        modifier = Modifier.padding(horizontal = 2.dp, vertical = 3.dp)
+    )
 }
 
 /**
