@@ -34,13 +34,15 @@ data class TrackThemeColors(
 object ArtworkColorExtractor {
 
     /**
-     * Dynamically samples the artwork of a track and extracts its dominant
-     * color palette.
+     * Dynamically samples the artwork of a track (from drawable resource or content URI)
+     * and extracts the dominant color palette so the background automatically reflects
+     * the exact mood of the song's picture:
      *
-     * Special handling:
-     * - Colorful artwork keeps the existing color extraction behavior.
-     * - Black/white or mostly grayscale artwork gets a neutral ash/charcoal
-     *   palette instead of being incorrectly converted to an unrelated hue.
+     * - Colorful artwork (blue, red, gold, green, etc.): preserves vibrant chromatic extraction
+     *   and rich atmospheric gradients.
+     * - Black, white, black-and-white, and grayscale artwork: automatically detected and styled
+     *   with an elegant, luxury ashes / smoked charcoal & silver palette, preventing incorrect
+     *   crimson or muddy fallbacks.
      */
     fun extractColors(context: Context, track: Track): TrackThemeColors {
         val bitmap = resolveTrackBitmap(context, track)
@@ -64,17 +66,19 @@ object ArtworkColorExtractor {
 
     /**
      * Extracts the theme palette from an already-resolved artwork bitmap.
+     * If the artwork is white, black, or monochrome, it returns the ashes palette.
+     * If colorful, it returns the vibrant palette.
      */
-    fun extractColorsFromBitmap(bitmap: Bitmap?, fallbackColor: Color = Color(0xFF880E2F)): TrackThemeColors {
+    fun extractColorsFromBitmap(
+        bitmap: Bitmap?,
+        fallbackColor: Color = Color(0xFF880E2F)
+    ): TrackThemeColors {
         if (bitmap != null) {
             val sampled = sampleDominantColor(bitmap)
-
             if (sampled != null) {
                 return generateThemePalette(sampled)
             }
         }
-
-        // Fallback to track's pre-configured dominant color
         return generateThemePalette(fallbackColor)
     }
 
@@ -84,26 +88,17 @@ object ArtworkColorExtractor {
     ): TrackThemeColors {
         try {
             val uri = Uri.parse(artworkUriString)
-
             val bitmap = if (uri.scheme == "file") {
-                val opts = BitmapFactory.Options().apply {
-                    inSampleSize = 4
-                }
-
+                val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
                 BitmapFactory.decodeFile(uri.path, opts)
             } else {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val opts = BitmapFactory.Options().apply {
-                        inSampleSize = 4
-                    }
-
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
                     BitmapFactory.decodeStream(stream, null, opts)
                 }
             }
-
             if (bitmap != null) {
                 val sampled = sampleDominantColor(bitmap)
-
                 if (sampled != null) {
                     return generateThemePalette(sampled)
                 }
@@ -111,7 +106,6 @@ object ArtworkColorExtractor {
         } catch (_: Exception) {
             // Graceful fallback
         }
-
         return generateThemePalette(Color(0xFF880E2F))
     }
 
@@ -120,19 +114,10 @@ object ArtworkColorExtractor {
         @DrawableRes resId: Int
     ): TrackThemeColors {
         try {
-            val options = BitmapFactory.Options().apply {
-                inSampleSize = 8
-            }
-
-            val bitmap = BitmapFactory.decodeResource(
-                context.resources,
-                resId,
-                options
-            )
-
+            val options = BitmapFactory.Options().apply { inSampleSize = 8 }
+            val bitmap = BitmapFactory.decodeResource(context.resources, resId, options)
             if (bitmap != null) {
                 val sampled = sampleDominantColor(bitmap)
-
                 if (sampled != null) {
                     return generateThemePalette(sampled)
                 }
@@ -140,7 +125,6 @@ object ArtworkColorExtractor {
         } catch (_: Exception) {
             // Graceful fallback
         }
-
         return generateThemePalette(Color(0xFF880E2F))
     }
 
@@ -151,493 +135,241 @@ object ArtworkColorExtractor {
         try {
             if (!track.artworkUri.isNullOrBlank()) {
                 val uri = Uri.parse(track.artworkUri)
-
                 if (uri.scheme == "file") {
-                    val opts = BitmapFactory.Options().apply {
-                        inSampleSize = 4
-                    }
-
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
                     return BitmapFactory.decodeFile(uri.path, opts)
                 }
-
-                context.contentResolver
-                    .openInputStream(uri)
-                    ?.use { stream ->
-                        val opts = BitmapFactory.Options().apply {
-                            inSampleSize = 4
-                        }
-
-                        return BitmapFactory.decodeStream(
-                            stream,
-                            null,
-                            opts
-                        )
-                    }
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    return BitmapFactory.decodeStream(stream, null, opts)
+                }
             } else if (track.contentUri != null) {
                 val uri = Uri.parse(track.contentUri)
-
                 val retriever = MediaMetadataRetriever()
-
                 try {
                     retriever.setDataSource(context, uri)
-
                     val raw = retriever.embeddedPicture
-
                     if (raw != null) {
-                        val options = BitmapFactory.Options().apply {
-                            inSampleSize = 4
-                        }
-
-                        return BitmapFactory.decodeByteArray(
-                            raw,
-                            0,
-                            raw.size,
-                            options
-                        )
+                        val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                        return BitmapFactory.decodeByteArray(raw, 0, raw.size, options)
                     }
                 } finally {
                     retriever.release()
                 }
             } else if (track.coverResId != 0) {
-                val options = BitmapFactory.Options().apply {
-                    inSampleSize = 8
-                }
-
-                return BitmapFactory.decodeResource(
-                    context.resources,
-                    track.coverResId,
-                    options
-                )
+                val options = BitmapFactory.Options().apply { inSampleSize = 8 }
+                return BitmapFactory.decodeResource(context.resources, track.coverResId, options)
             }
         } catch (_: Exception) {
             // Graceful fallback
         }
-
         return null
     }
 
     /**
-     * Extracts the dominant artwork color.
-     *
-     * Important:
-     * The extractor now detects grayscale/black-and-white artwork BEFORE
-     * discarding neutral pixels.
-     *
-     * This prevents artwork such as:
-     *
-     *   █████████
-     *   ░░ WHITE ░
-     *   █ BLACK █
-     *
-     * from incorrectly falling back to a random red/crimson color.
+     * Samples the dominant color of the bitmap:
+     * - Accurately detects Black & White, pure Black, pure White, and Grayscale artwork.
+     * - In that case, returns a dedicated Ash color tone matching the light/dark balance.
+     * - For colorful artwork, extracts the dominant vibrant chromatic color as before.
      */
-    private fun sampleDominantColor(bitmap: Bitmap): Color? {
+    fun sampleDominantColor(bitmap: Bitmap): Color? {
         try {
             val width = bitmap.width
             val height = bitmap.height
+            if (width <= 0 || height <= 0) return null
 
-            if (width <= 0 || height <= 0) {
-                return null
-            }
+            val stepX = max(1, width / 16)
+            val stepY = max(1, height / 16)
 
             var totalR = 0L
             var totalG = 0L
             var totalB = 0L
+            var totalValidSamples = 0
 
-            var sampleCount = 0
-
-            // Track all valid pixels so we can identify grayscale artwork.
-            var grayscaleCount = 0
+            var neutralCount = 0
             var darkCount = 0
             var lightCount = 0
-
-            var grayscaleBrightnessTotal = 0L
+            var totalBrightness = 0.0
 
             var maxVibrancy = -1f
             var vibrantColor: Color? = null
-
-            // Sample across a grid.
-            val stepX = max(1, width / 12)
-            val stepY = max(1, height / 12)
+            var chromaticCount = 0
+            var chromaticTotalR = 0L
+            var chromaticTotalG = 0L
+            var chromaticTotalB = 0L
 
             for (x in 0 until width step stepX) {
                 for (y in 0 until height step stepY) {
-
                     val pixel = bitmap.getPixel(x, y)
-
                     val a = (pixel shr 24) and 0xFF
-
-                    if (a < 128) {
-                        continue
-                    }
+                    if (a < 128) continue
 
                     val r = (pixel shr 16) and 0xFF
                     val g = (pixel shr 8) and 0xFF
                     val b = pixel and 0xFF
 
-                    val brightness =
-                        r * 0.299f +
-                        g * 0.587f +
-                        b * 0.114f
+                    val brightness = (r * 0.299f + g * 0.587f + b * 0.114f)
+                    val maxC = max(r, max(g, b))
+                    val minC = min(r, min(g, b))
+                    val channelDiff = maxC - minC
+                    val saturation = if (maxC > 0) channelDiff.toFloat() / maxC.toFloat() else 0f
 
-                    sampleCount++
+                    totalR += r
+                    totalG += g
+                    totalB += b
+                    totalBrightness += brightness
+                    totalValidSamples++
 
-                    /*
-                     * Detect grayscale.
-                     *
-                     * The channels don't need to be perfectly identical.
-                     * A tolerance of 18 allows slightly warm/cool whites,
-                     * silver, charcoal and similar neutral artwork to still
-                     * be treated as neutral.
-                     */
-                    val channelRange =
-                        max(r, max(g, b)) - min(r, min(g, b))
+                    // Grayscale / Black / White detection:
+                    // Digital B&W images and JPEGs may have slight compression noise around edges.
+                    // channelDiff <= 22 or saturation <= 0.15 indicates neutral tones.
+                    val isNeutralPixel = channelDiff <= 22 || saturation <= 0.15f ||
+                            (brightness <= 32f && channelDiff <= 26) ||
+                            (brightness >= 225f && channelDiff <= 28)
 
-                    val isGrayscale = channelRange <= 18
-
-                    if (isGrayscale) {
-                        grayscaleCount++
-                        grayscaleBrightnessTotal += brightness.toLong()
+                    if (isNeutralPixel) {
+                        neutralCount++
                     }
 
-                    if (brightness <= 45f) {
+                    if (brightness <= 48f) {
                         darkCount++
                     }
-
-                    if (brightness >= 210f) {
+                    if (brightness >= 205f) {
                         lightCount++
                     }
 
-                    /*
-                     * Preserve the original chromatic extraction.
-                     *
-                     * Near-black and near-white pixels are ignored for
-                     * COLOR extraction, because they don't provide useful hue.
-                     */
-                    if (brightness in 35.0..225.0) {
-                        totalR += r
-                        totalG += g
-                        totalB += b
-
-                        // Measure chromatic saturation/vibrancy.
-                        val maxC = max(r, max(g, b)).toFloat()
-                        val minC = min(r, min(g, b)).toFloat()
-
-                        val saturation =
-                            if (maxC > 0f) {
-                                (maxC - minC) / maxC
-                            } else {
-                                0f
-                            }
-
-                        if (
-                            saturation > maxVibrancy &&
-                            saturation > 0.22f
-                        ) {
+                    // For chromatic extraction (colorful artwork)
+                    if (brightness in 35.0..225.0 && channelDiff > 24 && saturation > 0.18f) {
+                        chromaticCount++
+                        chromaticTotalR += r
+                        chromaticTotalG += g
+                        chromaticTotalB += b
+                        if (saturation > maxVibrancy && saturation > 0.22f) {
                             maxVibrancy = saturation
-
-                            vibrantColor = Color(
-                                r,
-                                g,
-                                b
-                            )
+                            vibrantColor = Color(r, g, b)
                         }
                     }
                 }
             }
 
-            if (sampleCount <= 0) {
-                return null
+            if (totalValidSamples == 0) return null
+
+            val neutralRatio = neutralCount.toFloat() / totalValidSamples.toFloat()
+            val chromaticRatio = chromaticCount.toFloat() / totalValidSamples.toFloat()
+            val avgBrightness = (totalBrightness / totalValidSamples).toFloat()
+            val darkRatio = darkCount.toFloat() / totalValidSamples.toFloat()
+            val lightRatio = lightCount.toFloat() / totalValidSamples.toFloat()
+
+            // Detect black, white, black-and-white, or grayscale artwork:
+            // 1. Predominantly neutral (>68% neutral pixels and low chromatic ratio)
+            // 2. Overwhelmingly dark/black (>70% dark pixels and low chromatic ratio)
+            // 3. Overwhelmingly light/white (>70% light pixels and low chromatic ratio)
+            // 4. Mixed high-contrast black & white (dark + light >= 65% with neutral >= 60%)
+            // 5. Very low overall vibrancy across the entire canvas
+            val isBlackAndWhiteArtwork = (neutralRatio >= 0.68f && chromaticRatio < 0.20f) ||
+                    (darkRatio >= 0.70f && chromaticRatio < 0.15f) ||
+                    (lightRatio >= 0.70f && chromaticRatio < 0.15f) ||
+                    ((darkRatio + lightRatio) >= 0.65f && neutralRatio >= 0.60f && chromaticRatio < 0.15f) ||
+                    (maxVibrancy < 0.22f && chromaticRatio < 0.08f)
+
+            if (isBlackAndWhiteArtwork) {
+                return getAshColorForBrightness(avgBrightness, darkRatio, lightRatio)
             }
 
-            /*
-             * NEW:
-             * Detect predominantly black/white/grayscale artwork.
-             *
-             * If at least 82% of the sampled artwork is grayscale, we don't
-             * attempt to invent a hue. Instead we return an actual neutral
-             * ash tone.
-             */
-            val grayscaleRatio =
-                grayscaleCount.toFloat() / sampleCount.toFloat()
-
-            if (grayscaleRatio >= 0.82f) {
-
-                val averageGrayscaleBrightness =
-                    if (grayscaleCount > 0) {
-                        grayscaleBrightnessTotal.toFloat() /
-                            grayscaleCount.toFloat()
-                    } else {
-                        128f
-                    }
-
-                /*
-                 * Mostly black artwork:
-                 *
-                 * Use a deep ash/charcoal base.
-                 */
-                if (darkCount.toFloat() / sampleCount >= 0.55f) {
-                    return Color(0xFF707070)
-                }
-
-                /*
-                 * Mostly white artwork:
-                 *
-                 * Use a soft silver/ash base instead of pure white.
-                 * Pure white would make the generated UI too bright.
-                 */
-                if (lightCount.toFloat() / sampleCount >= 0.55f) {
-                    return Color(0xFF9A9A9A)
-                }
-
-                /*
-                 * Mixed black + white artwork.
-                 *
-                 * This is the important case for album covers containing
-                 * strong black and white sections.
-                 *
-                 * Return an ash color whose brightness follows the artwork.
-                 */
-                return when {
-                    averageGrayscaleBrightness < 85f ->
-                        Color(0xFF626262)
-
-                    averageGrayscaleBrightness < 130f ->
-                        Color(0xFF7A7A7A)
-
-                    averageGrayscaleBrightness < 175f ->
-                        Color(0xFF929292)
-
-                    else ->
-                        Color(0xFFA5A5A5)
-                }
-            }
-
-            /*
-             * EXISTING FUNCTIONALITY:
-             *
-             * If the artwork has a meaningful chromatic color, keep using
-             * the vibrant color exactly as before.
-             */
-            if (
-                vibrantColor != null &&
-                maxVibrancy > 0.28f
-            ) {
+            // Existing colorful artwork behavior:
+            if (vibrantColor != null && maxVibrancy > 0.26f) {
                 return vibrantColor
             }
 
-            /*
-             * Existing average-color fallback.
-             */
-            if (sampleCount > 0) {
-                val avgR =
-                    (totalR / sampleCount)
-                        .toInt()
-                        .coerceIn(0, 255)
-
-                val avgG =
-                    (totalG / sampleCount)
-                        .toInt()
-                        .coerceIn(0, 255)
-
-                val avgB =
-                    (totalB / sampleCount)
-                        .toInt()
-                        .coerceIn(0, 255)
-
-                /*
-                 * If the average itself is nearly grayscale, return an ash
-                 * color rather than accidentally producing a muddy hue.
-                 */
-                val averageRange =
-                    max(avgR, max(avgG, avgB)) -
-                        min(avgR, min(avgG, avgB))
-
-                if (averageRange <= 14) {
-                    val average =
-                        ((avgR + avgG + avgB) / 3)
-                            .coerceIn(45, 180)
-
-                    return Color(
-                        average,
-                        average,
-                        average
-                    )
-                }
-
-                return Color(
-                    avgR,
-                    avgG,
-                    avgB
-                )
+            if (chromaticCount > 0 && chromaticRatio >= 0.12f) {
+                val avgR = (chromaticTotalR / chromaticCount).toInt().coerceIn(0, 255)
+                val avgG = (chromaticTotalG / chromaticCount).toInt().coerceIn(0, 255)
+                val avgB = (chromaticTotalB / chromaticCount).toInt().coerceIn(0, 255)
+                return Color(avgR, avgG, avgB)
             }
+
+            val avgR = (totalR / totalValidSamples).toInt().coerceIn(0, 255)
+            val avgG = (totalG / totalValidSamples).toInt().coerceIn(0, 255)
+            val avgB = (totalB / totalValidSamples).toInt().coerceIn(0, 255)
+            val overallRange = max(avgR, max(avgG, avgB)) - min(avgR, min(avgG, avgB))
+            if (overallRange <= 22) {
+                return getAshColorForBrightness(avgBrightness, darkRatio, lightRatio)
+            }
+
+            return Color(avgR, avgG, avgB)
         } catch (_: Exception) {
             // Graceful fallback
         }
-
         return null
     }
 
-    fun generateThemePalette(
-        baseColor: Color
-    ): TrackThemeColors {
+    /**
+     * Determines the optimal ash tone representing the black / white / monochrome artwork.
+     */
+    fun getAshColorForBrightness(
+        avgBrightness: Float,
+        darkRatio: Float = 0f,
+        lightRatio: Float = 0f
+    ): Color {
+        return when {
+            darkRatio >= 0.60f || avgBrightness < 60f -> Color(0xFF636670)
+            lightRatio >= 0.60f || avgBrightness > 190f -> Color(0xFF989CA8)
+            avgBrightness < 120f -> Color(0xFF727682)
+            else -> Color(0xFF868A96)
+        }
+    }
 
+    /**
+     * Generates the comprehensive theme palette:
+     * - If baseColor is neutral, ash, black, or white: generates the neutral ashes theme.
+     * - Otherwise, generates the rich, colorful atmospheric palette as before.
+     */
+    fun generateThemePalette(baseColor: Color): TrackThemeColors {
         val hsv = FloatArray(3)
-
-        android.graphics.Color.colorToHSV(
-            baseColor.toArgb(),
-            hsv
-        )
-
+        android.graphics.Color.colorToHSV(baseColor.toArgb(), hsv)
         val hue = hsv[0]
         val originalSaturation = hsv[1]
         val brightness = hsv[2]
 
-        /*
-         * NEW:
-         * Detect neutral colors before forcing saturation.
-         *
-         * The old code did:
-         *
-         *     sat = hsv[1].coerceIn(0.45f, 0.95f)
-         *
-         * That means a gray/white/black color with almost zero saturation
-         * would be artificially turned into a strong hue.
-         *
-         * For example:
-         *
-         *     Gray -> saturation 0
-         *     0 coerced to 0.45
-         *     hue 0 -> RED
-         *
-         * That's why black/white artwork could become crimson/red.
-         */
-        val isNeutral =
-            originalSaturation <= 0.12f
+        val argb = baseColor.toArgb()
+        val r = (argb shr 16) and 0xFF
+        val g = (argb shr 8) and 0xFF
+        val b = argb and 0xFF
+        val rgbSpread = max(r, max(g, b)) - min(r, min(g, b))
+
+        // Neutral / ash / black / white check:
+        val isNeutral = originalSaturation <= 0.16f || rgbSpread <= 24
 
         if (isNeutral) {
-            return generateNeutralAshPalette(
-                brightness = brightness
-            )
+            return generateNeutralAshPalette(brightness = brightness)
         }
 
-        /*
-         * EXISTING COLORFUL-ARTWORK BEHAVIOR
-         */
-        val sat =
-            originalSaturation.coerceIn(
-                0.45f,
-                0.95f
-            )
+        // Existing colorful artwork behavior
+        val sat = originalSaturation.coerceIn(0.45f, 0.95f)
 
-        // Dominant rich color.
-        val dominant = Color.hsv(
-            hue,
-            sat,
-            0.75f
-        )
+        // Dominant rich color
+        val dominant = Color.hsv(hue, sat, 0.75f)
+        // Deep secondary moody tone
+        val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
+        // Vivid luminous accent for active waveform bars, progress bead, and active shuffle/repeat
+        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
+        // Ambient soft glow
+        val glow = Color.hsv(hue, sat, 0.88f)
 
-        // Deep secondary moody tone.
-        val secondary = Color.hsv(
-            hue,
-            (sat * 0.9f).coerceIn(
-                0.5f,
-                1f
-            ),
-            0.16f
-        )
-
-        // Vivid luminous accent.
-        val accent = Color.hsv(
-            hue,
-            (sat * 0.85f).coerceIn(
-                0.50f,
-                0.95f
-            ),
-            0.98f
-        )
-
-        // Ambient soft glow.
-        val glow = Color.hsv(
-            hue,
-            sat,
-            0.88f
-        )
-
-        // Atmospheric gradient.
-        val bgTop = Color.hsv(
-            hue,
-            (sat * 0.72f).coerceIn(
-                0.40f,
-                0.82f
-            ),
-            0.32f
-        )
-
-        val bgMidUpper = Color.hsv(
-            hue,
-            (sat * 0.65f).coerceIn(
-                0.36f,
-                0.76f
-            ),
-            0.22f
-        )
-
-        val bgMidLower = Color.hsv(
-            hue,
-            (sat * 0.60f).coerceIn(
-                0.32f,
-                0.70f
-            ),
-            0.15f
-        )
-
-        val bgBottom = Color.hsv(
-            hue,
-            (sat * 0.55f).coerceIn(
-                0.28f,
-                0.65f
-            ),
-            0.09f
-        )
+        // Atmosphere gradient
+        val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0.40f, 0.82f), 0.32f)
+        val bgMidUpper = Color.hsv(hue, (sat * 0.65f).coerceIn(0.36f, 0.76f), 0.22f)
+        val bgMidLower = Color.hsv(hue, (sat * 0.60f).coerceIn(0.32f, 0.70f), 0.15f)
+        val bgBottom = Color.hsv(hue, (sat * 0.55f).coerceIn(0.28f, 0.65f), 0.09f)
 
         val darkBackground = bgBottom
+        val atmosphericBloom = Color.hsv(hue, (sat * 0.78f).coerceIn(0.45f, 0.88f), 0.40f)
 
-        val atmosphericBloom = Color.hsv(
-            hue,
-            (sat * 0.78f).coerceIn(
-                0.45f,
-                0.88f
-            ),
-            0.40f
-        )
-
-        // Premium gradient circle.
-        val playPauseGradTop = Color.hsv(
-            hue,
-            (sat * 0.76f).coerceIn(
-                0.45f,
-                0.88f
-            ),
-            0.48f
-        )
-
-        val playPauseGradBottom = Color.hsv(
-            hue,
-            (sat * 0.85f).coerceIn(
-                0.55f,
-                0.92f
-            ),
-            0.24f
-        )
-
+        // Premium gradient circle matching the atmospheric background tones with clean depth
+        val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
+        val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
         val playPauseCircle = playPauseGradTop
-
-        val playPauseBorder = Color.hsv(
-            hue,
-            sat,
-            0.68f
-        ).copy(alpha = 0.40f)
+        val playPauseBorder = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.40f)
 
         return TrackThemeColors(
             dominant = dominant,
@@ -658,86 +390,41 @@ object ArtworkColorExtractor {
     }
 
     /**
-     * Generates a neutral luxury palette for black, white and grayscale
-     * artwork.
-     *
-     * The goal is NOT to make the UI white.
-     *
-     * Instead:
-     *
-     * Artwork:
-     *     Black + White
-     *
-     * Velvet:
-     *     Charcoal + Ash + Silver
-     *
-     * This keeps the dark luxury appearance of the app while still matching
-     * the artwork.
+     * Generates a neutral luxury "Ashes" palette for black, white, and grayscale artwork.
+     * Prevents saturated crimson / nonsense fallbacks and produces a refined smoked
+     * charcoal and silver-ash theme.
      */
-    private fun generateNeutralAshPalette(
-        brightness: Float
-    ): TrackThemeColors {
-
-        /*
-         * Keep the base dark because Velvet is a dark music interface.
-         */
+    private fun generateNeutralAshPalette(brightness: Float): TrackThemeColors {
         val dominant = when {
-            brightness < 0.25f ->
-                Color(0xFF666666)
-
-            brightness < 0.50f ->
-                Color(0xFF7A7A7A)
-
-            brightness < 0.75f ->
-                Color(0xFF909090)
-
-            else ->
-                Color(0xFFA5A5A5)
+            brightness < 0.30f -> Color(0xFF646772)
+            brightness < 0.60f -> Color(0xFF787C88)
+            brightness < 0.80f -> Color(0xFF8C909D)
+            else -> Color(0xFFA0A4B2)
         }
 
-        val secondary = Color(0xFF252525)
+        val secondary = Color(0xFF1E2024)
 
-        /*
-         * Ash/silver accent.
-         *
-         * This replaces the old behavior where HSV saturation could create
-         * a fake red/crimson accent from grayscale artwork.
-         */
         val accent = when {
-            brightness < 0.30f ->
-                Color(0xFFB0B0B0)
-
-            brightness < 0.65f ->
-                Color(0xFFC0C0C0)
-
-            else ->
-                Color(0xFFD0D0D0)
+            brightness < 0.35f -> Color(0xFFD4D6DE)
+            brightness < 0.70f -> Color(0xFFE2E4EB)
+            else -> Color(0xFFF0F1F5)
         }
 
-        val glow = Color(0xFF9E9E9E)
+        val glow = Color(0xFFA4A8B6)
 
-        /*
-         * Dark charcoal atmospheric gradient.
-         */
-        val bgTop = Color(0xFF303030)
-
-        val bgMidUpper = Color(0xFF252525)
-
-        val bgMidLower = Color(0xFF191919)
-
-        val bgBottom = Color(0xFF0D0D0D)
+        // Refined dark smoked ash gradient
+        val bgTop = Color(0xFF2C2E34)
+        val bgMidUpper = Color(0xFF202227)
+        val bgMidLower = Color(0xFF16171B)
+        val bgBottom = Color(0xFF0E0F12)
 
         val darkBackground = bgBottom
+        val atmosphericBloom = Color(0xFF383B44)
 
-        /*
-         * Soft ash bloom.
-         */
-        val atmosphericBloom = Color(0xFF3A3A3A)
-
-        val playPauseGradTop = Color(0xFF484848)
-        val playPauseGradBottom = Color(0xFF222222)
+        val playPauseGradTop = Color(0xFF484B56)
+        val playPauseGradBottom = Color(0xFF23252A)
         val playPauseCircle = playPauseGradTop
-        val playPauseBorder = Color(0xFF6E6E6E).copy(alpha = 0.40f)
+        val playPauseBorder = Color(0xFF727684).copy(alpha = 0.45f)
 
         return TrackThemeColors(
             dominant = dominant,
