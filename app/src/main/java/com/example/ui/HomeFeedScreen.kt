@@ -2,6 +2,7 @@ package com.example.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -89,41 +91,91 @@ fun HomeFeedScreen(
     val topSlotTrack = candidatePlayed.getOrNull(0)
     val bottomSlotTrack = candidatePlayed.getOrNull(1)
 
-    LazyColumn(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .testTag("home_feed_screen"),
-        contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp)
+            .testTag("home_feed_screen")
     ) {
-        // 1. Top Header: "Welcome back, Echo", "Home Feed", Bell, Settings, Search
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .padding(top = 4.dp, bottom = 6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            drawRect(color = Color(0xFF030001))
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x28FF2448),
+                        Color(0x144A000E),
+                        Color(0x06220005),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.5f, h * 0.08f),
+                    radius = w * 0.65f
+                ),
+                center = Offset(w * 0.5f, h * 0.08f),
+                radius = w * 0.65f
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp)
+        ) {
+            // 0. Velvet Branding Header
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column {
-                        Text(
-                            text = "Welcome back, Echo",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = BrightAshGray.copy(alpha = 0.95f)
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Home Feed",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = VelvetTextPrimary
-                        )
-                    }
+                    Text(
+                        text = "V E L V E T",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFFF2448),
+                        letterSpacing = 8.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "DARK.  AMBIENT.  FLUID AUDIO.",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Light,
+                        color = Color(0xFF8E8E93),
+                        letterSpacing = 2.4.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            // 1. Top Header: "Welcome back, Echo", "Home Feed", Bell, Settings, Search
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                        .padding(top = 4.dp, bottom = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Welcome back, Echo",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = BrightAshGray.copy(alpha = 0.95f)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Home Feed",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = VelvetTextPrimary
+                            )
+                        }
 
                     // Ash Glass Icon Buttons: Bell, Settings, Search
                     Row(
@@ -364,6 +416,7 @@ fun HomeFeedScreen(
             }
         }
     }
+}
 }
 
 /**

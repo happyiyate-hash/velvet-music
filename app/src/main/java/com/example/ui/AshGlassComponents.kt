@@ -21,21 +21,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -47,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.Track
 import com.example.ui.theme.VelvetBrightCrimson
+import com.example.ui.theme.VelvetLuminousCrimson
 import com.example.ui.theme.VelvetAshGrayDark
 import com.example.ui.theme.VelvetTextPrimary
 import com.example.ui.theme.VelvetTextSecondary
@@ -57,96 +63,116 @@ fun AshGlassBottomNavigationBar(
     onSelectTab: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val navBarShape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+    val pillShape = RoundedCornerShape(32.dp)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(navBarShape)
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .shadow(
+                elevation = 18.dp,
+                shape = pillShape,
+                spotColor = Color(0x77FF2448),
+                ambientColor = Color(0x3348000C)
+            )
+            .clip(pillShape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xF5180309),
+                        Color(0xFB0D0105),
+                        Color(0xFF040002)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0x28FFFFFF),
+                        Color(0x66FF2448),
+                        Color(0x28FFFFFF)
+                    )
+                ),
+                shape = pillShape
+            )
             .testTag("ash_glass_navigation_bar"),
-        contentAlignment = Alignment.BottomCenter
+        contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
             val w = size.width
             val h = size.height
-            // Use the exact main-app background as the navigation bar base.
-            // Keep the existing glass/highlight layers below untouched.
-            drawRect(color = VelvetAshGrayDark)
-            drawRect(
-                brush = Brush.verticalGradient(
+            // Radial bloom in center
+            drawCircle(
+                brush = Brush.radialGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.07f),
-                        Color(0xFFE50914).copy(alpha = 0.035f),
-                        Color.White.copy(alpha = 0.02f)
-                    )
-                )
+                        Color(0x26FF2448),
+                        Color(0x0F48000C),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.5f, h * 0.5f),
+                    radius = w * 0.45f
+                ),
+                center = Offset(w * 0.5f, h * 0.5f),
+                radius = w * 0.45f
             )
-            // Ash-gray micro-dot texture: brighter and clearly visible on the dark base,
-            // while remaining subtle enough to preserve the luxury/glass feel.
-            val dotColor1 = Color(0xFFB8B8B8).copy(alpha = 0.34f)
-            val dotColor2 = Color(0xFF8F8F8F).copy(alpha = 0.27f)
-            val stepX = 2.8f
-            val stepY = 2.8f
-            var curY = 1.2f
-            while (curY < h) {
-                var curX = 1.2f
-                while (curX < w) {
-                    drawCircle(
-                        color = if (((curX + curY).toInt() % 3) == 0) dotColor1 else dotColor2,
-                        radius = 0.35f,
-                        center = Offset(curX, curY)
-                    )
-                    curX += stepX
-                }
-                curY += stepY
-            }
+            // Subtle top highlight reflection line
             drawLine(
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0x20FFFFFF),
-                        Color(0x70FFFFFF),
-                        Color(0x70FFFFFF),
-                        Color(0x20FFFFFF)
+                        Color(0x05FFFFFF),
+                        Color(0x40FFFFFF),
+                        Color(0x60FF2448),
+                        Color(0x40FFFFFF),
+                        Color(0x05FFFFFF)
                     )
                 ),
-                start = Offset(0f, 1f),
-                end = Offset(w, 1f),
-                strokeWidth = 1.4f
+                start = Offset(16f, 1f),
+                end = Offset(w - 16f, 1f),
+                strokeWidth = 1f
             )
         }
 
-        Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AshGlassNavTabItem(
-                        isSelected = selectedTab == 0,
-                        onClick = { onSelectTab(0) },
-                        testTag = "nav_tab_music"
-                    ) { iconColor ->
-                        Icon(Icons.Default.MusicNote, "Music", tint = iconColor, modifier = Modifier.size(23.dp))
-                    }
-                    AshGlassNavTabItem(
-                        isSelected = selectedTab == 1,
-                        onClick = { onSelectTab(1) },
-                        testTag = "nav_tab_search"
-                    ) { iconColor ->
-                        Icon(Icons.Default.Search, "Search", tint = iconColor, modifier = Modifier.size(23.dp))
-                    }
-                    AshGlassNavTabItem(
-                        isSelected = selectedTab == 2,
-                        onClick = { onSelectTab(2) },
-                        testTag = "nav_tab_videos"
-                    ) { iconColor ->
-                        Icon(Icons.Default.Videocam, "Videos", tint = iconColor, modifier = Modifier.size(23.dp))
-                    }
-                }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AshGlassNavTabItem(
+                label = "Home",
+                isSelected = selectedTab == 0,
+                onClick = { onSelectTab(0) },
+                testTag = "nav_tab_music"
+            ) { iconColor ->
+                Icon(Icons.Default.MusicNote, "Home", tint = iconColor, modifier = Modifier.size(21.dp))
+            }
+            AshGlassNavTabItem(
+                label = "Explore",
+                isSelected = selectedTab == 1,
+                onClick = { onSelectTab(1) },
+                testTag = "nav_tab_explore"
+            ) { iconColor ->
+                Icon(Icons.Default.Explore, "Explore", tint = iconColor, modifier = Modifier.size(21.dp))
+            }
+            AshGlassNavTabItem(
+                label = "Library",
+                isSelected = selectedTab == 2,
+                onClick = { onSelectTab(2) },
+                testTag = "nav_tab_videos"
+            ) { iconColor ->
+                Icon(Icons.Default.VideoLibrary, "Library", tint = iconColor, modifier = Modifier.size(21.dp))
+            }
+            AshGlassNavTabItem(
+                label = "Premium",
+                isSelected = selectedTab == 3,
+                onClick = { onSelectTab(3) },
+                testTag = "nav_tab_premium"
+            ) { iconColor ->
+                Icon(Icons.Default.GraphicEq, "Premium", tint = iconColor, modifier = Modifier.size(21.dp))
             }
         }
     }
@@ -154,47 +180,39 @@ fun AshGlassBottomNavigationBar(
 
 @Composable
 private fun AshGlassNavTabItem(
+    label: String,
     isSelected: Boolean,
     onClick: () -> Unit,
     testTag: String,
     content: @Composable (iconColor: Color) -> Unit
 ) {
-    val activeAlpha by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0f,
-        animationSpec = tween(240),
-        label = "nav_active_alpha"
-    )
-    val iconColor = if (isSelected) Color(0xFFFF2E54) else Color(0xFF7A808E)
+    val iconColor = if (isSelected) Color(0xFFFF2448) else Color(0xFF8E8E93)
+    val textColor = if (isSelected) Color(0xFFFF2448) else Color(0xFF8E8E93)
 
-    Box(
+    Column(
         modifier = Modifier
-            .size(width = 54.dp, height = 44.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (isSelected) Color(0x22FF2448) else Color.Transparent
+            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onClick() }
+            .padding(horizontal = 14.dp, vertical = 6.dp)
             .testTag(testTag),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        if (activeAlpha > 0.01f) {
-            Canvas(modifier = Modifier.size(44.dp).align(Alignment.Center)) {
-                val center = Offset(size.width / 2f, size.height / 2f)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFE51D44).copy(alpha = 0.38f * activeAlpha),
-                            Color(0xFF8A0F26).copy(alpha = 0.16f * activeAlpha),
-                            Color.Transparent
-                        ),
-                        center = center,
-                        radius = 20.dp.toPx()
-                    ),
-                    center = center,
-                    radius = 20.dp.toPx()
-                )
-            }
-        }
         content(iconColor)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            fontSize = 10.5.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+            color = textColor,
+            maxLines = 1
+        )
     }
 }
 
@@ -211,32 +229,50 @@ fun AshGlassMiniPlayerBar(
         (playbackPositionMs.toFloat() / track.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
 
+    val shape = RoundedCornerShape(16.dp)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .shadow(
+                elevation = 16.dp,
+                shape = shape,
+                spotColor = Color(0x77FF2448),
+                ambientColor = Color(0x3348000C)
+            )
+            .clip(shape)
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0xFF260D19).copy(alpha = 0.94f),
-                        Color(0xFF190913).copy(alpha = 0.96f)
+                        Color(0xF5260009),
+                        Color(0xFA140005)
                     )
                 )
             )
-            .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.22f),
+                        Color(0x66FF2448),
+                        Color.White.copy(alpha = 0.12f)
+                    )
+                ),
+                shape = shape
+            )
             .clickable { onClick() }
             .testTag("mini_player_bar")
     ) {
         Column {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(0.8.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0x44FF2448), RoundedCornerShape(10.dp))
                 ) {
                     TrackArtworkImage(
                         track = track,
@@ -247,45 +283,56 @@ fun AshGlassMiniPlayerBar(
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    androidx.compose.material3.Text(
+                    Text(
                         text = track.title.substringBefore(" - "),
-                        fontSize = 12.5.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = VelvetTextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(1.dp))
-                    androidx.compose.material3.Text(
+                    Text(
                         text = track.artist,
-                        fontSize = 11.sp,
-                        color = VelvetTextSecondary.copy(alpha = 0.80f),
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF8E8E93),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(modifier = Modifier.size(32.dp).testTag("mini_player_play_pause"), onClick = onTogglePlayPause) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = VelvetBrightCrimson,
-                        modifier = Modifier.size(20.dp)
-                    )
+                IconButton(
+                    modifier = Modifier.size(36.dp).testTag("mini_player_play_pause"),
+                    onClick = onTogglePlayPause
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(15.dp))
+                            .background(Color(0xFFE51B3E)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
-                IconButton(modifier = Modifier.size(32.dp).testTag("mini_player_skip_next"), onClick = onSkipNext) {
+                IconButton(modifier = Modifier.size(34.dp).testTag("mini_player_skip_next"), onClick = onSkipNext) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next Track",
                         tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
             LinearProgressIndicator(
                 progress = { progressFraction },
-                modifier = Modifier.fillMaxWidth().height(1.5.dp),
-                color = VelvetBrightCrimson,
-                trackColor = Color.Transparent
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                color = Color(0xFFFF2448),
+                trackColor = Color(0x3348000C)
             )
         }
     }

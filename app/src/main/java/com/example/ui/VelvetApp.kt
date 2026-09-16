@@ -241,7 +241,7 @@ fun VelvetApp() {
 
                 if (isPlaying) {
                     Box(
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp, start = 8.dp, end = 8.dp)
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp, start = 12.dp, end = 12.dp)
                     ) {
                         AshGlassMiniPlayerBar(
                             track = currentTrack,
@@ -256,7 +256,13 @@ fun VelvetApp() {
 
                 AshGlassBottomNavigationBar(
                     selectedTab = selectedTab,
-                    onSelectTab = { selectedTab = it },
+                    onSelectTab = { tabIndex ->
+                        if (tabIndex == 3) {
+                            isProTierOpen = true
+                        } else {
+                            selectedTab = tabIndex
+                        }
+                    },
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }

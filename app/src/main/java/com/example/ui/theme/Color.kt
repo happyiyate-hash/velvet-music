@@ -46,3 +46,15 @@ val VelvetTextPrimary = Color(0xFFF5F6F8)
 val VelvetTextSecondary = Color(0xFFB0B5BF)
 val VelvetTextTertiary = Color(0xFF757B88)
 val VelvetBorder = Color(0x28FFFFFF)
+
+// Sync to Search / Velvet Signature Gradient Palette
+val VelvetLuminousCrimson = Color(0xFFFF2448)
+val VelvetNeonCrimson = Color(0xFFFF3355)
+val VelvetCrimsonRed = Color(0xFFE51B3E)
+val VelvetDeepCrimsonGlow = Color(0x33FF2448)
+val VelvetAtmosphericWine = Color(0xFF48000C)
+val VelvetDeepWine = Color(0xFF260006)
+val VelvetDarkNight = Color(0xFF040002)
+val VelvetCreamAsh = Color(0xFF8E8E93)
+val VelvetCreamSilver = Color(0xFFB0959B)
+

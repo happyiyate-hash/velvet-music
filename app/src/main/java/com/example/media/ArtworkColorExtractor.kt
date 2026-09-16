@@ -8,6 +8,7 @@ import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import com.example.R
 import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.max
@@ -42,8 +43,29 @@ object ArtworkColorExtractor {
      *   palette instead of being incorrectly converted to an unrelated hue.
      */
     fun extractColors(context: Context, track: Track): TrackThemeColors {
-        val bitmap = loadThumbnailBitmap(context, track)
+        val bitmap = resolveTrackBitmap(context, track)
+        return extractColorsFromBitmap(bitmap, track.dominantColor)
+    }
 
+    /**
+     * Resolves the artwork bitmap used both by color extraction and Android media metadata.
+     */
+    fun resolveTrackBitmap(context: Context, track: Track): Bitmap? {
+        return loadThumbnailBitmap(context, track)
+    }
+
+    /**
+     * Returns a guaranteed non-null artwork bitmap for APIs that require Bitmap rather than Bitmap?.
+     */
+    fun getDefaultBitmap(context: Context): Bitmap {
+        return BitmapFactory.decodeResource(context.resources, R.drawable.art_luminous_echoes)
+            ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+    }
+
+    /**
+     * Extracts the theme palette from an already-resolved artwork bitmap.
+     */
+    fun extractColorsFromBitmap(bitmap: Bitmap?, fallbackColor: Color = Color(0xFF880E2F)): TrackThemeColors {
         if (bitmap != null) {
             val sampled = sampleDominantColor(bitmap)
 
@@ -53,7 +75,7 @@ object ArtworkColorExtractor {
         }
 
         // Fallback to track's pre-configured dominant color
-        return generateThemePalette(track.dominantColor)
+        return generateThemePalette(fallbackColor)
     }
 
     fun extractColorsFromUri(
@@ -712,4 +734,26 @@ object ArtworkColorExtractor {
          */
         val atmosphericBloom = Color(0xFF3A3A3A)
 
-     
+        val playPauseGradTop = Color(0xFF484848)
+        val playPauseGradBottom = Color(0xFF222222)
+        val playPauseCircle = playPauseGradTop
+        val playPauseBorder = Color(0xFF6E6E6E).copy(alpha = 0.40f)
+
+        return TrackThemeColors(
+            dominant = dominant,
+            secondary = secondary,
+            accent = accent,
+            glow = glow,
+            darkBackground = darkBackground,
+            atmosphericBloom = atmosphericBloom,
+            playPauseCircle = playPauseCircle,
+            playPauseBorder = playPauseBorder,
+            bgTop = bgTop,
+            bgMidUpper = bgMidUpper,
+            bgMidLower = bgMidLower,
+            bgBottom = bgBottom,
+            playPauseGradTop = playPauseGradTop,
+            playPauseGradBottom = playPauseGradBottom
+        )
+    }
+}
