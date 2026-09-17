@@ -23,11 +23,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
@@ -63,77 +65,37 @@ fun AshGlassBottomNavigationBar(
     onSelectTab: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val topCurvedShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
-
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 24.dp,
-                shape = topCurvedShape,
-                spotColor = Color(0x99FF2448),
-                ambientColor = Color(0x6648000C)
-            )
-            .clip(topCurvedShape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF24020A),
-                        Color(0xFF130005),
-                        Color(0xFF060002)
+                        Color(0x332E3440), // Translucent frosted gray-white glass tint
+                        Color(0x24222630),
+                        Color(0x1A141720)
                     )
                 )
-            )
-            .border(
-                width = 1.2.dp,
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color(0x15FFFFFF),
-                        Color(0x55FF2448),
-                        Color(0xAAFFFFFF),
-                        Color(0x55FF2448),
-                        Color(0x15FFFFFF)
-                    )
-                ),
-                shape = topCurvedShape
             )
             .testTag("ash_glass_navigation_bar"),
         contentAlignment = Alignment.Center
     ) {
-        // Ambient radial bloom and top glow
-        Canvas(modifier = Modifier.matchParentSize()) {
+        // Specular top hairline reflection line across the straight top edge
+        Canvas(modifier = Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)) {
             val w = size.width
-            val h = size.height
-
-            // Center-spread crimson ambient glow
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0x35FF2448),
-                        Color(0x1548000C),
-                        Color.Transparent
-                    ),
-                    center = Offset(w * 0.5f, h * 0.4f),
-                    radius = w * 0.55f
-                ),
-                center = Offset(w * 0.5f, h * 0.4f),
-                radius = w * 0.55f
-            )
-
-            // Specular top highlight reflection line
             drawLine(
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0x05FFFFFF),
+                        Color(0x00FFFFFF),
+                        Color(0x28FFFFFF),
                         Color(0x60FFFFFF),
-                        Color(0xFFFF4D6D),
-                        Color(0x60FFFFFF),
-                        Color(0x05FFFFFF)
+                        Color(0x28FFFFFF),
+                        Color(0x00FFFFFF)
                     )
                 ),
-                start = Offset(24f, 1f),
-                end = Offset(w - 24f, 1f),
-                strokeWidth = 1.2f
+                start = Offset(0f, 0f),
+                end = Offset(w, 0f),
+                strokeWidth = 1f
             )
         }
 
@@ -141,98 +103,81 @@ fun AshGlassBottomNavigationBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 10.dp),
+                .padding(horizontal = 32.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 1. Search
-            AshGlassNavTabItem(
-                label = "Search",
+            // 1. Home
+            AshGlassNavIconOnlyItem(
+                icon = Icons.Default.Home,
+                contentDescription = "Home",
                 isSelected = selectedTab == 0,
                 onClick = { onSelectTab(0) },
-                testTag = "nav_tab_search"
-            ) { iconColor ->
-                Icon(Icons.Default.Search, "Search", tint = iconColor, modifier = Modifier.size(23.dp))
-            }
+                testTag = "nav_tab_home"
+            )
 
-            // 2. Music
-            AshGlassNavTabItem(
-                label = "Music",
+            // 2. Search
+            AshGlassNavIconOnlyItem(
+                icon = Icons.Default.Search,
+                contentDescription = "Search",
                 isSelected = selectedTab == 1,
                 onClick = { onSelectTab(1) },
-                testTag = "nav_tab_music"
-            ) { iconColor ->
-                Icon(Icons.Default.MusicNote, "Music", tint = iconColor, modifier = Modifier.size(23.dp))
-            }
+                testTag = "nav_tab_search"
+            )
 
             // 3. Video
-            AshGlassNavTabItem(
-                label = "Video",
+            AshGlassNavIconOnlyItem(
+                icon = Icons.Default.SmartDisplay,
+                contentDescription = "Video",
                 isSelected = selectedTab == 2,
                 onClick = { onSelectTab(2) },
                 testTag = "nav_tab_videos"
-            ) { iconColor ->
-                Icon(Icons.Default.Videocam, "Video", tint = iconColor, modifier = Modifier.size(23.dp))
-            }
+            )
         }
     }
 }
 
 @Composable
-private fun AshGlassNavTabItem(
-    label: String,
+private fun AshGlassNavIconOnlyItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
     isSelected: Boolean,
     onClick: () -> Unit,
-    testTag: String,
-    content: @Composable (iconColor: Color) -> Unit
+    testTag: String
 ) {
-    val iconColor = if (isSelected) Color(0xFFFF2448) else Color(0xFF8E8E93)
-    val textColor = if (isSelected) Color(0xFFFF4D6D) else Color(0xFF8E8E93)
+    val iconColor = if (isSelected) Color.White else Color(0x88FFFFFF)
 
-    val tabBgModifier = if (isSelected) {
-        Modifier.background(
-            Brush.verticalGradient(
-                listOf(
-                    Color(0x38FF2448),
-                    Color(0x1848000C)
-                )
+    val pillModifier = if (isSelected) {
+        Modifier
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0x35FFFFFF),
+                        Color(0x20FFFFFF)
+                    )
+                ),
+                shape = RoundedCornerShape(12.dp)
             )
-        )
+            .border(0.7.dp, Color(0x45FFFFFF), RoundedCornerShape(12.dp))
     } else Modifier
 
-    Column(
+    Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .then(tabBgModifier)
-            .border(
-                width = if (isSelected) 1.dp else 0.dp,
-                brush = if (isSelected) {
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0x88FF4D6D),
-                            Color(0x33FF2448)
-                        )
-                    )
-                } else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)),
-                shape = RoundedCornerShape(18.dp)
-            )
+            .clip(RoundedCornerShape(12.dp))
+            .then(pillModifier)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onClick() }
-            .padding(horizontal = 22.dp, vertical = 7.dp)
+            .padding(horizontal = 20.dp, vertical = 7.dp)
             .testTag(testTag),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        contentAlignment = Alignment.Center
     ) {
-        content(iconColor)
-        Spacer(modifier = Modifier.height(3.dp))
-        Text(
-            text = label,
-            fontSize = 11.5.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            color = textColor,
-            maxLines = 1
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = iconColor,
+            modifier = Modifier.size(21.dp)
         )
     }
 }

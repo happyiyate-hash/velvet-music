@@ -79,30 +79,146 @@ object SampleData {
 
     val starterTracks = listOf(
         Track(
-            id = "starter_velvet_echo",
-            title = "Midnight Echoes",
-            artist = "Velvet Soundscape",
-            album = "Midnight Sessions",
-            durationMs = 214000L,
+            id = "starter_after_hours",
+            title = "After Hours",
+            artist = "The Weeknd",
+            album = "After Hours",
+            durationMs = 361000L,
             coverResId = R.drawable.art_after_hours,
-            dominantColor = Color(0xFF5D1226),
-            secondaryColor = Color(0xFF220810),
+            dominantColor = Color(0xFF880E2F),
+            secondaryColor = Color(0xFF2E040E),
             catalogSource = "Velvet Music",
-            lyrics = listOf(
-                LyricLine(text = "In the quiet of the night", timeMs = 4000L),
-                LyricLine(text = "Echoes dancing in the light", timeMs = 9000L),
-                LyricLine(text = "Feel the velvet in the air", timeMs = 15000L),
-                LyricLine(text = "Lost in rhythm everywhere", timeMs = 22000L),
-                LyricLine(text = "Soundwaves drifting slow and deep", timeMs = 31000L),
-                LyricLine(text = "Promises we meant to keep", timeMs = 40000L),
-                LyricLine(text = "Midnight whispers guide the way", timeMs = 50000L),
-                LyricLine(text = "Until the breaking of the day", timeMs = 62000L)
-            )
+            playCount = 142
+        ),
+        Track(
+            id = "starter_good_news",
+            title = "Good News",
+            artist = "Mac Miller",
+            album = "Circles",
+            durationMs = 342000L,
+            coverResId = R.drawable.art_good_news,
+            dominantColor = Color(0xFF636670),
+            secondaryColor = Color(0xFF16171B),
+            catalogSource = "Velvet Music",
+            playCount = 98
+        ),
+        Track(
+            id = "starter_blinding_lights",
+            title = "Blinding Lights",
+            artist = "The Weeknd",
+            album = "After Hours",
+            durationMs = 200000L,
+            coverResId = R.drawable.art_blinding_lights,
+            dominantColor = Color(0xFFAD1457),
+            secondaryColor = Color(0xFF330514),
+            catalogSource = "Velvet Music",
+            playCount = 85
+        ),
+        Track(
+            id = "starter_chairman",
+            title = "Chairman",
+            artist = "Premium Emf",
+            album = "Afro Sessions",
+            durationMs = 195000L,
+            coverResId = R.drawable.art_after_hours,
+            dominantColor = Color(0xFF7A1B28),
+            secondaryColor = Color(0xFF26080D),
+            catalogSource = "Velvet Music",
+            playCount = 64
+        ),
+        Track(
+            id = "starter_heaven_baby",
+            title = "Heaven Baby (feat. ZAYN)",
+            artist = "Ayra Starr",
+            album = "The Year I Turned 21",
+            durationMs = 210000L,
+            coverResId = R.drawable.art_night_grooves,
+            dominantColor = Color(0xFF4A148C),
+            secondaryColor = Color(0xFF1E0738),
+            catalogSource = "Velvet Music",
+            playCount = 52
+        ),
+        Track(
+            id = "starter_luminous_echoes",
+            title = "Luminous Echoes",
+            artist = "Tame Impala",
+            album = "Currents Deluxe",
+            durationMs = 245000L,
+            coverResId = R.drawable.art_luminous_echoes,
+            dominantColor = Color(0xFF7B1FA2),
+            secondaryColor = Color(0xFF240A30),
+            catalogSource = "Velvet Music",
+            playCount = 47
+        ),
+        Track(
+            id = "starter_sunset_beats",
+            title = "Sunset Beats",
+            artist = "Kaytranada",
+            album = "BUBBA",
+            durationMs = 188000L,
+            coverResId = R.drawable.art_sunset_beats,
+            dominantColor = Color(0xFFC2185B),
+            secondaryColor = Color(0xFF3C081B),
+            catalogSource = "Velvet Music",
+            playCount = 39
         )
     )
-    val allMixes = emptyList<Mix>()
-    val recentlyPlayedTracks = emptyList<Track>()
-    val newReleases = emptyList<Track>()
+
+    val allMixes = listOf(
+        Mix(
+            id = "mix_luminous",
+            title = "Luminous Echoes",
+            curator = "Curated by Tame Impala",
+            coverResId = R.drawable.art_luminous_echoes,
+            description = "Dreamy psych-pop and ambient synth soundscapes",
+            dominantColor = Color(0xFF7B1FA2),
+            secondaryColor = Color(0xFF240A30),
+            tracks = starterTracks.take(4)
+        ),
+        Mix(
+            id = "mix_acoustic",
+            title = "Acoustic Waves",
+            curator = "Curated by Bon Iver",
+            coverResId = R.drawable.art_acoustic_waves,
+            description = "Organic folk, delicate guitars, and warm indie atmospheres",
+            dominantColor = Color(0xFF37474F),
+            secondaryColor = Color(0xFF151C20),
+            tracks = starterTracks.takeLast(4)
+        ),
+        Mix(
+            id = "mix_sunset",
+            title = "Sunset Beats",
+            curator = "Curated by Kaytranada",
+            coverResId = R.drawable.art_sunset_beats,
+            description = "Groovy neo-soul, deep house rhythms, and warm dusk baselines",
+            dominantColor = Color(0xFFC2185B),
+            secondaryColor = Color(0xFF3C081B),
+            tracks = starterTracks
+        ),
+        Mix(
+            id = "mix_night",
+            title = "Night Grooves",
+            curator = "Curated by Khruangbin",
+            coverResId = R.drawable.art_night_grooves,
+            description = "Late night funk, psychedelic dub, and atmospheric slow jams",
+            dominantColor = Color(0xFF4A148C),
+            secondaryColor = Color(0xFF1E0738),
+            tracks = starterTracks.reversed()
+        ),
+        Mix(
+            id = "mix_azure",
+            title = "Azure Drift",
+            curator = "Curated by Tycho",
+            coverResId = R.drawable.art_azure_drift,
+            description = "Downtempo electronic waves and ethereal twilight textures",
+            dominantColor = Color(0xFF0D47A1),
+            secondaryColor = Color(0xFF041838),
+            tracks = starterTracks
+        )
+    )
+
+    val recentlyPlayedTracks = starterTracks.take(5)
+    val newReleases = starterTracks.takeLast(4)
 }
 
 /**

@@ -1,6 +1,9 @@
 package com.example.ui
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,6 +49,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInNew
@@ -54,6 +58,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,7 +67,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -81,16 +85,20 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.media.DeviceMediaManager
 import com.example.media.HumMatchResult
 import com.example.media.HumRecognitionState
@@ -127,7 +135,32 @@ fun SingToSearchSheet(
 
     val state by recognitionEngine.state.collectAsState()
     val liveAmplitude by recognitionEngine.liveAmplitude.collectAsState()
-    var demoIndex by remember { mutableIntStateOf(0) }
+
+    // Smooth ambient breathing visualizer pulse during Searching ("Identifying…")
+    val pulseTransition = rememberInfiniteTransition(label = "identifying_pulse")
+    val searchingPulse by pulseTransition.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 0.58f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "searching_amp"
+    )
+    val visualizerAmplitude = when (state) {
+        is HumRecognitionState.Listening -> liveAmplitude
+        is HumRecognitionState.Searching -> searchingPulse
+        else -> 0f
+    }
+
+    val statusText = when (state) {
+        is HumRecognitionState.Listening -> "Listening…"
+        is HumRecognitionState.Searching -> "Identifying…"
+        is HumRecognitionState.Matched -> "Song Identified"
+        is HumRecognitionState.NoMatch -> "Couldn't Identify"
+        is HumRecognitionState.ConnectionError -> "Connection Notice"
+        is HumRecognitionState.Idle -> "Listening…"
+    }
 
     // Intercept back button to dismiss cleanly
     BackHandler {
@@ -188,16 +221,16 @@ fun SingToSearchSheet(
 
             // 2. Bottom Ethereal Ambient Smoke Overlay (NOT Solid Wave, Additive Blend Screen Mode)
             BottomEtherealSmoke(
-                amplitude = liveAmplitude,
+                amplitude = visualizerAmplitude,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(totalHeight * 0.45f)
                     .align(Alignment.BottomCenter)
             )
 
-            // 3. "Listening..." Muted Letter-Spaced Text
+            // 3. Status Text (e.g. "Listening…" or "Identifying…")
             Text(
-                text = "Listening...",
+                text = statusText,
                 color = Color.White.copy(alpha = 0.6f),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Light,
@@ -224,7 +257,7 @@ fun SingToSearchSheet(
                     // Left Tapered Amplitude Bars
                     TaperedWaveformBars(
                         isLeft = true,
-                        amplitude = liveAmplitude,
+                        amplitude = visualizerAmplitude,
                         modifier = Modifier.width(100.dp).height(80.dp)
                     )
 
@@ -233,12 +266,9 @@ fun SingToSearchSheet(
                     // Glassmorphic Glowing Mic Orb
                     CentralGlassOrb(
                         orbSize = 78.dp,
-                        amplitude = liveAmplitude,
+                        amplitude = visualizerAmplitude,
                         onTap = {
-                            if (state is HumRecognitionState.Listening) {
-                                demoIndex++
-                                recognitionEngine.triggerDemoMatch(demoIndex, libraryTracks)
-                            } else {
+                            if (state is HumRecognitionState.Idle || state is HumRecognitionState.NoMatch || state is HumRecognitionState.ConnectionError) {
                                 recognitionEngine.startListening(context, libraryTracks)
                             }
                         }
@@ -249,7 +279,7 @@ fun SingToSearchSheet(
                     // Right Tapered Amplitude Bars
                     TaperedWaveformBars(
                         isLeft = false,
-                        amplitude = liveAmplitude,
+                        amplitude = visualizerAmplitude,
                         modifier = Modifier.width(100.dp).height(80.dp)
                     )
                 }
@@ -281,11 +311,12 @@ fun SingToSearchSheet(
                                 title = matched.title,
                                 artist = matched.artist,
                                 album = matched.album,
-                                durationMs = 210000L,
+                                durationMs = if (matched.durationMs > 0L) matched.durationMs else 210000L,
                                 coverResId = matched.coverResId,
                                 dominantColor = VelvetDeepCrimson,
                                 secondaryColor = VelvetBloodPlum,
-                                catalogSource = "Sing It Matched"
+                                catalogSource = "Sing It Matched",
+                                artworkUri = matched.artworkUrl
                             )
                             onPlayTrack(trackToPlay)
                             onDismiss()
@@ -293,6 +324,66 @@ fun SingToSearchSheet(
                         onHumAnother = {
                             recognitionEngine.startListening(context, libraryTracks)
                         }
+                    )
+                }
+            }
+
+            // 6. "Couldn't identify that song" Notice Card
+            AnimatedVisibility(
+                visible = state is HumRecognitionState.NoMatch,
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = tween(450, easing = FastOutSlowInEasing)
+                ) + fadeIn(),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                ) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = closeButtonBottomPadding + closeButtonSize + 20.dp)
+                    .padding(horizontal = 20.dp)
+            ) {
+                val noMatch = state as? HumRecognitionState.NoMatch
+                if (noMatch != null) {
+                    ElegantNoticeCard(
+                        title = noMatch.title,
+                        message = noMatch.message,
+                        buttonText = "Try Again",
+                        onAction = {
+                            recognitionEngine.startListening(context, libraryTracks)
+                        },
+                        testTag = "no_match_card"
+                    )
+                }
+            }
+
+            // 7. "Couldn't connect" Notice Card
+            AnimatedVisibility(
+                visible = state is HumRecognitionState.ConnectionError,
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = tween(450, easing = FastOutSlowInEasing)
+                ) + fadeIn(),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                ) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = closeButtonBottomPadding + closeButtonSize + 20.dp)
+                    .padding(horizontal = 20.dp)
+            ) {
+                val connError = state as? HumRecognitionState.ConnectionError
+                if (connError != null) {
+                    ElegantNoticeCard(
+                        title = connError.title,
+                        message = connError.message,
+                        buttonText = "Try Again",
+                        onAction = {
+                            recognitionEngine.startListening(context, libraryTracks)
+                        },
+                        testTag = "connection_error_card"
                     )
                 }
             }
@@ -798,6 +889,24 @@ private fun LuxuryMatchedCard(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
+    val providerLinks = remember(result) {
+        buildList {
+            result.spotifyUrl?.takeIf { it.isNotBlank() }?.let {
+                add(ProviderLink("Spotify", it, Color(0xFF1DB954)))
+            }
+            result.appleMusicUrl?.takeIf { it.isNotBlank() }?.let {
+                add(ProviderLink("Apple Music", it, Color(0xFFFA243C)))
+            }
+            result.youtubeMusicUrl?.takeIf { it.isNotBlank() }?.let {
+                add(ProviderLink("YouTube Music", it, Color(0xFFFF0000)))
+            }
+            result.audiomackUrl?.takeIf { it.isNotBlank() }?.let {
+                add(ProviderLink("Audiomack", it, Color(0xFFFFA200)))
+            }
+        }
+    }
 
     Surface(
         shape = RoundedCornerShape(22.dp),
@@ -840,7 +949,7 @@ private fun LuxuryMatchedCard(
                         modifier = Modifier.size(13.dp)
                     )
                     Text(
-                        text = "${result.matchPercentage}% Match • Query-by-Humming",
+                        text = "${result.matchPercentage}% Match • Recognition Pipeline",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFFFFF1F2)
@@ -860,24 +969,62 @@ private fun LuxuryMatchedCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Image(
-                    painter = painterResource(id = result.coverResId),
-                    contentDescription = result.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                )
+                if (!result.artworkUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(result.artworkUrl)
+                            .crossfade(true)
+                            .placeholder(result.coverResId)
+                            .error(result.coverResId)
+                            .build(),
+                        contentDescription = result.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                } else {
+                    Image(
+                        painter = painterResource(id = result.coverResId),
+                        contentDescription = result.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                }
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = result.title,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFFFF1F2),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = result.title,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFFFF1F2),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(result.title))
+                                Toast.makeText(context, "Title copied", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(30.dp)
+                                .testTag("copy_title_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy title",
+                                tint = Color(0xFFD7D0D2),
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = result.artist,
@@ -924,52 +1071,163 @@ private fun LuxuryMatchedCard(
                 )
             }
 
+            // Only display provider links if non-empty
+            if (providerLinks.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    providerLinks.forEach { link ->
+                        ExternalPillButton(
+                            label = link.label,
+                            color = link.color,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link.url)).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                runCatching { context.startActivity(intent) }
+                                    .onFailure {
+                                        Toast.makeText(context, "Cannot open ${link.label}", Toast.LENGTH_SHORT).show()
+                                    }
+                            }
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            OutlinedButton(
+                onClick = onHumAnother,
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0x44FFFFFF)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD7D0D2)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .testTag("sing_again_button")
             ) {
-                ExternalPillButton(
-                    label = "Spotify",
-                    color = Color(0xFF1DB954),
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        HummingRecognitionEngine.launchSpotify(context, result.artist, result.title)
-                    }
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp)
                 )
-
-                ExternalPillButton(
-                    label = "YouTube Music",
-                    color = Color(0xFFFF0000),
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        HummingRecognitionEngine.launchYouTubeMusic(context, result.artist, result.title)
-                    }
-                )
-
-                OutlinedButton(
-                    onClick = onHumAnother,
-                    shape = RoundedCornerShape(10.dp),
-                    border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0x44FFFFFF)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD7D0D2)),
-                    modifier = Modifier
-                        .height(38.dp)
-                        .weight(1f)
-                        .testTag("sing_again_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "Another", fontSize = 11.5.sp)
-                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = "Try Again", fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
             }
         }
     }
 }
+
+/**
+ * Notice card for "Couldn't identify that song" and "Couldn't connect"
+ */
+@Composable
+private fun ElegantNoticeCard(
+    title: String,
+    message: String,
+    buttonText: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    testTag: String = "elegant_notice_card"
+) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = Color(0xF0120205),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            Brush.verticalGradient(
+                listOf(
+                    Color(0x77FF2448),
+                    Color(0x338F071F),
+                    Color(0x1150000D)
+                )
+            )
+        ),
+        shadowElevation = 20.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(testTag)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x26FF2448))
+                    .border(1.dp, Color(0x44FF2448), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.GraphicEq,
+                    contentDescription = null,
+                    tint = Color(0xFFFF405A),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = title,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFFFF1F2),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = message,
+                fontSize = 13.sp,
+                color = Color(0xFFB5A7AA),
+                textAlign = TextAlign.Center,
+                lineHeight = 18.sp
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Button(
+                onClick = onAction,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFD51035),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .testTag("${testTag}_action_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = buttonText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+private data class ProviderLink(
+    val label: String,
+    val url: String,
+    val color: Color
+)
 
 @Composable
 private fun ExternalPillButton(

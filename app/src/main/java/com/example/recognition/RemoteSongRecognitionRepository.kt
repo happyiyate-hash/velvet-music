@@ -15,105 +15,276 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
 data class RecognizedSong(
-    val id: String, val title: String, val artist: String, val album: String,
-    val artworkUrl: String?, val durationMs: Long, val confidence: Int, val isrc: String?,
-    val spotifyUrl: String?, val appleMusicUrl: String?, val youtubeMusicUrl: String?, val audiomackUrl: String?
+    val id: String,
+    val title: String,
+    val artist: String,
+    val album: String,
+    val artworkUrl: String?,
+    val durationMs: Long,
+    val confidence: Int,
+    val isrc: String?,
+    val spotifyUrl: String?,
+    val appleMusicUrl: String?,
+    val youtubeMusicUrl: String?,
+    val audiomackUrl: String?
 )
 
 sealed class RecognitionResult {
     data class Match(val song: RecognizedSong) : RecognitionResult()
-    data class NoMatch(val reason: String) : RecognitionResult()
-    data class Error(val reason: String) : RecognitionResult()
+    data class NoMatch(
+        val title: String = "Couldn't identify that song",
+        val reason: String = "Try singing a little louder or move closer to the music."
+    ) : RecognitionResult()
+    data class ProviderError(
+        val title: String = "Couldn't search right now",
+        val reason: String = "Recognition services encountered an issue. Please try again."
+    ) : RecognitionResult()
+    data class ConnectionError(
+        val title: String = "Couldn't connect",
+        val reason: String = "Check your connection and try again."
+    ) : RecognitionResult()
 }
 
 interface SongRecognitionRepository {
-    suspend fun recognizeHumming(wavAudio: ByteArray): RecognitionResult
-    suspend fun recognizeAmbientAudio(wavAudio: ByteArray): RecognitionResult
     suspend fun recognizeBatch(wavAudio: ByteArray): RecognitionResult
+    suspend fun recognizeHumming(wavAudio: ByteArray): RecognitionResult = recognizeBatch(wavAudio)
+    suspend fun recognizeAmbientAudio(wavAudio: ByteArray): RecognitionResult = recognizeBatch(wavAudio)
 }
 
-/** One app upload goes to the Worker batch endpoint; the Worker fans it out to AudD and ACRCloud. */
-class RemoteSongRecognitionRepository(private val api: SongRecognitionApi? = createApiOrNull()) : SongRecognitionRepository {
-    override suspend fun recognizeHumming(wavAudio: ByteArray): RecognitionResult = recognizeSingle(wavAudio, "HUM") { api!!.recognizeHum(it) }
-    override suspend fun recognizeAmbientAudio(wavAudio: ByteArray): RecognitionResult = recognizeSingle(wavAudio, "AUDIO") { api!!.recognizeAudio(it) }
+/**
+ * Velvet Music production recognition client.
+ * Android makes one request only to the Vercel backend.
+ * The backend fans out to AudD and ACRCloud in parallel, returning both results.
+ */
+class RemoteSongRecognitionRepository(
+    private val api: SongRecognitionApi = createApi()
+) : SongRecognitionRepository {
 
     override suspend fun recognizeBatch(wavAudio: ByteArray): RecognitionResult = withContext(Dispatchers.IO) {
-        if (wavAudio.isEmpty()) return@withContext RecognitionResult.Error("No audio was captured.")
-        val remote = api ?: return@withContext RecognitionResult.Error("Velvet recognition is not configured yet. Set VELVET_RECOGNITION_BASE_URL.")
+        if (wavAudio.isEmpty()) {
+            return@withContext RecognitionResult.ConnectionError(
+                title = "Couldn't connect",
+                reason = "No audio was captured. Check microphone and try again."
+            )
+        }
+        if (wavAudio.size > MAX_AUDIO_BYTES) {
+            return@withContext RecognitionResult.ConnectionError(
+                title = "Couldn't connect",
+                reason = "Captured audio exceeded size limit. Please try a shorter recording."
+            )
+        }
+
         val startedAt = System.currentTimeMillis()
         Log.d(TAG, "BATCH_UPLOAD_STARTED bytes=${wavAudio.size}")
+
         try {
-            val body = wavAudio.toRequestBody("audio/wav".toMediaType())
-            val part = MultipartBody.Part.createFormData("audio", "velvet-capture.wav", body)
-            val response = remote.recognizeBatch(part)
-            Log.d(TAG, "BATCH_RESPONSE_RECEIVED requestId=${response.requestId ?: "none"} auddSuccess=${response.results.audd.success} acrcloudSuccess=${response.results.acrcloud.success} elapsedMs=${System.currentTimeMillis() - startedAt}")
-            val candidates = listOfNotNull(response.results.audd.toCandidate("AudD"), response.results.acrcloud.toCandidate("ACRCloud"))
-            if (candidates.isEmpty()) {
-                val providerErrors = listOfNotNull(response.results.audd.error, response.results.acrcloud.error).joinToString("; ")
-                return@withContext if (response.error.isNullOrBlank()) RecognitionResult.NoMatch(providerErrors.ifBlank { "No confident song match was found." }) else RecognitionResult.Error(response.error)
+            val requestBody = wavAudio.toRequestBody("audio/wav".toMediaType())
+            val audioPart = MultipartBody.Part.createFormData(
+                "audio",
+                "velvet-recording.wav",
+                requestBody
+            )
+
+            val response = api.recognizeBatch(audioPart)
+            val elapsed = System.currentTimeMillis() - startedAt
+            Log.d(TAG, "BATCH_RESPONSE_RECEIVED requestId=${response.requestId ?: "none"} elapsedMs=$elapsed")
+
+            val auddResult = response.results.audd
+            val acrResult = response.results.acrcloud
+
+            val auddMatched = isMatched(auddResult)
+            val acrMatched = isMatched(acrResult)
+
+            when {
+                // Case 1: Both matched -> compare and merge metadata
+                auddMatched && acrMatched -> {
+                    val auddSong = auddResult.song!!
+                    val acrSong = acrResult.song!!
+
+                    val auddIsrc = auddSong.isrc?.trim()?.takeIf { it.isNotBlank() }
+                    val acrIsrc = acrSong.isrc?.trim()?.takeIf { it.isNotBlank() }
+                    val sameIsrc = auddIsrc != null && acrIsrc != null && auddIsrc.equals(acrIsrc, ignoreCase = true)
+
+                    val auddKey = normalizeKey(auddSong.artist.orEmpty(), auddSong.title.orEmpty())
+                    val acrKey = normalizeKey(acrSong.artist.orEmpty(), acrSong.title.orEmpty())
+                    val sameTrack = sameIsrc || (auddKey.isNotBlank() && auddKey == acrKey)
+
+                    val finalSong: RecognizedSong = if (sameTrack) {
+                        Log.d(TAG, "DUAL_MATCH_AGREED isrcMatch=$sameIsrc keyMatch=${auddKey == acrKey} - merging metadata")
+                        mergeMetadata(auddResult, acrResult)
+                    } else {
+                        Log.d(TAG, "DUAL_MATCH_DIFFERENT audd='${auddSong.title}' acr='${acrSong.title}' - picking higher confidence")
+                        if (auddResult.confidence >= acrResult.confidence) {
+                            auddSong.toRecognizedSong(auddResult.confidence)
+                        } else {
+                            acrSong.toRecognizedSong(acrResult.confidence)
+                        }
+                    }
+                    RecognitionResult.Match(finalSong)
+                }
+
+                // Case 2: Only AudD matched
+                auddMatched -> {
+                    Log.d(TAG, "AUDD_ONLY_MATCH title='${auddResult.song?.title}' artist='${auddResult.song?.artist}'")
+                    RecognitionResult.Match(auddResult.song!!.toRecognizedSong(auddResult.confidence))
+                }
+
+                // Case 3: Only ACRCloud matched
+                acrMatched -> {
+                    Log.d(TAG, "ACRCLOUD_ONLY_MATCH title='${acrResult.song?.title}' artist='${acrResult.song?.artist}'")
+                    RecognitionResult.Match(acrResult.song!!.toRecognizedSong(acrResult.confidence))
+                }
+
+                // Case 4: Neither recognized the song
+                else -> {
+                    val auddIsError = isError(auddResult)
+                    val acrIsError = isError(acrResult)
+
+                    if (auddIsError && acrIsError) {
+                        Log.w(TAG, "BOTH_PROVIDERS_ERROR auddErr=${auddResult.error} acrErr=${acrResult.error}")
+                        RecognitionResult.ProviderError(
+                            title = "Couldn't search right now",
+                            reason = "Please try again in a moment."
+                        )
+                    } else {
+                        Log.d(TAG, "NO_MATCH_FOUND auddStatus=${auddResult.status} acrStatus=${acrResult.status}")
+                        RecognitionResult.NoMatch(
+                            title = "Couldn't identify that song",
+                            reason = "Try singing a little louder or move closer to the music."
+                        )
+                    }
+                }
             }
-            val selected = selectDisplayCandidate(candidates)
-            Log.d(TAG, "BATCH_DISPLAY_RESULT requestId=${response.requestId ?: "none"} provider=${selected.provider} title=${selected.song.title} artist=${selected.song.artist} confidence=${selected.song.confidence}")
-            RecognitionResult.Match(selected.song)
         } catch (e: Exception) {
-            Log.e(TAG, "BATCH_RECOGNITION_FAILED elapsedMs=${System.currentTimeMillis() - startedAt} message=${e.message}", e)
-            RecognitionResult.Error(e.message?.takeIf { it.isNotBlank() } ?: "Recognition service is unavailable.")
+            Log.e(TAG, "BATCH_CONNECTION_ERROR elapsedMs=${System.currentTimeMillis() - startedAt} message=${e.message}", e)
+            RecognitionResult.ConnectionError(
+                title = "Couldn't connect",
+                reason = "Check your connection and try again."
+            )
         }
     }
 
-    private data class Candidate(val provider: String, val song: RecognizedSong)
-
-    private fun RecognitionResponse.toCandidate(provider: String): Candidate? {
-        val dto = song ?: return null
-        if (!success || dto.title.isNullOrBlank() || dto.artist.isNullOrBlank()) return null
-        return Candidate(provider, dto.toRecognizedSong(confidence.coerceIn(0, 100)))
+    private fun isMatched(result: RecognitionResponse?): Boolean {
+        if (result == null) return false
+        val s = result.song ?: return false
+        val validSong = !s.title.isNullOrBlank() && !s.artist.isNullOrBlank()
+        return (result.status == "matched" || (result.success && validSong)) && validSong
     }
 
-    /** Compare objective recognition data: shared ISRC, then title/artist agreement, then metadata and confidence. */
-    private fun selectDisplayCandidate(candidates: List<Candidate>): Candidate {
-        if (candidates.size == 1) return candidates.first()
-        val isrcs = candidates.mapNotNull { it.song.isrc?.trim()?.lowercase()?.takeIf(String::isNotBlank) }.distinct()
-        val sameIsrc = isrcs.size == 1
-        val keys = candidates.map { normalizeKey(it.song.artist, it.song.title) }.distinct()
-        val sameTrack = keys.size == 1
-        return candidates.maxWithOrNull(compareBy<Candidate> { when { sameIsrc -> 3; sameTrack -> 2; else -> 0 } }.thenBy { metadataScore(it.song) }.thenBy { it.song.confidence }) ?: candidates.first()
+    private fun isError(result: RecognitionResponse?): Boolean {
+        if (result == null) return true
+        return result.status == "error" || (!result.success && result.status != "no_match" && !result.error.isNullOrBlank())
     }
 
-    private fun normalizeKey(artist: String, title: String) = "$artist $title".lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
-    private fun metadataScore(song: RecognizedSong) = listOf(song.album.isNotBlank(), song.isrc != null, song.artworkUrl != null, song.spotifyUrl != null, song.appleMusicUrl != null, song.youtubeMusicUrl != null, song.audiomackUrl != null).count { it }
+    /** Merge available metadata across providers: first non-null useful value. */
+    private fun mergeMetadata(
+        audd: RecognitionResponse,
+        acrcloud: RecognitionResponse
+    ): RecognizedSong {
+        val a = audd.song!!
+        val b = acrcloud.song!!
 
-    private fun RecognizedSongDto.toRecognizedSong(confidence: Int) = RecognizedSong(
-        id = id?.takeIf { it.isNotBlank() } ?: "${artist.orEmpty()}:${title.orEmpty()}", title = title!!.trim(), artist = artist!!.trim(),
-        album = album?.trim().orEmpty().ifBlank { "Unknown Album" }, artworkUrl = artworkUrl?.trim()?.takeIf { it.isNotBlank() },
-        durationMs = durationMs?.coerceAtLeast(0L) ?: 0L, confidence = confidence, isrc = isrc?.trim()?.takeIf { it.isNotBlank() },
-        spotifyUrl = spotifyUrl?.trim()?.takeIf { it.isNotBlank() }, appleMusicUrl = appleMusicUrl?.trim()?.takeIf { it.isNotBlank() },
-        youtubeMusicUrl = youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() }, audiomackUrl = audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
-    )
+        val title = a.title?.trim()?.takeIf { it.isNotBlank() } ?: b.title?.trim().orEmpty()
+        val artist = a.artist?.trim()?.takeIf { it.isNotBlank() } ?: b.artist?.trim().orEmpty()
+        val album = a.album?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.album?.trim()?.takeIf { it.isNotBlank() }
+            ?: "Unknown Album"
 
-    private suspend fun recognizeSingle(wavAudio: ByteArray, mode: String, call: suspend (MultipartBody.Part) -> RecognitionResponse): RecognitionResult = withContext(Dispatchers.IO) {
-        if (wavAudio.isEmpty()) return@withContext RecognitionResult.Error("No audio was captured.")
-        if (api == null) return@withContext RecognitionResult.Error("Velvet recognition is not configured yet. Set VELVET_RECOGNITION_BASE_URL.")
-        try {
-            val part = MultipartBody.Part.createFormData("audio", "velvet-capture.wav", wavAudio.toRequestBody("audio/wav".toMediaType()))
-            val response = call(part)
-            val dto = response.song
-            if (!response.success || dto == null || dto.title.isNullOrBlank() || dto.artist.isNullOrBlank()) return@withContext RecognitionResult.NoMatch(response.error ?: "No confident song match was found.")
-            RecognitionResult.Match(dto.toRecognizedSong(response.confidence.coerceIn(0, 100)))
-        } catch (e: Exception) {
-            Log.e(TAG, "RECOGNITION_FAILED mode=$mode message=${e.message}", e)
-            RecognitionResult.Error(e.message ?: "Recognition service is unavailable.")
+        // Artwork: AudD usually provides Spotify/Apple CDN artwork; fallback to ACRCloud
+        val artworkUrl = a.artworkUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.artworkUrl?.trim()?.takeIf { it.isNotBlank() }
+
+        // Duration: non-zero duration from either provider (ACRCloud often has durationMs)
+        val durationMs = when {
+            (a.durationMs ?: 0L) > 0L -> a.durationMs!!
+            (b.durationMs ?: 0L) > 0L -> b.durationMs!!
+            else -> 0L
         }
+
+        val isrc = a.isrc?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.isrc?.trim()?.takeIf { it.isNotBlank() }
+
+        val spotifyUrl = a.spotifyUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.spotifyUrl?.trim()?.takeIf { it.isNotBlank() }
+
+        val appleMusicUrl = a.appleMusicUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.appleMusicUrl?.trim()?.takeIf { it.isNotBlank() }
+
+        val youtubeMusicUrl = a.youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() }
+
+        val audiomackUrl = a.audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
+
+        val confidence = maxOf(audd.confidence, acrcloud.confidence).coerceIn(0, 100)
+        val id = a.id?.takeIf { it.isNotBlank() } ?: b.id?.takeIf { it.isNotBlank() } ?: "$artist:$title"
+
+        return RecognizedSong(
+            id = id,
+            title = title,
+            artist = artist,
+            album = album,
+            artworkUrl = artworkUrl,
+            durationMs = durationMs,
+            confidence = confidence,
+            isrc = isrc,
+            spotifyUrl = spotifyUrl,
+            appleMusicUrl = appleMusicUrl,
+            youtubeMusicUrl = youtubeMusicUrl,
+            audiomackUrl = audiomackUrl
+        )
+    }
+
+    private fun RecognizedSongDto.toRecognizedSong(confidence: Int): RecognizedSong {
+        val cleanTitle = title?.trim().orEmpty().ifBlank { "Unknown Title" }
+        val cleanArtist = artist?.trim().orEmpty().ifBlank { "Unknown Artist" }
+        return RecognizedSong(
+            id = id?.takeIf { it.isNotBlank() } ?: "$cleanArtist:$cleanTitle",
+            title = cleanTitle,
+            artist = cleanArtist,
+            album = album?.trim().orEmpty().ifBlank { "Unknown Album" },
+            artworkUrl = artworkUrl?.trim()?.takeIf { it.isNotBlank() },
+            durationMs = durationMs?.coerceAtLeast(0L) ?: 0L,
+            confidence = confidence.coerceIn(0, 100),
+            isrc = isrc?.trim()?.takeIf { it.isNotBlank() },
+            spotifyUrl = spotifyUrl?.trim()?.takeIf { it.isNotBlank() },
+            appleMusicUrl = appleMusicUrl?.trim()?.takeIf { it.isNotBlank() },
+            youtubeMusicUrl = youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() },
+            audiomackUrl = audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
+        )
+    }
+
+    private fun normalizeKey(artist: String, title: String): String {
+        return "$artist $title".lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
     }
 
     companion object {
         private const val TAG = "VelvetRecognition"
-        private fun createApiOrNull(): SongRecognitionApi? {
-            val configuredBaseUrl = BuildConfig.VELVET_RECOGNITION_BASE_URL.trim()
-            if (configuredBaseUrl.isBlank()) return null
-            val baseUrl = if (configuredBaseUrl.endsWith('/')) configuredBaseUrl else "$configuredBaseUrl/"
-            val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).writeTimeout(15, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).build()
-            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-            return Retrofit.Builder().baseUrl(baseUrl).client(client).addConverterFactory(MoshiConverterFactory.create(moshi)).build().create(SongRecognitionApi::class.java)
+        private const val MAX_AUDIO_BYTES = 5 * 1024 * 1024 // 5 MB
+        private const val PRODUCTION_BASE_URL = "https://velvet-recognition-backend-cx6ybckmo-happyiyate-hashs-projects.vercel.app/"
+
+        private fun createApi(): SongRecognitionApi {
+            val configuredBaseUrl = runCatching { BuildConfig.VELVET_RECOGNITION_BASE_URL }.getOrNull()?.trim().orEmpty()
+            val rawUrl = if (configuredBaseUrl.isNotBlank()) configuredBaseUrl else PRODUCTION_BASE_URL
+            val baseUrl = if (rawUrl.endsWith('/')) rawUrl else "$rawUrl/"
+
+            val client = OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
+                .readTimeout(45, TimeUnit.SECONDS)
+                .callTimeout(50, TimeUnit.SECONDS)
+                .build()
+
+            val moshi = Moshi.Builder()
+                .add(KotlinJsonAdapterFactory())
+                .build()
+
+            return Retrofit.Builder()
+                .baseUrl(baseUrl)
+                .client(client)
+                .addConverterFactory(MoshiConverterFactory.create(moshi))
+                .build()
+                .create(SongRecognitionApi::class.java)
         }
     }
 }

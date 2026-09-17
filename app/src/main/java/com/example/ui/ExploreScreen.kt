@@ -333,7 +333,7 @@ fun ExploreScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 120.dp)
         ) {
             // 1. SIGNATURE BRANDING HEADER (Exact V E L V E T styling)
             item {

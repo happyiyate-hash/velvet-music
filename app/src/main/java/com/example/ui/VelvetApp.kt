@@ -181,7 +181,7 @@ fun VelvetApp() {
         if (played.isNotEmpty()) played else allTracks
     }
 
-    var selectedTab by remember { mutableIntStateOf(1) }
+    var selectedTab by remember { mutableIntStateOf(0) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isInspectorOpen by remember { mutableStateOf(false) }
     var isProTierOpen by remember { mutableStateOf(false) }
@@ -203,7 +203,25 @@ fun VelvetApp() {
                 modifier = Modifier.fillMaxSize().padding(paddingValues).statusBarsPadding()
             ) {
                 when (selectedTab) {
-                    0 -> ExploreScreen(
+                    0 -> HomeFeedScreen(
+                        currentTrack = currentTrack,
+                        isPlaying = isPlaying,
+                        allTracks = allTracks,
+                        mostPlayedTracks = mostPlayedTracks,
+                        playCounts = trackPlayCounts,
+                        hasAudioPermission = DeviceMediaManager.hasAudioPermission(context),
+                        onRequestPermission = { mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions) },
+                        onSelectTrack = { track ->
+                            audioEngine.playTrack(track)
+                            isPlayerExpanded = true
+                        },
+                        onOpenSearch = { selectedTab = 1 },
+                        onOpenSettings = { isSettingsOpen = true },
+                        onOpenNotifications = { isProTierOpen = true },
+                        onTrackMenuClick = { track -> actionSheetTrack = track },
+                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
+                    )
+                    1 -> ExploreScreen(
                         currentTrack = currentTrack,
                         isPlaying = isPlaying,
                         tracks = allTracks,
@@ -218,25 +236,12 @@ fun VelvetApp() {
                             isSingToSearchOpen = true
                         }
                     )
-                    1 -> HomeFeedScreen(
-                        currentTrack = currentTrack,
-                        isPlaying = isPlaying,
-                        allTracks = allTracks,
-                        mostPlayedTracks = mostPlayedTracks,
-                        playCounts = trackPlayCounts,
-                        hasAudioPermission = DeviceMediaManager.hasAudioPermission(context),
-                        onRequestPermission = { mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions) },
-                        onSelectTrack = { track ->
+                    2 -> VideoLibraryScreen(
+                        onSelectTrackAudio = { track ->
                             audioEngine.playTrack(track)
                             isPlayerExpanded = true
-                        },
-                        onOpenSearch = { selectedTab = 0 },
-                        onOpenSettings = { isSettingsOpen = true },
-                        onOpenNotifications = { isProTierOpen = true },
-                        onTrackMenuClick = { track -> actionSheetTrack = track },
-                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
+                        }
                     )
-                    2 -> VideoLibraryScreen()
                 }
 
                 if (isPlaying) {
@@ -244,7 +249,7 @@ fun VelvetApp() {
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .navigationBarsPadding()
-                            .padding(bottom = 76.dp, start = 12.dp, end = 12.dp)
+                            .padding(bottom = 46.dp, start = 8.dp, end = 8.dp)
                     ) {
                         AshGlassMiniPlayerBar(
                             track = currentTrack,
