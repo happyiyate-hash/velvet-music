@@ -18,8 +18,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,8 +48,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -83,6 +88,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -99,6 +105,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.R
 import com.example.media.DeviceMediaManager
 import com.example.media.HumMatchResult
 import com.example.media.HumRecognitionState
@@ -219,92 +226,129 @@ fun SingToSearchSheet(
             // 1. Subtle Atmospheric Background Gradient
             FullAtmosphericBackground(modifier = Modifier.fillMaxSize())
 
-            // 2. Bottom Ethereal Ambient Smoke Overlay (NOT Solid Wave, Additive Blend Screen Mode)
-            BottomEtherealSmoke(
-                amplitude = visualizerAmplitude,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(totalHeight * 0.45f)
-                    .align(Alignment.BottomCenter)
-            )
-
-            // 3. Status Text (e.g. "Listening…" or "Identifying…")
-            Text(
-                text = statusText,
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Light,
-                letterSpacing = 2.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = textTopPadding)
-                    .testTag("sing_status_text")
-            )
-
-            // 4. Center Visualizer Engine (Thin Tapered Bars + Subtle Orb)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .offset(y = micCenterY - 60.dp),
-                contentAlignment = Alignment.Center
+            // 2. Listening & Searching View (Microphone + Orb + Ambient Smoke)
+            AnimatedVisibility(
+                visible = state is HumRecognitionState.Listening || state is HumRecognitionState.Searching || state is HumRecognitionState.Idle,
+                enter = fadeIn(animationSpec = tween(400)),
+                exit = fadeOut(animationSpec = tween(350)),
+                modifier = Modifier.fillMaxSize()
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // Left Tapered Amplitude Bars
-                    TaperedWaveformBars(
-                        isLeft = true,
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Ethereal Ambient Smoke Overlay
+                    BottomEtherealSmoke(
                         amplitude = visualizerAmplitude,
-                        modifier = Modifier.width(100.dp).height(80.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(totalHeight * 0.45f)
+                            .align(Alignment.BottomCenter)
                     )
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    // Status Text ("Listening…" or "Identifying…")
+                    Text(
+                        text = statusText,
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Light,
+                        letterSpacing = 2.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = textTopPadding)
+                            .testTag("sing_status_text")
+                    )
 
-                    // Glassmorphic Glowing Mic Orb
-                    CentralGlassOrb(
-                        orbSize = 78.dp,
-                        amplitude = visualizerAmplitude,
-                        onTap = {
-                            if (state is HumRecognitionState.Idle || state is HumRecognitionState.NoMatch || state is HumRecognitionState.ConnectionError) {
-                                recognitionEngine.startListening(context, libraryTracks)
-                            }
+                    // Center Visualizer Engine (Tapered Waveform Bars + Central Glowing Orb)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(y = micCenterY - 60.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            TaperedWaveformBars(
+                                isLeft = true,
+                                amplitude = visualizerAmplitude,
+                                modifier = Modifier.width(100.dp).height(80.dp)
+                            )
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            CentralGlassOrb(
+                                orbSize = 78.dp,
+                                amplitude = visualizerAmplitude,
+                                onTap = {
+                                    recognitionEngine.startListening(context, libraryTracks)
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            TaperedWaveformBars(
+                                isLeft = false,
+                                amplitude = visualizerAmplitude,
+                                modifier = Modifier.width(100.dp).height(80.dp)
+                            )
                         }
-                    )
+                    }
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // Right Tapered Amplitude Bars
-                    TaperedWaveformBars(
-                        isLeft = false,
-                        amplitude = visualizerAmplitude,
-                        modifier = Modifier.width(100.dp).height(80.dp)
-                    )
+                    // Bottom Close Button ('X')
+                    Box(
+                        modifier = Modifier
+                            .size(closeButtonSize)
+                            .align(Alignment.BottomCenter)
+                            .offset(y = -closeButtonBottomPadding)
+                            .clip(CircleShape)
+                            .background(Color(0x22180004))
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0x66D51035),
+                                        Color(0x338F071F),
+                                        Color(0x1A50000D)
+                                    )
+                                ),
+                                shape = CircleShape
+                            )
+                            .shadow(elevation = 8.dp, shape = CircleShape, spotColor = Color(0x33D51035))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {
+                                    recognitionEngine.stopListening()
+                                    onDismiss()
+                                }
+                            )
+                            .testTag("sing_close_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Sing It",
+                            tint = Color(0xFFD7D0D2),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
-            // 5. Matched Song Result Card (floats elegantly when recognized)
+            // 3. Matched Song Result View (Smoothly fades in and replaces the microphone completely)
             AnimatedVisibility(
                 visible = state is HumRecognitionState.Matched,
-                enter = slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = tween(450, easing = FastOutSlowInEasing)
-                ) + fadeIn(),
-                exit = slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(300, easing = FastOutSlowInEasing)
-                ) + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = closeButtonBottomPadding + closeButtonSize + 20.dp)
-                    .padding(horizontal = 20.dp)
+                enter = fadeIn(animationSpec = tween(450, delayMillis = 100)) + scaleIn(initialScale = 0.94f, animationSpec = tween(450, delayMillis = 100)),
+                exit = fadeOut(animationSpec = tween(300)) + scaleOut(targetScale = 0.94f, animationSpec = tween(300)),
+                modifier = Modifier.fillMaxSize()
             ) {
                 val matched = (state as? HumRecognitionState.Matched)?.result
                 if (matched != null) {
-                    LuxuryMatchedCard(
+                    SeamlessMatchedResultView(
                         result = matched,
+                        topPadding = topStatusBarInset + 16.dp,
+                        bottomPadding = bottomNavBarInset + 20.dp,
                         onPlayInVelvet = {
                             val trackToPlay = matched.track ?: Track(
                                 id = matched.id,
@@ -321,110 +365,49 @@ fun SingToSearchSheet(
                             onPlayTrack(trackToPlay)
                             onDismiss()
                         },
-                        onHumAnother = {
-                            recognitionEngine.startListening(context, libraryTracks)
-                        }
-                    )
-                }
-            }
-
-            // 6. "Couldn't identify that song" Notice Card
-            AnimatedVisibility(
-                visible = state is HumRecognitionState.NoMatch,
-                enter = slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = tween(450, easing = FastOutSlowInEasing)
-                ) + fadeIn(),
-                exit = slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(300, easing = FastOutSlowInEasing)
-                ) + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = closeButtonBottomPadding + closeButtonSize + 20.dp)
-                    .padding(horizontal = 20.dp)
-            ) {
-                val noMatch = state as? HumRecognitionState.NoMatch
-                if (noMatch != null) {
-                    ElegantNoticeCard(
-                        title = noMatch.title,
-                        message = noMatch.message,
-                        buttonText = "Try Again",
-                        onAction = {
+                        onRestartMic = {
                             recognitionEngine.startListening(context, libraryTracks)
                         },
-                        testTag = "no_match_card"
-                    )
-                }
-            }
-
-            // 7. "Couldn't connect" Notice Card
-            AnimatedVisibility(
-                visible = state is HumRecognitionState.ConnectionError,
-                enter = slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = tween(450, easing = FastOutSlowInEasing)
-                ) + fadeIn(),
-                exit = slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(300, easing = FastOutSlowInEasing)
-                ) + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = closeButtonBottomPadding + closeButtonSize + 20.dp)
-                    .padding(horizontal = 20.dp)
-            ) {
-                val connError = state as? HumRecognitionState.ConnectionError
-                if (connError != null) {
-                    ElegantNoticeCard(
-                        title = connError.title,
-                        message = connError.message,
-                        buttonText = "Try Again",
-                        onAction = {
-                            recognitionEngine.startListening(context, libraryTracks)
-                        },
-                        testTag = "connection_error_card"
-                    )
-                }
-            }
-
-            // 6. Minimalist Glass Close Button ('X')
-            Box(
-                modifier = Modifier
-                    .size(closeButtonSize)
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 0.dp)
-                    .offset(y = -closeButtonBottomPadding)
-                    .clip(CircleShape)
-                    .background(Color(0x22180004))
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0x66D51035),
-                                Color(0x338F071F),
-                                Color(0x1A50000D)
-                            )
-                        ),
-                        shape = CircleShape
-                    )
-                    .shadow(elevation = 8.dp, shape = CircleShape, spotColor = Color(0x33D51035))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
+                        onClose = {
                             recognitionEngine.stopListening()
                             onDismiss()
                         }
                     )
-                    .testTag("sing_close_button"),
-                contentAlignment = Alignment.Center
+                }
+            }
+
+            // 4. "Couldn't identify that song" or "Couldn't connect" Notice View
+            AnimatedVisibility(
+                visible = state is HumRecognitionState.NoMatch || state is HumRecognitionState.ConnectionError,
+                enter = fadeIn(animationSpec = tween(450, delayMillis = 100)) + scaleIn(initialScale = 0.94f, animationSpec = tween(450, delayMillis = 100)),
+                exit = fadeOut(animationSpec = tween(300)),
+                modifier = Modifier.fillMaxSize()
             ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Close Sing It",
-                    tint = Color(0xFFD7D0D2),
-                    modifier = Modifier.size(18.dp)
+                val noticeTitle = when (val s = state) {
+                    is HumRecognitionState.NoMatch -> s.title
+                    is HumRecognitionState.ConnectionError -> s.title
+                    else -> "No Match"
+                }
+                val noticeMsg = when (val s = state) {
+                    is HumRecognitionState.NoMatch -> s.message
+                    is HumRecognitionState.ConnectionError -> s.message
+                    else -> "Please try again."
+                }
+                val noticeTag = if (state is HumRecognitionState.NoMatch) "no_match_card" else "connection_error_card"
+
+                SeamlessNoticeResultView(
+                    title = noticeTitle,
+                    message = noticeMsg,
+                    testTag = noticeTag,
+                    topPadding = topStatusBarInset + 24.dp,
+                    bottomPadding = bottomNavBarInset + 24.dp,
+                    onRestartMic = {
+                        recognitionEngine.startListening(context, libraryTracks)
+                    },
+                    onClose = {
+                        recognitionEngine.stopListening()
+                        onDismiss()
+                    }
                 )
             }
         }
@@ -879,173 +862,273 @@ private fun BottomEtherealSmoke(
 }
 
 /**
- * Luxury Matched Track Card
+ * Seamless Fullscreen Matched Result View
+ *
+ * Implements the user's requested cinematic animation:
+ * - When recognition succeeds, the microphone & wave visualizer gracefully fade out.
+ * - The matched track artwork, metadata, and streaming platforms fade in.
+ * - Under the music: Title, Artist, Album, and an explicit "Copy Title" button.
+ * - Platform buttons: If specific links are unavailable from the backend, smart search links
+ *   (YouTube Music, Spotify, Apple Music, Audiomack) are automatically generated.
+ * - At the bottom: A glowing microphone button allows the user to restart/fetch another song immediately.
  */
 @Composable
-private fun LuxuryMatchedCard(
+private fun SeamlessMatchedResultView(
     result: HumMatchResult,
+    topPadding: Dp,
+    bottomPadding: Dp,
     onPlayInVelvet: () -> Unit,
-    onHumAnother: () -> Unit,
+    onRestartMic: () -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val scrollState = rememberScrollState()
 
-    val providerLinks = remember(result) {
-        buildList {
-            result.spotifyUrl?.takeIf { it.isNotBlank() }?.let {
-                add(ProviderLink("Spotify", it, Color(0xFF1DB954)))
-            }
-            result.appleMusicUrl?.takeIf { it.isNotBlank() }?.let {
-                add(ProviderLink("Apple Music", it, Color(0xFFFA243C)))
-            }
-            result.youtubeMusicUrl?.takeIf { it.isNotBlank() }?.let {
-                add(ProviderLink("YouTube Music", it, Color(0xFFFF0000)))
-            }
-            result.audiomackUrl?.takeIf { it.isNotBlank() }?.let {
-                add(ProviderLink("Audiomack", it, Color(0xFFFFA200)))
-            }
-        }
+    // Smart fallback URL generation: if direct URLs are absent, generate search links
+    val query = remember(result.artist, result.title) {
+        Uri.encode("${result.artist} ${result.title}")
     }
+    val spotifyUrl = result.spotifyUrl?.takeIf { it.isNotBlank() }
+        ?: "https://open.spotify.com/search/$query"
+    val audiomackUrl = result.audiomackUrl?.takeIf { it.isNotBlank() }
+        ?: "https://audiomack.com/search?q=$query"
+    val appleMusicUrl = result.appleMusicUrl?.takeIf { it.isNotBlank() }
+        ?: "https://music.apple.com/us/search?term=$query"
+    val youtubeMusicUrl = result.youtubeMusicUrl?.takeIf { it.isNotBlank() }
+        ?: "https://music.youtube.com/search?q=$query"
 
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = Color(0xF0120205),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            Brush.verticalGradient(
-                listOf(
-                    Color(0x77FF2448),
-                    Color(0x338F071F),
-                    Color(0x1150000D)
-                )
-            )
-        ),
-        shadowElevation = 20.dp,
+    Box(
         modifier = modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .testTag("luxury_matched_card")
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(top = topPadding, bottom = bottomPadding)
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0x33FF2448),
-                border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0x66FF2448))
+            // Settled Top Bar: Minimal Badge + Clean Dismiss
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0x25FF2448),
+                    border = BorderStroke(0.6.dp, Color(0x55FF2448))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            tint = Color(0xFFFF405A),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = if (result.matchPercentage > 0) "${result.matchPercentage}% Match" else "Song Identified",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFFFF1F2)
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x22180004))
+                        .border(1.dp, Color(0x33FF2448), CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onClose
+                        )
+                        .testTag("sing_close_button"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = null,
-                        tint = Color(0xFFFF405A),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = "${result.matchPercentage}% Match • Recognition Pipeline",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFFF1F2)
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = Color(0xFFD7D0D2),
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
+            // Main Hero Row: Picture on Left Side, Title & Metadata on Right Side
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0x22FFFFFF))
-                    .border(0.6.dp, Color(0x33FF2448), RoundedCornerShape(14.dp))
-                    .padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0x22180004))
+                    .border(1.dp, Color(0x33FF2448), RoundedCornerShape(20.dp))
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!result.artworkUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(result.artworkUrl)
-                            .crossfade(true)
-                            .placeholder(result.coverResId)
-                            .error(result.coverResId)
-                            .build(),
-                        contentDescription = result.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                } else {
-                    Image(
-                        painter = painterResource(id = result.coverResId),
-                        contentDescription = result.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
+                // Picture (Left Side)
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x33000000))
+                        .border(1.dp, Color(0x44FF2448), RoundedCornerShape(16.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!result.artworkUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(result.artworkUrl)
+                                .crossfade(true)
+                                .placeholder(result.coverResId)
+                                .error(result.coverResId)
+                                .build(),
+                            contentDescription = result.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(id = result.coverResId),
+                            contentDescription = result.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = result.title,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFFFF1F2),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(result.title))
-                                Toast.makeText(context, "Title copied", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier
-                                .size(30.dp)
-                                .testTag("copy_title_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy title",
-                                tint = Color(0xFFD7D0D2),
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Title on Right Side + Copy Title Text/Button
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = result.title,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFF1F2),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
                     Text(
                         text = result.artist,
-                        fontSize = 13.5.sp,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
                         color = Color(0xFFFF405A),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = result.album,
-                        fontSize = 11.5.sp,
-                        color = Color(0xFF9E9295),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+
+                    if (result.album.isNotBlank() && !result.album.equals(result.title, ignoreCase = true)) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = result.album,
+                            fontSize = 12.sp,
+                            color = Color(0xFF9E9295),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Text "Copy Title"
+                    Surface(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(result.title))
+                            Toast.makeText(context, "Title copied", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0x25FFFFFF),
+                        border = BorderStroke(0.6.dp, Color(0x44FFFFFF)),
+                        modifier = Modifier.testTag("copy_title_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy title",
+                                tint = Color(0xFFE0D8DA),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Copy Title",
+                                fontSize = 11.5.sp,
+                                color = Color(0xFFE0D8DA),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
+            // Platform Logos Section: Spotify, Audiomack, Apple Music, YouTube Music
+            Text(
+                text = "STREAMING PLATFORMS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0x99FFF1F2),
+                letterSpacing = 1.5.sp,
+                modifier = Modifier.align(Alignment.Start)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PlatformLogoButton(
+                    name = "Spotify",
+                    iconRes = R.drawable.ic_spotify,
+                    url = spotifyUrl,
+                    modifier = Modifier.weight(1f)
+                )
+                PlatformLogoButton(
+                    name = "Audiomack",
+                    iconRes = R.drawable.ic_audiomack,
+                    url = audiomackUrl,
+                    modifier = Modifier.weight(1f)
+                )
+                PlatformLogoButton(
+                    name = "Apple Music",
+                    iconRes = R.drawable.ic_apple_music,
+                    url = appleMusicUrl,
+                    modifier = Modifier.weight(1f)
+                )
+                PlatformLogoButton(
+                    name = "YouTube",
+                    iconRes = R.drawable.ic_youtube_music,
+                    url = youtubeMusicUrl,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            // Play in Velvet Music Button
             Button(
                 onClick = onPlayInVelvet,
                 shape = RoundedCornerShape(14.dp),
@@ -1055,7 +1138,7 @@ private fun LuxuryMatchedCard(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(46.dp)
+                    .height(48.dp)
                     .testTag("sing_play_button")
             ) {
                 Icon(
@@ -1063,215 +1146,258 @@ private fun LuxuryMatchedCard(
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Play in Velvet Music",
-                    fontSize = 14.sp,
+                    fontSize = 14.5.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             }
 
-            // Only display provider links if non-empty
-            if (providerLinks.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    providerLinks.forEach { link ->
-                        ExternalPillButton(
-                            label = link.label,
-                            color = link.color,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link.url)).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                runCatching { context.startActivity(intent) }
-                                    .onFailure {
-                                        Toast.makeText(context, "Cannot open ${link.label}", Toast.LENGTH_SHORT).show()
-                                    }
-                            }
-                        )
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.height(30.dp))
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            OutlinedButton(
-                onClick = onHumAnother,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0x44FFFFFF)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD7D0D2)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(38.dp)
-                    .testTag("sing_again_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "Try Again", fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
-            }
+            // Settled Microphone Spinner / Retry Button
+            SettledMicRetrySpinner(
+                onRetry = onRestartMic
+            )
         }
     }
 }
 
 /**
- * Notice card for "Couldn't identify that song" and "Couldn't connect"
+ * Settled Platform Logo Button displaying official platform vector icons.
  */
 @Composable
-private fun ElegantNoticeCard(
+private fun PlatformLogoButton(
+    name: String,
+    iconRes: Int,
+    url: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    Surface(
+        onClick = {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            runCatching { context.startActivity(intent) }
+                .onFailure {
+                    Toast.makeText(context, "Cannot open $name", Toast.LENGTH_SHORT).show()
+                }
+        },
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0x22180004),
+        border = BorderStroke(0.8.dp, Color(0x33FF2448)),
+        modifier = modifier.height(68.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 6.dp)
+        ) {
+            Image(
+                painter = painterResource(id = iconRes),
+                contentDescription = name,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.height(5.dp))
+            Text(
+                text = name,
+                fontSize = 10.5.sp,
+                color = Color(0xFFE0D8DA),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Very settled, clean retry / microphone spinner.
+ * Features a quiet, slow sweeping arc around a tranquil microphone button.
+ */
+@Composable
+private fun SettledMicRetrySpinner(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "settledSpinner")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .size(62.dp)
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onRetry
+                )
+                .testTag("sing_refresh_mic_button")
+                .testTag("sing_again_button"),
+            contentAlignment = Alignment.Center
+        ) {
+            // Settled rotating spinner ring
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokeWidth = 2.dp.toPx()
+                rotate(rotation) {
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            listOf(
+                                Color(0x11FF2448),
+                                Color(0x55FF2448),
+                                Color(0xFFFF2448),
+                                Color(0x11FF2448)
+                            )
+                        ),
+                        startAngle = 0f,
+                        sweepAngle = 270f,
+                        useCenter = false,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                    )
+                }
+            }
+
+            // Settled central inner disk with mic icon
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x33180004))
+                    .border(1.dp, Color(0x44FF2448), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = "Tap to search again",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "Tap to search again",
+            fontSize = 12.sp,
+            color = Color(0x99FFF1F2),
+            fontWeight = FontWeight.Normal
+        )
+    }
+}
+
+/**
+ * Notice view for "Couldn't identify that song" and "Couldn't connect".
+ * Clean, tranquil, and uncrowded.
+ */
+@Composable
+private fun SeamlessNoticeResultView(
     title: String,
     message: String,
-    buttonText: String,
-    onAction: () -> Unit,
-    modifier: Modifier = Modifier,
-    testTag: String = "elegant_notice_card"
+    testTag: String,
+    topPadding: Dp,
+    bottomPadding: Dp,
+    onRestartMic: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = Color(0xF0120205),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            Brush.verticalGradient(
-                listOf(
-                    Color(0x77FF2448),
-                    Color(0x338F071F),
-                    Color(0x1150000D)
-                )
-            )
-        ),
-        shadowElevation = 20.dp,
+    Box(
         modifier = modifier
-            .fillMaxWidth()
-            .testTag(testTag)
+            .fillMaxSize()
+            .testTag(testTag),
+        contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(top = topPadding, bottom = bottomPadding)
+                .padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(64.dp)
                     .clip(CircleShape)
                     .background(Color(0x26FF2448))
-                    .border(1.dp, Color(0x44FF2448), CircleShape),
+                    .border(1.2.dp, Color(0x55FF2448), CircleShape)
+                    .shadow(16.dp, CircleShape, spotColor = Color(0x66FF2448)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.GraphicEq,
                     contentDescription = null,
                     tint = Color(0xFFFF405A),
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             Text(
                 text = title,
-                fontSize = 17.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color(0xFFFFF1F2),
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = message,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 color = Color(0xFFB5A7AA),
                 textAlign = TextAlign.Center,
-                lineHeight = 18.sp
+                lineHeight = 20.sp
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            Button(
-                onClick = onAction,
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFD51035),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(46.dp)
-                    .testTag("${testTag}_action_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = buttonText,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-    }
-}
+            // Settled Microphone Spinner for retry
+            SettledMicRetrySpinner(
+                onRetry = onRestartMic
+            )
 
-private data class ProviderLink(
-    val label: String,
-    val url: String,
-    val color: Color
-)
+            Spacer(modifier = Modifier.height(20.dp))
 
-@Composable
-private fun ExternalPillButton(
-    label: String,
-    color: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0x1AFFFFFF),
-        border = androidx.compose.foundation.BorderStroke(0.8.dp, color.copy(alpha = 0.5f)),
-        modifier = modifier.height(38.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
+            // Minimal Dismiss button
             Box(
                 modifier = Modifier
-                    .size(6.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
-                    .background(color)
-            )
-            Spacer(modifier = Modifier.width(5.dp))
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFFE0D8DA),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Icon(
-                imageVector = Icons.Default.OpenInNew,
-                contentDescription = null,
-                tint = Color(0x88D7D0D2),
-                modifier = Modifier.size(11.dp)
-            )
+                    .background(Color(0x22180004))
+                    .border(1.dp, Color(0x33D51035), CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClose
+                    )
+                    .testTag("sing_close_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close Sing It",
+                    tint = Color(0xFFD7D0D2),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
         }
     }
 }

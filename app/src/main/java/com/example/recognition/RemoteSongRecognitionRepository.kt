@@ -10,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
@@ -147,7 +148,7 @@ class RemoteSongRecognitionRepository(
                             reason = "Please try again in a moment."
                         )
                     } else {
-                        Log.d(TAG, "NO_MATCH_FOUND auddStatus=${auddResult.status} acrStatus=${acrResult.status}")
+                        Log.d(TAG, "NO_MATCH_FOUND auddStatus=${auddResult.status} acrStatus=${acrResult.status} auddErr=${auddResult.error} acrErr=${acrResult.error}")
                         RecognitionResult.NoMatch(
                             title = "Couldn't identify that song",
                             reason = "Try singing a little louder or move closer to the music."
@@ -173,6 +174,12 @@ class RemoteSongRecognitionRepository(
 
     private fun isError(result: RecognitionResponse?): Boolean {
         if (result == null) return true
+        val errorMsg = result.error.orEmpty()
+        // If the error message is just that fingerprint couldn't be generated (silence / ambient noise / unrecognized sound),
+        // it means the audio had no recognizable music, so it's a no-match, NOT a server/provider failure!
+        if (errorMsg.contains("fingerprint", ignoreCase = true) || errorMsg.contains("problem with creating", ignoreCase = true)) {
+            return false
+        }
         return result.status == "error" || (!result.success && result.status != "no_match" && !result.error.isNullOrBlank())
     }
 
@@ -264,11 +271,16 @@ class RemoteSongRecognitionRepository(
         private const val PRODUCTION_BASE_URL = "https://velvet-recognition-backend-cx6ybckmo-happyiyate-hashs-projects.vercel.app/"
 
         private fun createApi(): SongRecognitionApi {
-            val configuredBaseUrl = runCatching { BuildConfig.VELVET_RECOGNITION_BASE_URL }.getOrNull()?.trim().orEmpty()
-            val rawUrl = if (configuredBaseUrl.isNotBlank()) configuredBaseUrl else PRODUCTION_BASE_URL
-            val baseUrl = if (rawUrl.endsWith('/')) rawUrl else "$rawUrl/"
+            val baseUrl = PRODUCTION_BASE_URL
+
+            val logging = HttpLoggingInterceptor { message ->
+                Log.d(TAG, "[HTTP] $message")
+            }.apply {
+                level = HttpLoggingInterceptor.Level.BASIC
+            }
 
             val client = OkHttpClient.Builder()
+                .addInterceptor(logging)
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .writeTimeout(20, TimeUnit.SECONDS)
                 .readTimeout(45, TimeUnit.SECONDS)
