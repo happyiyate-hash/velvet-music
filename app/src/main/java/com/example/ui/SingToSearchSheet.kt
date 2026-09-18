@@ -984,8 +984,8 @@ private fun SeamlessMatchedResultView(
     val trackInfoOffsetY = remember { Animatable(20f) }
     val actionsAlpha = remember { Animatable(0f) }
     val actionsOffsetY = remember { Animatable(16f) }
-    val platformAlphas = remember { List(5) { Animatable(0f) } }
-    val platformOffsetsY = remember { List(5) { Animatable(16f) } }
+    val platformAlphas = remember { List(6) { Animatable(0f) } }
+    val platformOffsetsY = remember { List(6) { Animatable(16f) } }
 
     LaunchedEffect(result) {
         // Step 1: Artwork appears (~260ms)
@@ -1022,7 +1022,7 @@ private fun SeamlessMatchedResultView(
 
         // Step 5: Platform rows stagger in one by one (starts at 560ms, 90ms gap)
         delay(120)
-        for (i in 0 until 5) {
+        for (i in 0 until 6) {
             val idx = i
             launch {
                 platformAlphas[idx].animateTo(1f, animationSpec = tween(200, easing = LinearOutSlowInEasing))
@@ -1060,6 +1060,7 @@ private fun SeamlessMatchedResultView(
                 "apple-music" -> result.appleMusicUrl
                 "audiomack" -> result.audiomackUrl
                 "soundcloud" -> result.soundcloudUrl
+                "boomplay" -> result.boomplayUrl
                 else -> null
             }
             NativePlatformItem(
@@ -1080,8 +1081,7 @@ private fun SeamlessMatchedResultView(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(bottom = bottomPadding + 36.dp)
+                .padding(bottom = bottomPadding)
         ) {
             // 1. HERO ARTWORK CONTAINER WITH GLOWING CURVED WAVE
             Box(
@@ -1132,16 +1132,16 @@ private fun SeamlessMatchedResultView(
 
                     // Path for the curved wave cutting into the background
                     val wavePath = androidx.compose.ui.graphics.Path().apply {
-                        moveTo(0f, h * 0.60f)
+                        moveTo(0f, h * 0.70f)
                         cubicTo(
-                            w * 0.28f, h * 0.72f,
-                            w * 0.44f, h * 0.88f,
-                            w * 0.66f, h * 0.84f
+                            w * 0.28f, h * 0.80f,
+                            w * 0.44f, h * 0.94f,
+                            w * 0.66f, h * 0.90f
                         )
                         cubicTo(
-                            w * 0.80f, h * 0.81f,
-                            w * 0.90f, h * 0.72f,
-                            w, h * 0.74f
+                            w * 0.80f, h * 0.87f,
+                            w * 0.90f, h * 0.80f,
+                            w, h * 0.81f
                         )
                         lineTo(w, h)
                         lineTo(0f, h)
@@ -1156,16 +1156,16 @@ private fun SeamlessMatchedResultView(
 
                     // Stroke along the wave edge for the vibrant crimson neon glow
                     val strokePath = androidx.compose.ui.graphics.Path().apply {
-                        moveTo(0f, h * 0.60f)
+                        moveTo(0f, h * 0.70f)
                         cubicTo(
-                            w * 0.28f, h * 0.72f,
-                            w * 0.44f, h * 0.88f,
-                            w * 0.66f, h * 0.84f
+                            w * 0.28f, h * 0.80f,
+                            w * 0.44f, h * 0.94f,
+                            w * 0.66f, h * 0.90f
                         )
                         cubicTo(
-                            w * 0.80f, h * 0.81f,
-                            w * 0.90f, h * 0.72f,
-                            w, h * 0.74f
+                            w * 0.80f, h * 0.87f,
+                            w * 0.90f, h * 0.80f,
+                            w, h * 0.81f
                         )
                     }
 
@@ -1198,7 +1198,7 @@ private fun SeamlessMatchedResultView(
                     // Keep the thumbnail closer to the left edge like the reference.
                     .graphicsLayer {
                         alpha = trackInfoAlpha.value
-                        translationY = trackInfoOffsetY.value
+                        translationY = trackInfoOffsetY.value - 10f
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1235,7 +1235,7 @@ private fun SeamlessMatchedResultView(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier .width(12.dp))
 
                 // Track Metadata Column (Right Side)
                 Column(
@@ -1310,8 +1310,8 @@ private fun SeamlessMatchedResultView(
                 Box(
                     modifier = Modifier
                         .weight(1.15f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(24.dp))
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
                         .background(
                             Brush.horizontalGradient(
                                 listOf(Color(0xFFFF2448), Color(0xFFD51035))
@@ -1345,8 +1345,8 @@ private fun SeamlessMatchedResultView(
                 Box(
                     modifier = Modifier
                         .weight(1.35f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(24.dp))
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
                         .background(Color(0xFF141418))
                         .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
                         .clickable {
@@ -1380,7 +1380,7 @@ private fun SeamlessMatchedResultView(
                 // Share Button (Dark glass circular button)
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(42.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF141418))
                         .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
@@ -1403,12 +1403,12 @@ private fun SeamlessMatchedResultView(
                         imageVector = Icons.Default.Share,
                         contentDescription = "Share",
                         tint = Color(0xFFE5DEE0),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // 4. "AVAILABLE ON" HEADER
             Column(
@@ -1434,7 +1434,10 @@ private fun SeamlessMatchedResultView(
 
             // 5. FULL-WIDTH PLATFORMS LIST (Stretched full width with no horizontal padding)
             Column(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(scrollState)
             ) {
                 platforms.forEachIndexed { index, platform ->
                     NativePlatformRow(
@@ -1443,7 +1446,6 @@ private fun SeamlessMatchedResultView(
                         offsetY = platformOffsetsY[index].value,
                         onClick = { platform.launch(context) }
                     )
-                    // Intentionally no separator lines; platforms share the screen background.
                 }
             }
         }
@@ -1606,6 +1608,7 @@ private data class NativePlatformItem(
                 "apple-music" -> "https://music.apple.com/search?term=$encoded"
                 "audiomack" -> "https://audiomack.com/search?q=$encoded"
                 "soundcloud" -> "https://soundcloud.com/search?q=$encoded"
+                "boomplay" -> "https://www.boomplay.com/search/default-$encoded"
                 else -> "https://www.google.com/search?q=$encoded"
             }
         }
@@ -1660,14 +1663,15 @@ private fun PlatformLogoView(
         // The uploaded asset supplies its own branded shape/background.
         // Do not wrap it in another card or border.
         modifier = modifier
-            .size(50.dp),
+            .size(38.dp)
+            .clip(RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (!isLoaded) {
             // Elegant, non-crashing fallback placeholder with initial letter
             Text(
                 text = platform.name.take(1),
-                fontSize = 17.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFFC0BAC0)
             )
@@ -1681,7 +1685,8 @@ private fun PlatformLogoView(
             contentDescription = platform.name,
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .fillMaxSize(),
+                .fillMaxSize()
+                .clip(RoundedCornerShape(10.dp)),
             onSuccess = { isLoaded = true },
             onError = { isLoaded = false }
         )
@@ -1706,7 +1711,7 @@ private fun NativePlatformRow(
         color = Color.Transparent,
         modifier = modifier
             .fillMaxWidth()
-            .height(68.dp)
+            .height(58.dp)
             .graphicsLayer {
                 this.alpha = alpha
                 this.translationY = offsetY
@@ -1722,7 +1727,7 @@ private fun NativePlatformRow(
                 platform = platform
             )
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier .width(12.dp))
 
             Column(
                 modifier = Modifier.weight(1f)
@@ -1749,7 +1754,7 @@ private fun NativePlatformRow(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
                 tint = Color(0xFF6B6B75),
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(16.dp)
             )
         }
     }
@@ -1888,7 +1893,7 @@ private fun SeamlessNoticeResultView(
                 )
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = title,
@@ -1908,7 +1913,7 @@ private fun SeamlessNoticeResultView(
                 lineHeight = 20.sp
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Diagnostic button directly exposed on notice/error screen
             OutlinedButton(
