@@ -12,6 +12,8 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.example.R
 import com.example.model.Track
+import com.example.recognition.RecognitionDiagnostics
+import com.example.recognition.RecognitionDiagnosticsStore
 import com.example.recognition.RecognitionResult
 import com.example.recognition.RecognizedSong
 import com.example.recognition.RemoteSongRecognitionRepository
@@ -59,15 +61,28 @@ sealed class HumRecognitionState {
         val message: String = "Identifying…"
     ) : HumRecognitionState()
     data class Matched(
-        val result: HumMatchResult
+        val result: HumMatchResult,
+        val diagnostics: RecognitionDiagnostics? = null
     ) : HumRecognitionState()
     data class NoMatch(
         val title: String = "Couldn't identify that song",
-        val message: String = "Try singing a little louder or move closer to the music."
+        val message: String = "Try singing a little louder or move closer to the music.",
+        val diagnostics: RecognitionDiagnostics? = null
     ) : HumRecognitionState()
     data class ConnectionError(
         val title: String = "Couldn't connect",
-        val message: String = "Check your connection and try again."
+        val message: String = "Check your connection and try again.",
+        val diagnostics: RecognitionDiagnostics? = null
+    ) : HumRecognitionState()
+    data class ProviderError(
+        val title: String = "Couldn't search right now",
+        val message: String = "Recognition services encountered an issue. Please try again.",
+        val diagnostics: RecognitionDiagnostics? = null
+    ) : HumRecognitionState()
+    data class ResponseParsingError(
+        val title: String = "Couldn't parse response",
+        val message: String = "Failed to parse recognition response from server.",
+        val diagnostics: RecognitionDiagnostics? = null
     ) : HumRecognitionState()
 }
 
@@ -86,18 +101,39 @@ class HummingRecognitionEngine(
     val liveAmplitude: kotlinx.coroutines.flow.StateFlow<Float> = _liveAmplitude
     private val _livePitchHz = kotlinx.coroutines.flow.MutableStateFlow(0f)
     val livePitchHz: kotlinx.coroutines.flow.StateFlow<Float> = _livePitchHz
+    private val _lastDiagnostics = kotlinx.coroutines.flow.MutableStateFlow<RecognitionDiagnostics?>(null)
+    val lastDiagnostics: kotlinx.coroutines.flow.StateFlow<RecognitionDiagnostics?> = _lastDiagnostics
     private var activeJob: Job? = null
     private var lastContext: Context? = null
+
+    fun loadSavedDiagnostics(context: Context) {
+        val saved = RecognitionDiagnosticsStore.getLastDiagnostics(context)
+        if (saved != null) {
+            _lastDiagnostics.value = saved
+        }
+    }
 
     /** Starts capturing microphone audio and sends it to the batch recognition endpoint. */
     fun startListening(context: Context, libraryTracks: List<Track> = emptyList()) {
         stopListening()
         lastContext = context.applicationContext
+        loadSavedDiagnostics(context)
+
         activeJob = scope.launch {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                val diag = RecognitionDiagnostics(
+                    timestamp = RecognitionDiagnostics.currentFormattedTimestamp(),
+                    exceptionClass = "SecurityException",
+                    exceptionMessage = "Microphone permission (RECORD_AUDIO) was not granted.",
+                    causeMessage = "Permission denied at runtime",
+                    isNetworkFailure = false
+                )
+                _lastDiagnostics.value = diag
+                RecognitionDiagnosticsStore.saveLastDiagnostics(context, diag)
                 _state.value = HumRecognitionState.ConnectionError(
                     title = "Permission needed",
-                    message = "Microphone permission is required to identify a song."
+                    message = "Microphone permission is required to identify a song.",
+                    diagnostics = diag
                 )
                 return@launch
             }
@@ -105,9 +141,19 @@ class HummingRecognitionEngine(
             _state.value = HumRecognitionState.Listening(0, MAX_CAPTURE_SECONDS)
             val capture = captureAudio()
             if (capture == null || capture.wavData.isEmpty()) {
+                val diag = RecognitionDiagnostics(
+                    timestamp = RecognitionDiagnostics.currentFormattedTimestamp(),
+                    exceptionClass = "AudioRecordException",
+                    exceptionMessage = "Velvet could not capture microphone audio (0 bytes recorded).",
+                    causeMessage = "AudioRecord failed to initialize or read samples",
+                    isNetworkFailure = false
+                )
+                _lastDiagnostics.value = diag
+                RecognitionDiagnosticsStore.saveLastDiagnostics(context, diag)
                 _state.value = HumRecognitionState.ConnectionError(
                     title = "Microphone error",
-                    message = "Velvet could not capture microphone audio. Check microphone permission and try again."
+                    message = "Velvet could not capture microphone audio. Check microphone permission and try again.",
+                    diagnostics = diag
                 )
                 return@launch
             }
@@ -119,32 +165,51 @@ class HummingRecognitionEngine(
                 repository.recognizeBatch(capture.wavData)
             }
 
+            val resultDiag = when (result) {
+                is RecognitionResult.Match -> result.diagnostics
+                is RecognitionResult.NoMatch -> result.diagnostics
+                is RecognitionResult.ProviderError -> result.diagnostics
+                is RecognitionResult.ResponseParsingError -> result.diagnostics
+                is RecognitionResult.ConnectionError -> result.diagnostics
+            }
+            if (resultDiag != null) {
+                _lastDiagnostics.value = resultDiag
+                RecognitionDiagnosticsStore.saveLastDiagnostics(context, resultDiag)
+            }
+
             when (result) {
                 is RecognitionResult.Match -> {
-                    _state.value = HumRecognitionState.Matched(toHumMatchResult(result.song, libraryTracks))
+                    _state.value = HumRecognitionState.Matched(
+                        result = toHumMatchResult(result.song, libraryTracks),
+                        diagnostics = result.diagnostics
+                    )
                 }
                 is RecognitionResult.NoMatch -> {
                     _state.value = HumRecognitionState.NoMatch(
                         title = result.title,
-                        message = result.reason
+                        message = result.reason,
+                        diagnostics = result.diagnostics
                     )
                 }
                 is RecognitionResult.ProviderError -> {
-                    _state.value = HumRecognitionState.ConnectionError(
+                    _state.value = HumRecognitionState.ProviderError(
                         title = result.title,
-                        message = result.reason
+                        message = result.reason,
+                        diagnostics = result.diagnostics
                     )
                 }
                 is RecognitionResult.ResponseParsingError -> {
-                    _state.value = HumRecognitionState.ConnectionError(
+                    _state.value = HumRecognitionState.ResponseParsingError(
                         title = result.title,
-                        message = result.reason
+                        message = result.reason,
+                        diagnostics = result.diagnostics
                     )
                 }
                 is RecognitionResult.ConnectionError -> {
                     _state.value = HumRecognitionState.ConnectionError(
                         title = result.title,
-                        message = result.reason
+                        message = result.reason,
+                        diagnostics = result.diagnostics
                     )
                 }
             }

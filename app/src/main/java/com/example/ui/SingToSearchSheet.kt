@@ -60,6 +60,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -72,6 +73,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -111,6 +113,7 @@ import com.example.media.HumMatchResult
 import com.example.media.HumRecognitionState
 import com.example.media.HummingRecognitionEngine
 import com.example.model.Track
+import com.example.recognition.RecognitionDiagnostics
 import com.example.ui.theme.VelvetBloodPlum
 import com.example.ui.theme.VelvetDeepCrimson
 import kotlin.math.cos
@@ -142,6 +145,21 @@ fun SingToSearchSheet(
 
     val state by recognitionEngine.state.collectAsState()
     val liveAmplitude by recognitionEngine.liveAmplitude.collectAsState()
+    val lastSavedDiagnostics by recognitionEngine.lastDiagnostics.collectAsState()
+    var showDiagnosticsModal by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        recognitionEngine.loadSavedDiagnostics(context)
+    }
+
+    val activeDiagnostics: RecognitionDiagnostics? = when (val s = state) {
+        is HumRecognitionState.Matched -> s.diagnostics
+        is HumRecognitionState.NoMatch -> s.diagnostics
+        is HumRecognitionState.ConnectionError -> s.diagnostics
+        is HumRecognitionState.ProviderError -> s.diagnostics
+        is HumRecognitionState.ResponseParsingError -> s.diagnostics
+        else -> null
+    } ?: lastSavedDiagnostics
 
     // Smooth ambient breathing visualizer pulse during Searching ("Identifying…")
     val pulseTransition = rememberInfiniteTransition(label = "identifying_pulse")
@@ -166,6 +184,8 @@ fun SingToSearchSheet(
         is HumRecognitionState.Matched -> "Song Identified"
         is HumRecognitionState.NoMatch -> "Couldn't Identify"
         is HumRecognitionState.ConnectionError -> "Connection Notice"
+        is HumRecognitionState.ProviderError -> "Service Notice"
+        is HumRecognitionState.ResponseParsingError -> "Response Notice"
         is HumRecognitionState.Idle -> "Listening…"
     }
 
@@ -256,6 +276,24 @@ fun SingToSearchSheet(
                             .padding(top = textTopPadding)
                             .testTag("sing_status_text")
                     )
+
+                    // Subtle Header Diagnostics Button if previous diagnostics exist
+                    if (lastSavedDiagnostics != null) {
+                        IconButton(
+                            onClick = { showDiagnosticsModal = true },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = topStatusBarInset + 12.dp, end = 16.dp)
+                                .testTag("sing_header_diagnostics_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = "View diagnostic details",
+                                tint = Color(0xFFE28492).copy(alpha = 0.75f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
 
                     // Center Visualizer Engine (Tapered Waveform Bars + Central Glowing Orb)
                     Box(
@@ -378,7 +416,10 @@ fun SingToSearchSheet(
 
             // 4. "Couldn't identify that song" or "Couldn't connect" Notice View
             AnimatedVisibility(
-                visible = state is HumRecognitionState.NoMatch || state is HumRecognitionState.ConnectionError,
+                visible = state is HumRecognitionState.NoMatch ||
+                        state is HumRecognitionState.ConnectionError ||
+                        state is HumRecognitionState.ProviderError ||
+                        state is HumRecognitionState.ResponseParsingError,
                 enter = fadeIn(animationSpec = tween(450, delayMillis = 100)) + scaleIn(initialScale = 0.94f, animationSpec = tween(450, delayMillis = 100)),
                 exit = fadeOut(animationSpec = tween(300)),
                 modifier = Modifier.fillMaxSize()
@@ -386,14 +427,23 @@ fun SingToSearchSheet(
                 val noticeTitle = when (val s = state) {
                     is HumRecognitionState.NoMatch -> s.title
                     is HumRecognitionState.ConnectionError -> s.title
+                    is HumRecognitionState.ProviderError -> s.title
+                    is HumRecognitionState.ResponseParsingError -> s.title
                     else -> "No Match"
                 }
                 val noticeMsg = when (val s = state) {
                     is HumRecognitionState.NoMatch -> s.message
                     is HumRecognitionState.ConnectionError -> s.message
+                    is HumRecognitionState.ProviderError -> s.message
+                    is HumRecognitionState.ResponseParsingError -> s.message
                     else -> "Please try again."
                 }
-                val noticeTag = if (state is HumRecognitionState.NoMatch) "no_match_card" else "connection_error_card"
+                val noticeTag = when (state) {
+                    is HumRecognitionState.NoMatch -> "no_match_card"
+                    is HumRecognitionState.ProviderError -> "provider_error_card"
+                    is HumRecognitionState.ResponseParsingError -> "parsing_error_card"
+                    else -> "connection_error_card"
+                }
 
                 SeamlessNoticeResultView(
                     title = noticeTitle,
@@ -401,6 +451,9 @@ fun SingToSearchSheet(
                     testTag = noticeTag,
                     topPadding = topStatusBarInset + 24.dp,
                     bottomPadding = bottomNavBarInset + 24.dp,
+                    onViewDiagnostics = {
+                        showDiagnosticsModal = true
+                    },
                     onRestartMic = {
                         recognitionEngine.startListening(context, libraryTracks)
                     },
@@ -410,6 +463,14 @@ fun SingToSearchSheet(
                     }
                 )
             }
+        }
+
+        // Fullscreen diagnostics modal overlay
+        if (showDiagnosticsModal) {
+            RecognitionDiagnosticsModal(
+                diagnostics = activeDiagnostics ?: lastSavedDiagnostics,
+                onClose = { showDiagnosticsModal = false }
+            )
         }
     }
 }
@@ -1310,6 +1371,7 @@ private fun SeamlessNoticeResultView(
     testTag: String,
     topPadding: Dp,
     bottomPadding: Dp,
+    onViewDiagnostics: () -> Unit,
     onRestartMic: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -1364,7 +1426,38 @@ private fun SeamlessNoticeResultView(
                 lineHeight = 20.sp
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Diagnostic button directly exposed on notice/error screen
+            OutlinedButton(
+                onClick = onViewDiagnostics,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(44.dp)
+                    .testTag("view_diagnostic_details_button"),
+                shape = RoundedCornerShape(22.dp),
+                border = BorderStroke(1.dp, Color(0x55FF2448)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color(0x19FF2448),
+                    contentColor = Color(0xFFFF8A9E)
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Terminal,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color(0xFFFF6B85)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "View diagnostic details",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Settled Microphone Spinner for retry
             SettledMicRetrySpinner(

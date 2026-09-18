@@ -241,4 +241,47 @@ class RemoteSongRecognitionRepositoryTest {
         assertEquals("Couldn't parse response", parsingError.title)
         assertTrue(parsingError.reason.contains("JSON schema mismatch"))
     }
+
+    @Test
+    fun recognitionDiagnostics_capturesExactDetailsAndSanitizesSecrets() = runBlocking {
+        val errorResponse = Response.error<BatchRecognitionResponse>(
+            500,
+            "{\"error\":\"Internal Server Error with token: secret_audd_api_token_12345678\"}".toResponseBody("application/json".toMediaType())
+        )
+        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = HttpException(errorResponse)))
+        val result = repository.recognizeBatch(ByteArray(500) { 1 })
+
+        assertTrue(result is RecognitionResult.ProviderError)
+        val providerError = result as RecognitionResult.ProviderError
+        val diagnostics = providerError.diagnostics
+        assertTrue(diagnostics != null)
+        assertEquals(500, diagnostics?.httpStatus)
+        assertEquals("retrofit2.HttpException", diagnostics?.exceptionClass)
+
+        val report = diagnostics?.toFormattedReport() ?: ""
+        assertTrue(report.contains("HTTP Status: 500"))
+        assertTrue(report.contains("Internal Server Error"))
+        // Check sanitization: token is scrubbed
+        assertTrue(!report.contains("secret_audd_api_token_12345678"))
+        assertTrue(report.contains("[REDACTED]"))
+    }
+
+    @Test
+    fun recognitionDiagnostics_timeoutException_reportsExactTimeoutDetails() = runBlocking {
+        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = SocketTimeoutException("connect timed out after 15000ms")))
+        val result = repository.recognizeBatch(ByteArray(500) { 1 })
+
+        assertTrue(result is RecognitionResult.ConnectionError)
+        val connError = result as RecognitionResult.ConnectionError
+        assertTrue(connError.isTimeout)
+        val diag = connError.diagnostics
+        assertTrue(diag != null)
+        assertTrue(diag?.timeoutInfo != null)
+        assertEquals("java.net.SocketTimeoutException", diag?.exceptionClass)
+        assertTrue(diag?.exceptionMessage?.contains("connect timed out") == true)
+
+        val report = diag?.toFormattedReport() ?: ""
+        assertTrue(report.contains("Timeout Information:"))
+        assertTrue(report.contains("SocketTimeoutException"))
+    }
 }

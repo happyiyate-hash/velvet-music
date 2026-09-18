@@ -43,3 +43,10 @@
 # ===================================================================
 -keep class androidx.media3.** { *; }
 -dontwarn androidx.media3.**
+
+# ===================================================================
+# 4. Recognition Diagnostics & Models (Must not be stripped in Release)
+# ===================================================================
+-keep class com.example.recognition.** { *; }
+-keepclassmembers class com.example.recognition.** { *; }
+
