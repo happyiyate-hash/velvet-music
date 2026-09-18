@@ -3,6 +3,7 @@ package com.example.media
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -235,8 +236,18 @@ class HummingRecognitionEngine(
         val audioFormat = AudioFormat.ENCODING_PCM_16BIT
         val minimum = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         if (minimum <= 0) return@withContext null
+        val bufferSize = (minimum * 3).coerceAtLeast(8192)
         val recorder = try {
-            AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, channelConfig, audioFormat, (minimum * 2).coerceAtLeast(4096))
+            val preferredSource = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                MediaRecorder.AudioSource.UNPROCESSED
+            } else {
+                MediaRecorder.AudioSource.MIC
+            }
+            runCatching {
+                AudioRecord(preferredSource, sampleRate, channelConfig, audioFormat, bufferSize)
+            }.getOrElse {
+                AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, channelConfig, audioFormat, bufferSize)
+            }
         } catch (_: Throwable) { return@withContext null }
         if (recorder.state != AudioRecord.STATE_INITIALIZED) { recorder.release(); return@withContext null }
         val pcm = ByteArrayOutputStream(sampleRate * 2 * MAX_CAPTURE_SECONDS)
@@ -347,7 +358,7 @@ class HummingRecognitionEngine(
     }
 
     companion object {
-        private const val MAX_CAPTURE_SECONDS = 8
+        private const val MAX_CAPTURE_SECONDS = 12
         private const val MIN_PCM_BYTES = 8_000
     }
 }
