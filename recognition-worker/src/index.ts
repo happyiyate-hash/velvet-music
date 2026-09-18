@@ -17,6 +17,8 @@ type RecognitionSong = {
   appleMusicUrl: string | null
   youtubeMusicUrl: string | null
   audiomackUrl: string | null
+  soundcloudUrl: string | null
+  boomplayUrl: string | null
 }
 
 type RecognitionResponse = {
@@ -107,7 +109,7 @@ async function recognizeAmbient(audio: File, env: Env, requestId: string): Promi
   const result = data.result
   const title = String(result.title || "").trim(); const artist = String(result.artist || "").trim()
   if (!title || !artist) return { success: false, confidence: 0, error: "AudD: recognition returned incomplete metadata" }
-  return { success: true, confidence: 100, song: { id: result.isrc || `${artist}:${title}`, title, artist, album: String(result.album || "Unknown Album"), artworkUrl: result.apple_music?.artwork?.url || null, durationMs: Number(result.apple_music?.durationInMillis || 0), isrc: result.isrc || null, spotifyUrl: result.spotify?.external_urls?.spotify || null, appleMusicUrl: result.apple_music?.url || null, youtubeMusicUrl: `https://music.youtube.com/search?q=${encodeURIComponent(`${artist} ${title}`)}`, audiomackUrl: `https://audiomack.com/search?q=${encodeURIComponent(`${artist} ${title}`)}` } }
+  return { success: true, confidence: 100, song: { id: result.isrc || `${artist}:${title}`, title, artist, album: String(result.album || "Unknown Album"), artworkUrl: result.apple_music?.artwork?.url || null, durationMs: Number(result.apple_music?.durationInMillis || 0), isrc: result.isrc || null, spotifyUrl: result.spotify?.external_urls?.spotify || null, appleMusicUrl: result.apple_music?.url || null, youtubeMusicUrl: `https://music.youtube.com/search?q=${encodeURIComponent(`${artist} ${title}`)}`, audiomackUrl: `https://audiomack.com/search?q=${encodeURIComponent(`${artist} ${title}`)}`, soundcloudUrl: `https://soundcloud.com/search?q=${encodeURIComponent(`${artist} ${title}`)}`, boomplayUrl: `https://www.boomplay.com/search/default-${encodeURIComponent(`${artist} ${title}`)}` } }
 }
 
 async function recognizeHumming(audio: File, env: Env, requestId: string): Promise<RecognitionResponse> {
