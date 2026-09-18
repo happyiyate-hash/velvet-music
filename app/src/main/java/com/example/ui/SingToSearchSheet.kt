@@ -1540,6 +1540,12 @@ val MUSIC_PLATFORMS = listOf(
         name = "SoundCloud",
         logo = "/platform-logos/soundcloud.png",
         subtitle = "Stream on SoundCloud"
+    ),
+    MusicPlatformConfig(
+        id = "boomplay",
+        name = "Boomplay",
+        logo = "/platform-logos/boomplay.png",
+        subtitle = "Stream on Boomplay"
     )
 )
 
