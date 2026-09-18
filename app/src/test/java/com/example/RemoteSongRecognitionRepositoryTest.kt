@@ -7,24 +7,33 @@ import com.example.recognition.RecognitionResult
 import com.example.recognition.RecognizedSongDto
 import com.example.recognition.RemoteSongRecognitionRepository
 import com.example.recognition.SongRecognitionApi
+import com.squareup.moshi.JsonDataException
 import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import retrofit2.HttpException
+import retrofit2.Response
 import java.io.IOException
+import java.net.SocketTimeoutException
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class RemoteSongRecognitionRepositoryTest {
 
-    private fun createFakeApi(response: BatchRecognitionResponse?, shouldThrow: Boolean = false): SongRecognitionApi {
+    private fun createFakeApi(
+        response: BatchRecognitionResponse?,
+        throwException: Throwable? = null
+    ): SongRecognitionApi {
         return object : SongRecognitionApi {
             override suspend fun recognizeBatch(audio: MultipartBody.Part): BatchRecognitionResponse {
-                if (shouldThrow) throw IOException("Simulated network failure")
+                if (throwException != null) throw throwException
                 return response ?: throw IllegalStateException("No response configured")
             }
         }
@@ -187,11 +196,49 @@ class RemoteSongRecognitionRepositoryTest {
 
     @Test
     fun recognizeBatch_networkException_returnsConnectionErrorState() = runBlocking {
-        val repository = RemoteSongRecognitionRepository(createFakeApi(null, shouldThrow = true))
+        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = IOException("Simulated network failure")))
         val result = repository.recognizeBatch(ByteArray(500) { 1 })
 
         assertTrue(result is RecognitionResult.ConnectionError)
         val connError = result as RecognitionResult.ConnectionError
         assertEquals("Couldn't connect", connError.title)
+    }
+
+    @Test
+    fun recognizeBatch_httpException404_returnsProviderErrorState() = runBlocking {
+        val errorResponse = Response.error<BatchRecognitionResponse>(
+            404,
+            "{\"error\":\"Not Found\"}".toResponseBody("application/json".toMediaType())
+        )
+        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = HttpException(errorResponse)))
+        val result = repository.recognizeBatch(ByteArray(500) { 1 })
+
+        assertTrue(result is RecognitionResult.ProviderError)
+        val providerError = result as RecognitionResult.ProviderError
+        assertEquals("Server error (404)", providerError.title)
+        assertEquals(404, providerError.httpStatus)
+        assertTrue(providerError.responseBody?.contains("Not Found") == true)
+    }
+
+    @Test
+    fun recognizeBatch_socketTimeoutException_returnsConnectionErrorWithTimeout() = runBlocking {
+        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = SocketTimeoutException("Read timed out")))
+        val result = repository.recognizeBatch(ByteArray(500) { 1 })
+
+        assertTrue(result is RecognitionResult.ConnectionError)
+        val connError = result as RecognitionResult.ConnectionError
+        assertEquals("Couldn't connect", connError.title)
+        assertTrue(connError.isTimeout)
+    }
+
+    @Test
+    fun recognizeBatch_jsonDataException_returnsResponseParsingErrorState() = runBlocking {
+        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = JsonDataException("Required field missing")))
+        val result = repository.recognizeBatch(ByteArray(500) { 1 })
+
+        assertTrue(result is RecognitionResult.ResponseParsingError)
+        val parsingError = result as RecognitionResult.ResponseParsingError
+        assertEquals("Couldn't parse response", parsingError.title)
+        assertTrue(parsingError.reason.contains("JSON schema mismatch"))
     }
 }

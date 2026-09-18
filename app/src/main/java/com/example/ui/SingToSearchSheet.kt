@@ -886,18 +886,23 @@ private fun SeamlessMatchedResultView(
     val clipboardManager = LocalClipboardManager.current
     val scrollState = rememberScrollState()
 
-    // Smart fallback URL generation: if direct URLs are absent, generate search links
-    val query = remember(result.artist, result.title) {
-        Uri.encode("${result.artist} ${result.title}")
+    // Strictly use provider URLs returned by recognition — do NOT construct fallback search URLs
+    val availableProviders = remember(result.spotifyUrl, result.audiomackUrl, result.appleMusicUrl, result.youtubeMusicUrl) {
+        buildList {
+            result.spotifyUrl?.trim()?.takeIf { it.isNotBlank() }?.let {
+                add(ReturnedProviderLink("Spotify", R.drawable.ic_spotify, it))
+            }
+            result.audiomackUrl?.trim()?.takeIf { it.isNotBlank() }?.let {
+                add(ReturnedProviderLink("Audiomack", R.drawable.ic_audiomack, it))
+            }
+            result.appleMusicUrl?.trim()?.takeIf { it.isNotBlank() }?.let {
+                add(ReturnedProviderLink("Apple Music", R.drawable.ic_apple_music, it))
+            }
+            result.youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() }?.let {
+                add(ReturnedProviderLink("YouTube", R.drawable.ic_youtube_music, it))
+            }
+        }
     }
-    val spotifyUrl = result.spotifyUrl?.takeIf { it.isNotBlank() }
-        ?: "https://open.spotify.com/search/$query"
-    val audiomackUrl = result.audiomackUrl?.takeIf { it.isNotBlank() }
-        ?: "https://audiomack.com/search?q=$query"
-    val appleMusicUrl = result.appleMusicUrl?.takeIf { it.isNotBlank() }
-        ?: "https://music.apple.com/us/search?term=$query"
-    val youtubeMusicUrl = result.youtubeMusicUrl?.takeIf { it.isNotBlank() }
-        ?: "https://music.youtube.com/search?q=$query"
 
     Box(
         modifier = modifier
@@ -1083,50 +1088,36 @@ private fun SeamlessMatchedResultView(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Platform Logos Section: Spotify, Audiomack, Apple Music, YouTube Music
-            Text(
-                text = "STREAMING PLATFORMS",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0x99FFF1F2),
-                letterSpacing = 1.5.sp,
-                modifier = Modifier.align(Alignment.Start)
-            )
+            // Platform Logos Section: strictly show URLs returned by recognition
+            if (availableProviders.isNotEmpty()) {
+                Text(
+                    text = "STREAMING PLATFORMS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0x99FFF1F2),
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.align(Alignment.Start)
+                )
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                PlatformLogoButton(
-                    name = "Spotify",
-                    iconRes = R.drawable.ic_spotify,
-                    url = spotifyUrl,
-                    modifier = Modifier.weight(1f)
-                )
-                PlatformLogoButton(
-                    name = "Audiomack",
-                    iconRes = R.drawable.ic_audiomack,
-                    url = audiomackUrl,
-                    modifier = Modifier.weight(1f)
-                )
-                PlatformLogoButton(
-                    name = "Apple Music",
-                    iconRes = R.drawable.ic_apple_music,
-                    url = appleMusicUrl,
-                    modifier = Modifier.weight(1f)
-                )
-                PlatformLogoButton(
-                    name = "YouTube",
-                    iconRes = R.drawable.ic_youtube_music,
-                    url = youtubeMusicUrl,
-                    modifier = Modifier.weight(1f)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    availableProviders.forEach { provider ->
+                        PlatformLogoButton(
+                            name = provider.name,
+                            iconRes = provider.iconRes,
+                            url = provider.url,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(22.dp))
             }
-
-            Spacer(modifier = Modifier.height(22.dp))
 
             // Play in Velvet Music Button
             Button(
@@ -1163,6 +1154,12 @@ private fun SeamlessMatchedResultView(
         }
     }
 }
+
+private data class ReturnedProviderLink(
+    val name: String,
+    val iconRes: Int,
+    val url: String
+)
 
 /**
  * Settled Platform Logo Button displaying official platform vector icons.

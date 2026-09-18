@@ -2,17 +2,23 @@ package com.example.recognition
 
 import android.util.Log
 import com.example.BuildConfig
+import com.squareup.moshi.JsonDataException
+import com.squareup.moshi.JsonEncodingException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 
 data class RecognizedSong(
@@ -38,11 +44,20 @@ sealed class RecognitionResult {
     ) : RecognitionResult()
     data class ProviderError(
         val title: String = "Couldn't search right now",
-        val reason: String = "Recognition services encountered an issue. Please try again."
+        val reason: String = "Recognition services encountered an issue. Please try again.",
+        val httpStatus: Int? = null,
+        val responseBody: String? = null
+    ) : RecognitionResult()
+    data class ResponseParsingError(
+        val title: String = "Couldn't parse response",
+        val reason: String = "Failed to parse recognition response from server.",
+        val rawException: String? = null
     ) : RecognitionResult()
     data class ConnectionError(
         val title: String = "Couldn't connect",
-        val reason: String = "Check your connection and try again."
+        val reason: String = "Check your connection and try again.",
+        val isTimeout: Boolean = false,
+        val exceptionType: String? = null
     ) : RecognitionResult()
 }
 
@@ -76,7 +91,9 @@ class RemoteSongRecognitionRepository(
         }
 
         val startedAt = System.currentTimeMillis()
+        val fullEndpointUrl = "${PRODUCTION_BASE_URL}v1/recognition/batch"
         Log.d(TAG, "BATCH_UPLOAD_STARTED bytes=${wavAudio.size}")
+        Log.d(TAG, "BATCH_REQUEST_URL=$fullEndpointUrl")
 
         try {
             val requestBody = wavAudio.toRequestBody("audio/wav".toMediaType())
@@ -88,6 +105,7 @@ class RemoteSongRecognitionRepository(
 
             val response = api.recognizeBatch(audioPart)
             val elapsed = System.currentTimeMillis() - startedAt
+            Log.d(TAG, "BATCH_RESPONSE_HTTP=200")
             Log.d(TAG, "BATCH_RESPONSE_RECEIVED requestId=${response.requestId ?: "none"} elapsedMs=$elapsed")
 
             val auddResult = response.results.audd
@@ -156,11 +174,93 @@ class RemoteSongRecognitionRepository(
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "BATCH_CONNECTION_ERROR elapsedMs=${System.currentTimeMillis() - startedAt} message=${e.message}", e)
+        } catch (e: HttpException) {
+            val elapsed = System.currentTimeMillis() - startedAt
+            val status = e.code()
+            val errorBody = try {
+                e.response()?.errorBody()?.string().orEmpty()
+            } catch (_: Exception) {
+                ""
+            }
+            val reqUrl = e.response()?.raw()?.request?.url?.toString() ?: fullEndpointUrl
+            val reqId = e.response()?.headers()?.get("x-request-id")
+                ?: e.response()?.headers()?.get("x-vercel-id")
+                ?: "none"
+
+            Log.e(TAG, "BATCH_HTTP_ERROR status=$status")
+            Log.e(TAG, "body=$errorBody")
+            Log.e(TAG, "BATCH_REQUEST_URL=$reqUrl")
+            Log.e(TAG, "requestId=$reqId")
+            Log.e(TAG, "exception type=${e.javaClass.name}")
+            Log.e(TAG, "exception message=${e.message}")
+
+            RecognitionResult.ProviderError(
+                title = "Server error ($status)",
+                reason = if (errorBody.isNotBlank()) "Server returned HTTP $status: $errorBody" else "Recognition server returned HTTP $status. Please try again.",
+                httpStatus = status,
+                responseBody = errorBody
+            )
+        } catch (e: JsonDataException) {
+            val elapsed = System.currentTimeMillis() - startedAt
+            Log.e(TAG, "BATCH_RESPONSE_PARSING_ERROR elapsedMs=$elapsed")
+            Log.e(TAG, "BATCH_REQUEST_URL=$fullEndpointUrl")
+            Log.e(TAG, "exception type=${e.javaClass.name}")
+            Log.e(TAG, "exception message=${e.message}", e)
+            RecognitionResult.ResponseParsingError(
+                title = "Couldn't parse response",
+                reason = "JSON schema mismatch: ${e.message}",
+                rawException = e.message
+            )
+        } catch (e: JsonEncodingException) {
+            val elapsed = System.currentTimeMillis() - startedAt
+            Log.e(TAG, "BATCH_RESPONSE_PARSING_ERROR elapsedMs=$elapsed")
+            Log.e(TAG, "BATCH_REQUEST_URL=$fullEndpointUrl")
+            Log.e(TAG, "exception type=${e.javaClass.name}")
+            Log.e(TAG, "exception message=${e.message}", e)
+            RecognitionResult.ResponseParsingError(
+                title = "Couldn't parse response",
+                reason = "Malformed JSON from server: ${e.message}",
+                rawException = e.message
+            )
+        } catch (e: SocketTimeoutException) {
+            val elapsed = System.currentTimeMillis() - startedAt
+            Log.e(TAG, "BATCH_CONNECTION_ERROR")
+            Log.e(TAG, "${e.javaClass.name}: ${e.message}")
+            Log.e(TAG, "BATCH_TIMEOUT_ERROR exception type=${e.javaClass.name} message=${e.message}")
+            Log.e(TAG, "BATCH_REQUEST_URL=$fullEndpointUrl")
+            Log.e(TAG, "exception type=${e.javaClass.name}")
+            Log.e(TAG, "exception message=${e.message}", e)
             RecognitionResult.ConnectionError(
                 title = "Couldn't connect",
-                reason = "Check your connection and try again."
+                reason = "Connection timed out. Check your connection and try again.",
+                isTimeout = true,
+                exceptionType = e.javaClass.simpleName
+            )
+        } catch (e: IOException) {
+            val elapsed = System.currentTimeMillis() - startedAt
+            Log.e(TAG, "BATCH_CONNECTION_ERROR")
+            Log.e(TAG, "${e.javaClass.name}: ${e.message}")
+            Log.e(TAG, "BATCH_REQUEST_URL=$fullEndpointUrl")
+            Log.e(TAG, "exception type=${e.javaClass.name}")
+            Log.e(TAG, "exception message=${e.message}", e)
+            RecognitionResult.ConnectionError(
+                title = "Couldn't connect",
+                reason = "Check your connection and try again.",
+                isTimeout = false,
+                exceptionType = e.javaClass.simpleName
+            )
+        } catch (e: Exception) {
+            val elapsed = System.currentTimeMillis() - startedAt
+            Log.e(TAG, "BATCH_CONNECTION_ERROR")
+            Log.e(TAG, "${e.javaClass.name}: ${e.message}")
+            Log.e(TAG, "BATCH_REQUEST_URL=$fullEndpointUrl")
+            Log.e(TAG, "exception type=${e.javaClass.name}")
+            Log.e(TAG, "exception message=${e.message}", e)
+            RecognitionResult.ConnectionError(
+                title = "Couldn't connect",
+                reason = e.message ?: "An unexpected error occurred.",
+                isTimeout = false,
+                exceptionType = e.javaClass.simpleName
             )
         }
     }
@@ -279,7 +379,15 @@ class RemoteSongRecognitionRepository(
                 level = HttpLoggingInterceptor.Level.BASIC
             }
 
+            val httpStatusInterceptor = Interceptor { chain ->
+                val request = chain.request()
+                val response = chain.proceed(request)
+                Log.d(TAG, "BATCH_RESPONSE_HTTP=${response.code}")
+                response
+            }
+
             val client = OkHttpClient.Builder()
+                .addInterceptor(httpStatusInterceptor)
                 .addInterceptor(logging)
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .writeTimeout(20, TimeUnit.SECONDS)

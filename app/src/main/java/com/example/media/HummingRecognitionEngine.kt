@@ -135,6 +135,12 @@ class HummingRecognitionEngine(
                         message = result.reason
                     )
                 }
+                is RecognitionResult.ResponseParsingError -> {
+                    _state.value = HumRecognitionState.ConnectionError(
+                        title = result.title,
+                        message = result.reason
+                    )
+                }
                 is RecognitionResult.ConnectionError -> {
                     _state.value = HumRecognitionState.ConnectionError(
                         title = result.title,
