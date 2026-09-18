@@ -1087,7 +1087,8 @@ private fun SeamlessMatchedResultView(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(340.dp)
+                    .height(300.dp)
+                    // Compact hero so the result details and platform list sit higher.
                     .graphicsLayer {
                         alpha = artworkAlpha.value
                         scaleX = artworkScale.value
@@ -1193,7 +1194,8 @@ private fun SeamlessMatchedResultView(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 16.dp)
+                    // Keep the thumbnail closer to the left edge like the reference.
                     .graphicsLayer {
                         alpha = trackInfoAlpha.value
                         translationY = trackInfoOffsetY.value
@@ -1203,8 +1205,8 @@ private fun SeamlessMatchedResultView(
                 // Album Art Thumbnail (Left Side)
                 Box(
                     modifier = Modifier
-                        .size(86.dp)
-                        .clip(RoundedCornerShape(18.dp))
+                        .size(82.dp)
+                        .clip(RoundedCornerShape(16.dp))
                         .background(Color(0xFF141418))
                         .border(1.dp, Color(0x33FF2448), RoundedCornerShape(18.dp)),
                     contentAlignment = Alignment.Center
@@ -1290,13 +1292,13 @@ private fun SeamlessMatchedResultView(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // 3. ACTION CONTROLS (Play | Copy Title | Share)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 16.dp)
                     .graphicsLayer {
                         alpha = actionsAlpha.value
                         translationY = actionsOffsetY.value
@@ -1406,13 +1408,13 @@ private fun SeamlessMatchedResultView(
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // 4. "AVAILABLE ON" HEADER
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 Text(
                     text = "Available on",
@@ -1428,7 +1430,7 @@ private fun SeamlessMatchedResultView(
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // 5. FULL-WIDTH PLATFORMS LIST (Stretched full width with no horizontal padding)
             Column(
@@ -1441,13 +1443,7 @@ private fun SeamlessMatchedResultView(
                         offsetY = platformOffsetsY[index].value,
                         onClick = { platform.launch(context) }
                     )
-                    if (index < platforms.lastIndex) {
-                        HorizontalDivider(
-                            color = Color(0x18FFFFFF),
-                            thickness = 0.6.dp,
-                            modifier = Modifier.padding(start = 76.dp)
-                        )
-                    }
+                    // Intentionally no separator lines; platforms share the screen background.
                 }
             }
         }
@@ -1661,11 +1657,10 @@ private fun PlatformLogoView(
     var isLoaded by remember { mutableStateOf(false) }
 
     Box(
+        // The uploaded asset supplies its own branded shape/background.
+        // Do not wrap it in another card or border.
         modifier = modifier
-            .size(46.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF16161D))
-            .border(0.8.dp, Color(0x1AFFFFFF), RoundedCornerShape(12.dp)),
+            .size(50.dp),
         contentAlignment = Alignment.Center
     ) {
         if (!isLoaded) {
@@ -1686,8 +1681,7 @@ private fun PlatformLogoView(
             contentDescription = platform.name,
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .fillMaxSize()
-                .padding(4.dp),
+                .fillMaxSize(),
             onSuccess = { isLoaded = true },
             onError = { isLoaded = false }
         )
@@ -1708,10 +1702,11 @@ private fun NativePlatformRow(
     Surface(
         onClick = onClick,
         shape = RectangleShape,
-        color = Color(0xFF101016),
+        // Transparent row: no contrasting strip behind each platform.
+        color = Color.Transparent,
         modifier = modifier
             .fillMaxWidth()
-            .height(72.dp)
+            .height(68.dp)
             .graphicsLayer {
                 this.alpha = alpha
                 this.translationY = offsetY
