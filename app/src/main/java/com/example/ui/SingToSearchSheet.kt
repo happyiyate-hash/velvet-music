@@ -1081,7 +1081,6 @@ private fun SeamlessMatchedResultView(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = bottomPadding)
         ) {
             // 1. HERO ARTWORK CONTAINER WITH GLOWING CURVED WAVE
             Box(
