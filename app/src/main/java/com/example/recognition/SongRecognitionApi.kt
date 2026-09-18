@@ -51,5 +51,7 @@ data class RecognizedSongDto(
     val spotifyUrl: String? = null,
     val appleMusicUrl: String? = null,
     val youtubeMusicUrl: String? = null,
-    val audiomackUrl: String? = null
+    val audiomackUrl: String? = null,
+    val soundcloudUrl: String? = null,
+    val boomplayUrl: String? = null
 )
