@@ -61,7 +61,9 @@ data class RecognizedSong(
     val spotifyUrl: String?,
     val appleMusicUrl: String?,
     val youtubeMusicUrl: String?,
-    val audiomackUrl: String?
+    val audiomackUrl: String?,
+    val soundcloudUrl: String?,
+    val boomplayUrl: String?
 )
 
 sealed class RecognitionResult {
@@ -574,6 +576,10 @@ class RemoteSongRecognitionRepository(
 
         val audiomackUrl = a.audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
             ?: b.audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
+        val soundcloudUrl = a.soundcloudUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.soundcloudUrl?.trim()?.takeIf { it.isNotBlank() }
+        val boomplayUrl = a.boomplayUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: b.boomplayUrl?.trim()?.takeIf { it.isNotBlank() }
 
         val confidence = maxOf(audd.confidence, acrcloud.confidence).coerceIn(0, 100)
         val id = a.id?.takeIf { it.isNotBlank() } ?: b.id?.takeIf { it.isNotBlank() } ?: "$artist:$title"
