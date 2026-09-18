@@ -596,7 +596,9 @@ class RemoteSongRecognitionRepository(
             spotifyUrl = spotifyUrl,
             appleMusicUrl = appleMusicUrl,
             youtubeMusicUrl = youtubeMusicUrl,
-            audiomackUrl = audiomackUrl
+            audiomackUrl = audiomackUrl,
+            soundcloudUrl = soundcloudUrl,
+            boomplayUrl = boomplayUrl
         )
     }
 
@@ -615,7 +617,9 @@ class RemoteSongRecognitionRepository(
             spotifyUrl = spotifyUrl?.trim()?.takeIf { it.isNotBlank() },
             appleMusicUrl = appleMusicUrl?.trim()?.takeIf { it.isNotBlank() },
             youtubeMusicUrl = youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() },
-            audiomackUrl = audiomackUrl?.trim()?.takeIf { it.isNotBlank() }
+            audiomackUrl = audiomackUrl?.trim()?.takeIf { it.isNotBlank() },
+            soundcloudUrl = soundcloudUrl?.trim()?.takeIf { it.isNotBlank() },
+            boomplayUrl = boomplayUrl?.trim()?.takeIf { it.isNotBlank() }
         )
     }
 
