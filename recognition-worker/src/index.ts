@@ -124,10 +124,10 @@ async function recognizeHumming(audio: File, env: Env, requestId: string): Promi
   const started = Date.now()
   const response = await fetchWithTimeout(`https://${host}${httpUri}`, { method: httpMethod, body })
   const data = await readJsonSafely(response)
-  log(requestId, "PROVIDER_RESPONSE_RECEIVED", { provider: "ACRCloud", status: response.status, elapsedMs: Date.now() - started })
-  if (!response.ok || data?.status?.code !== 0) return { success: false, confidence: 0, error: `ACRCloud: ${data?.status?.msg || `HTTP ${response.status}`}` }
+  log(requestId, "PROVIDER_RESPONSE_RECEIVED", { provider: "ACRCloud", status: response.status, providerCode: data?.status?.code, providerMessage: data?.status?.msg, metadataKeys: data?.metadata ? Object.keys(data.metadata) : [], elapsedMs: Date.now() - started })
+  if (!response.ok || Number(data?.status?.code) !== 0) return { success: false, confidence: 0, error: `ACRCloud: ${data?.status?.msg || `HTTP ${response.status}`}` }
   const candidate = data?.metadata?.humming?.[0] || data?.metadata?.music?.[0]
-  if (!candidate) return { success: false, confidence: 0, error: "ACRCloud: no humming match found" }
+  if (!candidate) return { success: false, confidence: 0, error: "ACRCloud: processed audio but found no matching song" }
   const title = String(candidate.title || "").trim(); const artist = String(candidate.artists?.[0]?.name || candidate.artist || "").trim()
   if (!title || !artist) return { success: false, confidence: 0, error: "ACRCloud: recognition returned incomplete metadata" }
   const score = Number(candidate.score), spotifyId = candidate.external_metadata?.spotify?.track?.id, youtubeId = candidate.external_metadata?.youtube?.vid
