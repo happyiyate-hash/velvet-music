@@ -45,6 +45,7 @@ data class HumMatchResult(
     val appleMusicUrl: String? = null,
     val youtubeMusicUrl: String? = null,
     val audiomackUrl: String? = null,
+    val soundcloudUrl: String? = null,
     val durationMs: Long = 0L
 )
 
@@ -289,8 +290,9 @@ class HummingRecognitionEngine(
         val local = libraryTracks.firstOrNull {
             it.title.equals(song.title, true) && it.artist.equals(song.artist, true)
         }
+        val cleanedArtwork = com.example.recognition.SongArtworkResolver.cleanArtworkUrl(song.artworkUrl)
         val fallbackCover = local?.coverResId ?: R.drawable.art_luminous_echoes
-        val track = local ?: Track(
+        val track = local?.copy(artworkUri = cleanedArtwork ?: local.artworkUri) ?: Track(
             id = "recognized:${song.id}",
             title = song.title,
             artist = song.artist,
@@ -300,7 +302,7 @@ class HummingRecognitionEngine(
             dominantColor = VelvetDeepCrimson,
             secondaryColor = VelvetBloodPlum,
             catalogSource = "Velvet Recognition",
-            artworkUri = song.artworkUrl
+            artworkUri = cleanedArtwork
         )
         return HumMatchResult(
             id = song.id,
@@ -312,7 +314,7 @@ class HummingRecognitionEngine(
             matchedSnippet = "Identified by Velvet's recognition pipeline",
             isrc = song.isrc.orEmpty(),
             track = track,
-            artworkUrl = song.artworkUrl,
+            artworkUrl = cleanedArtwork,
             spotifyUrl = song.spotifyUrl,
             appleMusicUrl = song.appleMusicUrl,
             youtubeMusicUrl = song.youtubeMusicUrl,

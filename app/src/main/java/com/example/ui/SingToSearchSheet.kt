@@ -8,8 +8,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -53,16 +55,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -88,9 +95,11 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -106,7 +115,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
 import com.example.R
 import com.example.media.DeviceMediaManager
 import com.example.media.HumMatchResult
@@ -114,6 +128,7 @@ import com.example.media.HumRecognitionState
 import com.example.media.HummingRecognitionEngine
 import com.example.model.Track
 import com.example.recognition.RecognitionDiagnostics
+import com.example.recognition.SongArtworkResolver
 import com.example.ui.theme.VelvetBloodPlum
 import com.example.ui.theme.VelvetDeepCrimson
 import kotlin.math.cos
@@ -409,6 +424,9 @@ fun SingToSearchSheet(
                         onClose = {
                             recognitionEngine.stopListening()
                             onDismiss()
+                        },
+                        onViewDiagnostics = {
+                            showDiagnosticsModal = true
                         }
                     )
                 }
@@ -933,6 +951,16 @@ private fun BottomEtherealSmoke(
  *   (YouTube Music, Spotify, Apple Music, Audiomack) are automatically generated.
  * - At the bottom: A glowing microphone button allows the user to restart/fetch another song immediately.
  */
+/**
+ * Music Recognition Result Screen — Exact UI & Animation Direction
+ *
+ * 1. Hero Artwork: Large, edge-to-edge at top with no duplicate card underneath.
+ * 2. Soft Brush/Fade: Seamless organic fade into the dark background without hard lines, waves, or U-shapes.
+ * 3. Soundwave & Track Information: Natural screen typography (Artist, Title, Album metadata).
+ * 4. Action Controls: Play (brand gradient), Copy Title (dark glass), Share (dark glass circle).
+ * 5. Native "Available on" List: Full-width items for YouTube Music, Spotify, Apple Music, Audiomack, SoundCloud.
+ * 6. Staggered 5-Step Animation: Fast, overlapping sequence settling smoothly within ~1.1–1.2s.
+ */
 @Composable
 private fun SeamlessMatchedResultView(
     result: HumMatchResult,
@@ -941,333 +969,792 @@ private fun SeamlessMatchedResultView(
     onPlayInVelvet: () -> Unit,
     onRestartMic: () -> Unit,
     onClose: () -> Unit,
+    onViewDiagnostics: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scrollState = rememberScrollState()
 
-    // Strictly use provider URLs returned by recognition — do NOT construct fallback search URLs
-    val availableProviders = remember(result.spotifyUrl, result.audiomackUrl, result.appleMusicUrl, result.youtubeMusicUrl) {
-        buildList {
-            result.spotifyUrl?.trim()?.takeIf { it.isNotBlank() }?.let {
-                add(ReturnedProviderLink("Spotify", R.drawable.ic_spotify, it))
+    // Animation states for the 5-step entrance sequence
+    val artworkAlpha = remember { Animatable(0f) }
+    val artworkScale = remember { Animatable(0.96f) }
+    val brushFadeProgress = remember { Animatable(0f) }
+    val trackInfoAlpha = remember { Animatable(0f) }
+    val trackInfoOffsetY = remember { Animatable(20f) }
+    val actionsAlpha = remember { Animatable(0f) }
+    val actionsOffsetY = remember { Animatable(16f) }
+    val platformAlphas = remember { List(5) { Animatable(0f) } }
+    val platformOffsetsY = remember { List(5) { Animatable(16f) } }
+
+    LaunchedEffect(result) {
+        // Step 1: Artwork appears (~260ms)
+        launch {
+            artworkAlpha.animateTo(1f, animationSpec = tween(260, easing = LinearOutSlowInEasing))
+        }
+        launch {
+            artworkScale.animateTo(1f, animationSpec = tween(260, easing = FastOutSlowInEasing))
+        }
+
+        // Step 2: Brush fade animates into background (~340ms, starts at 120ms)
+        delay(120)
+        launch {
+            brushFadeProgress.animateTo(1f, animationSpec = tween(340, easing = FastOutSlowInEasing))
+        }
+
+        // Step 3: Track information appears (~220ms, starts at 300ms)
+        delay(180)
+        launch {
+            trackInfoAlpha.animateTo(1f, animationSpec = tween(220, easing = LinearOutSlowInEasing))
+        }
+        launch {
+            trackInfoOffsetY.animateTo(0f, animationSpec = tween(220, easing = FastOutSlowInEasing))
+        }
+
+        // Step 4: Action buttons appear (~200ms, starts at 440ms)
+        delay(140)
+        launch {
+            actionsAlpha.animateTo(1f, animationSpec = tween(200, easing = LinearOutSlowInEasing))
+        }
+        launch {
+            actionsOffsetY.animateTo(0f, animationSpec = tween(200, easing = FastOutSlowInEasing))
+        }
+
+        // Step 5: Platform rows stagger in one by one (starts at 560ms, 90ms gap)
+        delay(120)
+        for (i in 0 until 5) {
+            val idx = i
+            launch {
+                platformAlphas[idx].animateTo(1f, animationSpec = tween(200, easing = LinearOutSlowInEasing))
             }
-            result.audiomackUrl?.trim()?.takeIf { it.isNotBlank() }?.let {
-                add(ReturnedProviderLink("Audiomack", R.drawable.ic_audiomack, it))
+            launch {
+                platformOffsetsY[idx].animateTo(0f, animationSpec = tween(200, easing = FastOutSlowInEasing))
             }
-            result.appleMusicUrl?.trim()?.takeIf { it.isNotBlank() }?.let {
-                add(ReturnedProviderLink("Apple Music", R.drawable.ic_apple_music, it))
+            delay(90)
+        }
+    }
+
+    // Dynamic state for resolving and displaying high-resolution artwork
+    var resolvedArtworkUrl by remember(result) {
+        mutableStateOf(SongArtworkResolver.cleanArtworkUrl(result.artworkUrl))
+    }
+
+    LaunchedEffect(result) {
+        val fetched = SongArtworkResolver.resolveArtwork(
+            artist = result.artist,
+            title = result.title,
+            rawArtworkUrl = result.artworkUrl
+        )
+        if (!fetched.isNullOrBlank()) {
+            resolvedArtworkUrl = fetched
+        }
+    }
+
+    // Native platform items derived from single source of truth MUSIC_PLATFORMS
+    val platforms = remember(result) {
+        val query = "${result.artist} ${result.title}".trim()
+        MUSIC_PLATFORMS.map { config ->
+            val directUrl = when (config.id) {
+                "youtube-music" -> result.youtubeMusicUrl
+                "spotify" -> result.spotifyUrl
+                "apple-music" -> result.appleMusicUrl
+                "audiomack" -> result.audiomackUrl
+                "soundcloud" -> result.soundcloudUrl
+                else -> null
             }
-            result.youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() }?.let {
-                add(ReturnedProviderLink("YouTube", R.drawable.ic_youtube_music, it))
-            }
+            NativePlatformItem(
+                config = config,
+                directUrl = directUrl,
+                query = query
+            )
         }
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
+            .background(Color(0xFF070204))
             .testTag("luxury_matched_card")
     ) {
+        // Scrollable content so all platforms and controls are accessible on every display
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(top = topPadding, bottom = bottomPadding)
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(bottom = bottomPadding + 36.dp)
         ) {
-            // Settled Top Bar: Minimal Badge + Clean Dismiss
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0x25FF2448),
-                    border = BorderStroke(0.6.dp, Color(0x55FF2448))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.GraphicEq,
-                            contentDescription = null,
-                            tint = Color(0xFFFF405A),
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = if (result.matchPercentage > 0) "${result.matchPercentage}% Match" else "Song Identified",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFFFFF1F2)
-                        )
+            // 1. HERO ARTWORK CONTAINER WITH GLOWING CURVED WAVE
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(340.dp)
+                    .graphicsLayer {
+                        alpha = artworkAlpha.value
+                        scaleX = artworkScale.value
+                        scaleY = artworkScale.value
                     }
+            ) {
+                // Large edge-to-edge artwork image with loading skeleton
+                if (!resolvedArtworkUrl.isNullOrBlank()) {
+                    SubcomposeAsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(resolvedArtworkUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = result.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                        loading = {
+                            ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
+                        },
+                        success = {
+                            SubcomposeAsyncImageContent()
+                        },
+                        error = {
+                            ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
+                        }
+                    )
+                } else {
+                    ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
                 }
 
-                Box(
+                // Glowing Organic Curved Wave Transition into Dark Background
+                Canvas(
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x22180004))
-                        .border(1.dp, Color(0x33FF2448), CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onClose
-                        )
-                        .testTag("sing_close_button"),
-                    contentAlignment = Alignment.Center
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = brushFadeProgress.value
+                        }
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color(0xFFD7D0D2),
-                        modifier = Modifier.size(17.dp)
+                    val w = size.width
+                    val h = size.height
+
+                    // Path for the curved wave cutting into the background
+                    val wavePath = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(0f, h * 0.60f)
+                        cubicTo(
+                            w * 0.28f, h * 0.72f,
+                            w * 0.44f, h * 0.88f,
+                            w * 0.66f, h * 0.84f
+                        )
+                        cubicTo(
+                            w * 0.80f, h * 0.81f,
+                            w * 0.90f, h * 0.72f,
+                            w, h * 0.74f
+                        )
+                        lineTo(w, h)
+                        lineTo(0f, h)
+                        close()
+                    }
+
+                    // Fill below the wave with the screen background color
+                    drawPath(
+                        path = wavePath,
+                        color = Color(0xFF070204)
+                    )
+
+                    // Stroke along the wave edge for the vibrant crimson neon glow
+                    val strokePath = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(0f, h * 0.60f)
+                        cubicTo(
+                            w * 0.28f, h * 0.72f,
+                            w * 0.44f, h * 0.88f,
+                            w * 0.66f, h * 0.84f
+                        )
+                        cubicTo(
+                            w * 0.80f, h * 0.81f,
+                            w * 0.90f, h * 0.72f,
+                            w, h * 0.74f
+                        )
+                    }
+
+                    // Layer 1: Soft diffuse ambient glow
+                    drawPath(
+                        path = strokePath,
+                        color = Color(0x35FF1838),
+                        style = Stroke(width = 20f, cap = StrokeCap.Round)
+                    )
+                    // Layer 2: Vivid mid glow
+                    drawPath(
+                        path = strokePath,
+                        color = Color(0x80FF2448),
+                        style = Stroke(width = 7f, cap = StrokeCap.Round)
+                    )
+                    // Layer 3: Crisp high-luminance core edge
+                    drawPath(
+                        path = strokePath,
+                        color = Color(0xFFFF5270),
+                        style = Stroke(width = 2.2f, cap = StrokeCap.Round)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(22.dp))
-
-            // Main Hero Row: Picture on Left Side, Title & Metadata on Right Side
+            // 2. TRACK HEADER: Left Album Thumbnail + Right Track Metadata & Soundwave
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0x22180004))
-                    .border(1.dp, Color(0x33FF2448), RoundedCornerShape(20.dp))
-                    .padding(14.dp),
+                    .padding(horizontal = 20.dp)
+                    .graphicsLayer {
+                        alpha = trackInfoAlpha.value
+                        translationY = trackInfoOffsetY.value
+                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Picture (Left Side)
+                // Album Art Thumbnail (Left Side)
                 Box(
                     modifier = Modifier
-                        .size(96.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0x33000000))
-                        .border(1.dp, Color(0x44FF2448), RoundedCornerShape(16.dp)),
+                        .size(86.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFF141418))
+                        .border(1.dp, Color(0x33FF2448), RoundedCornerShape(18.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (!result.artworkUrl.isNullOrBlank()) {
-                        AsyncImage(
+                    if (!resolvedArtworkUrl.isNullOrBlank()) {
+                        SubcomposeAsyncImage(
                             model = ImageRequest.Builder(context)
-                                .data(result.artworkUrl)
+                                .data(resolvedArtworkUrl)
                                 .crossfade(true)
-                                .placeholder(result.coverResId)
-                                .error(result.coverResId)
                                 .build(),
                             contentDescription = result.title,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            loading = {
+                                ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
+                            },
+                            success = {
+                                SubcomposeAsyncImageContent()
+                            },
+                            error = {
+                                ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
+                            }
                         )
                     } else {
-                        Image(
-                            painter = painterResource(id = result.coverResId),
-                            contentDescription = result.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
                     }
                 }
 
                 Spacer(modifier = Modifier.width(16.dp))
 
-                // Title on Right Side + Copy Title Text/Button
+                // Track Metadata Column (Right Side)
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = result.title,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFF1F2),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    // 5-bar crimson soundwave indicator
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    ) {
+                        Box(modifier = Modifier.size(3.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                        Box(modifier = Modifier.size(3.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                        Box(modifier = Modifier.size(3.dp, 20.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                        Box(modifier = Modifier.size(3.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                        Box(modifier = Modifier.size(3.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                    }
 
-                    Spacer(modifier = Modifier.height(3.dp))
-
+                    // Prominent Artist Name
                     Text(
                         text = result.artist,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF405A),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        letterSpacing = (-0.3).sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
 
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    // Song Title
+                    Text(
+                        text = result.title,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    // Album / Subtitle Metadata
                     if (result.album.isNotBlank() && !result.album.equals(result.title, ignoreCase = true)) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = result.album,
-                            fontSize = 12.sp,
-                            color = Color(0xFF9E9295),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color(0xFF8E8E93),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Text "Copy Title"
-                    Surface(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(result.title))
-                            Toast.makeText(context, "Title copied", Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0x25FFFFFF),
-                        border = BorderStroke(0.6.dp, Color(0x44FFFFFF)),
-                        modifier = Modifier.testTag("copy_title_button")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy title",
-                                tint = Color(0xFFE0D8DA),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "Copy Title",
-                                fontSize = 11.5.sp,
-                                color = Color(0xFFE0D8DA),
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Platform Logos Section: strictly show URLs returned by recognition
-            if (availableProviders.isNotEmpty()) {
-                Text(
-                    text = "STREAMING PLATFORMS",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0x99FFF1F2),
-                    letterSpacing = 1.5.sp,
-                    modifier = Modifier.align(Alignment.Start)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            // 3. ACTION CONTROLS (Play | Copy Title | Share)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .graphicsLayer {
+                        alpha = actionsAlpha.value
+                        translationY = actionsOffsetY.value
+                    },
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Play Button (Brand gradient pill)
+                Box(
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFFFF2448), Color(0xFFD51035))
+                            )
+                        )
+                        .clickable(onClick = onPlayInVelvet)
+                        .testTag("sing_play_button"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    availableProviders.forEach { provider ->
-                        PlatformLogoButton(
-                            name = provider.name,
-                            iconRes = provider.iconRes,
-                            url = provider.url,
-                            modifier = Modifier.weight(1f)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Play",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                // Copy Title Button (Dark glass pill with subtle border)
+                Box(
+                    modifier = Modifier
+                        .weight(1.35f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0xFF141418))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
+                        .clickable {
+                            val textToCopy = "${result.artist} - ${result.title}"
+                            clipboardManager.setText(AnnotatedString(textToCopy))
+                            Toast.makeText(context, "Title copied", Toast.LENGTH_SHORT).show()
+                        }
+                        .testTag("copy_title_button"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy Title",
+                            tint = Color(0xFFE5DEE0),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Copy Title",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFE5DEE0)
+                        )
+                    }
+                }
+
+                // Share Button (Dark glass circular button)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF141418))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                        .clickable {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                val shareUrl = result.spotifyUrl ?: result.youtubeMusicUrl ?: result.appleMusicUrl ?: ""
+                                putExtra(Intent.EXTRA_SUBJECT, "${result.artist} - ${result.title}")
+                                putExtra(
+                                    Intent.EXTRA_TEXT,
+                                    "Found this song via Velvet: ${result.artist} - ${result.title}${if (shareUrl.isNotBlank()) "\n$shareUrl" else ""}"
+                                )
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
+                        }
+                        .testTag("sing_share_button"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share",
+                        tint = Color(0xFFE5DEE0),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
 
-            // Play in Velvet Music Button
-            Button(
-                onClick = onPlayInVelvet,
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFD51035),
-                    contentColor = Color.White
-                ),
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // 4. "AVAILABLE ON" HEADER
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("sing_play_button")
+                    .padding(horizontal = 20.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Play in Velvet Music",
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = "Available on",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Open in your preferred music app",
+                    fontSize = 13.sp,
+                    color = Color(0xFF8E8E93)
                 )
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Settled Microphone Spinner / Retry Button
-            SettledMicRetrySpinner(
-                onRetry = onRestartMic
-            )
+            // 5. FULL-WIDTH PLATFORMS LIST (Stretched full width with no horizontal padding)
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                platforms.forEachIndexed { index, platform ->
+                    NativePlatformRow(
+                        platform = platform,
+                        alpha = platformAlphas[index].value,
+                        offsetY = platformOffsetsY[index].value,
+                        onClick = { platform.launch(context) }
+                    )
+                    if (index < platforms.lastIndex) {
+                        HorizontalDivider(
+                            color = Color(0x18FFFFFF),
+                            thickness = 0.6.dp,
+                            modifier = Modifier.padding(start = 76.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // TOP NAV OVERLAY: Circular Back Button (Left) and More Options (Right)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = topPadding + 10.dp, start = 16.dp, end = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Circular Glass Back Button
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x66000000))
+                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                    .clickable(onClick = onClose)
+                    .testTag("sing_close_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            // Circular Glass More Options / Diagnostics Button
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x66000000))
+                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                    .clickable { onViewDiagnostics?.invoke() }
+                    .testTag("sing_more_options_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Options",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
 
-private data class ReturnedProviderLink(
+/**
+ * Single source of truth for streaming platforms.
+ * Configured with the exact expected local file paths under /platform-logos/.
+ */
+data class MusicPlatformConfig(
+    val id: String,
     val name: String,
-    val iconRes: Int,
-    val url: String
+    val logo: String,
+    val subtitle: String
+)
+
+val MUSIC_PLATFORMS = listOf(
+    MusicPlatformConfig(
+        id = "youtube-music",
+        name = "YouTube Music",
+        logo = "/platform-logos/youtube-music.png",
+        subtitle = "Stream on YouTube Music"
+    ),
+    MusicPlatformConfig(
+        id = "spotify",
+        name = "Spotify",
+        logo = "/platform-logos/spotify.png",
+        subtitle = "Stream on Spotify"
+    ),
+    MusicPlatformConfig(
+        id = "apple-music",
+        name = "Apple Music",
+        logo = "/platform-logos/apple-music.png",
+        subtitle = "Stream on Apple Music"
+    ),
+    MusicPlatformConfig(
+        id = "audiomack",
+        name = "Audiomack",
+        logo = "/platform-logos/audiomack.png",
+        subtitle = "Stream on Audiomack"
+    ),
+    MusicPlatformConfig(
+        id = "soundcloud",
+        name = "SoundCloud",
+        logo = "/platform-logos/soundcloud.png",
+        subtitle = "Stream on SoundCloud"
+    )
 )
 
 /**
- * Settled Platform Logo Button displaying official platform vector icons.
+ * Atmospheric loading skeleton for album artwork.
+ * Displays a pulsing velvet-crimson gradient while resolving or downloading high-res artwork.
  */
 @Composable
-private fun PlatformLogoButton(
-    name: String,
-    iconRes: Int,
-    url: String,
+private fun ArtworkLoadingSkeleton(
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "artwork_skeleton")
+    val shimmerAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "shimmerAlpha"
+    )
+
+    Box(
+        modifier = modifier
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF24060E).copy(alpha = shimmerAlpha),
+                        Color(0xFF130407).copy(alpha = shimmerAlpha),
+                        Color(0xFF070204)
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.GraphicEq,
+            contentDescription = null,
+            tint = Color(0x33FF2448),
+            modifier = Modifier.size(32.dp)
+        )
+    }
+}
+
+/**
+ * Native Platform Item representing one of the 5 streaming destinations.
+ */
+private data class NativePlatformItem(
+    val config: MusicPlatformConfig,
+    val directUrl: String?,
+    val query: String
+) {
+    val id: String get() = config.id
+    val name: String get() = config.name
+    val logo: String get() = config.logo
+    val subtitle: String get() = config.subtitle
+
+    fun launch(context: Context) {
+        val targetUrl = if (!directUrl.isNullOrBlank()) {
+            directUrl
+        } else {
+            val encoded = Uri.encode(query)
+            when (id) {
+                "youtube-music" -> "https://music.youtube.com/search?q=$encoded"
+                "spotify" -> "https://open.spotify.com/search/$encoded"
+                "apple-music" -> "https://music.apple.com/search?term=$encoded"
+                "audiomack" -> "https://audiomack.com/search?q=$encoded"
+                "soundcloud" -> "https://soundcloud.com/search?q=$encoded"
+                else -> "https://www.google.com/search?q=$encoded"
+            }
+        }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        runCatching { context.startActivity(intent) }
+            .onFailure {
+                Toast.makeText(context, "Cannot open $name", Toast.LENGTH_SHORT).show()
+            }
+    }
+}
+
+/**
+ * Prominent local platform logo renderer.
+ * Loads the platform logo from the exact local path (e.g., /platform-logos/youtube-music.png).
+ * Does not crash if the file is not yet uploaded; uses a graceful dark glass fallback.
+ * Once the files are uploaded to public/platform-logos/, they appear automatically.
+ */
+@Composable
+private fun PlatformLogoView(
+    platform: NativePlatformItem,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    Surface(
-        onClick = {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            runCatching { context.startActivity(intent) }
-                .onFailure {
-                    Toast.makeText(context, "Cannot open $name", Toast.LENGTH_SHORT).show()
-                }
-        },
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0x22180004),
-        border = BorderStroke(0.8.dp, Color(0x33FF2448)),
-        modifier = modifier.height(68.dp)
+    val relativeAssetPath = remember(platform.logo) { platform.logo.removePrefix("/") }
+    val assetUri = "file:///android_asset/$relativeAssetPath"
+
+    val assetExists = remember(relativeAssetPath) {
+        runCatching {
+            context.assets.open(relativeAssetPath).use { }
+            true
+        }.getOrDefault(false)
+    }
+
+    val localDiskFile = remember(relativeAssetPath) {
+        listOf(
+            File("public/$relativeAssetPath"),
+            File(relativeAssetPath),
+            File(context.filesDir, relativeAssetPath)
+        ).firstOrNull { it.exists() }
+    }
+
+    val imageModel: Any = when {
+        localDiskFile != null -> localDiskFile
+        else -> assetUri
+    }
+
+    var isLoaded by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .size(46.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF16161D))
+            .border(0.8.dp, Color(0x1AFFFFFF), RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        if (!isLoaded) {
+            // Elegant, non-crashing fallback placeholder with initial letter
+            Text(
+                text = platform.name.take(1),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFC0BAC0)
+            )
+        }
+
+        SubcomposeAsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(imageModel)
+                .crossfade(true)
+                .build(),
+            contentDescription = platform.name,
+            contentScale = ContentScale.Fit,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 6.dp)
+                .padding(4.dp),
+            onSuccess = { isLoaded = true },
+            onError = { isLoaded = false }
+        )
+    }
+}
+
+/**
+ * Full-width native platform row stretching edge-to-edge with prominent icon, typography, and chevron.
+ */
+@Composable
+private fun NativePlatformRow(
+    platform: NativePlatformItem,
+    alpha: Float,
+    offsetY: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = RectangleShape,
+        color = Color(0xFF101016),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(72.dp)
+            .graphicsLayer {
+                this.alpha = alpha
+                this.translationY = offsetY
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Image(
-                painter = painterResource(id = iconRes),
-                contentDescription = name,
-                modifier = Modifier.size(24.dp)
+            PlatformLogoView(
+                platform = platform
             )
-            Spacer(modifier = Modifier.height(5.dp))
-            Text(
-                text = name,
-                fontSize = 10.5.sp,
-                color = Color(0xFFE0D8DA),
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = platform.name,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = platform.subtitle,
+                    fontSize = 12.sp,
+                    color = Color(0xFF8E8E93),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = Color(0xFF6B6B75),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
