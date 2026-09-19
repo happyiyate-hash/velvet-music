@@ -106,6 +106,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -263,17 +264,24 @@ fun PlayerSheet(
     }
 
     fun updateQueueDrag(deltaY: Float) {
-        if (activeQueueDragId == null || activeQueueDragIndex < 0) return
+        val dragId = activeQueueDragId ?: return
+        val startIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
+        if (startIndex < 0) return
         queueDragOffsetY += deltaY
-        val step = with(queueDragDensity) { 64.dp.toPx() }
-        val raw = activeQueueDragIndex + (queueDragOffsetY / step).roundToInt()
-        queueDragTargetIndex = raw.coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
+        val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
+        val slots = (queueDragOffsetY / itemHeightPx).roundToInt()
+        val newTarget = (startIndex + slots).coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
+        if (newTarget != queueDragTargetIndex) {
+            queueDragTargetIndex = newTarget
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
     }
 
     fun finishQueueDrag() {
-        val from = activeQueueDragIndex
+        val dragId = activeQueueDragId
+        val from = if (dragId != null) orderedQueueItems.indexOfFirst { it.id == dragId } else -1
         val to = queueDragTargetIndex
-        if (activeQueueDragId != null && from >= 0 && to >= 0 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
+        if (dragId != null && from >= 0 && to >= 0 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
             val updatedQueue = orderedQueueItems.toMutableList().apply {
                 add(to, removeAt(from))
             }
@@ -1071,13 +1079,25 @@ fun PlayerSheet(
                             onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
                             isDragging = isDragging,
                             dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
-                            virtualDisplacementY = when {
-                                activeQueueDragId == null || isDragging -> 0f
-                                activeQueueDragIndex < queueDragTargetIndex && queueIndex > activeQueueDragIndex && queueIndex <= queueDragTargetIndex -> -with(queueDragDensity) { 64.dp.toPx() }
-                                activeQueueDragIndex > queueDragTargetIndex && queueIndex >= queueDragTargetIndex && queueIndex < activeQueueDragIndex -> with(queueDragDensity) { 64.dp.toPx() }
-                                else -> 0f
+                            virtualDisplacementY = run {
+                                val dragId = activeQueueDragId ?: return@run 0f
+                                if (isDragging) return@run 0f
+                                val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
+                                if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
+                                val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
+                                when {
+                                    dragStartIndex < queueDragTargetIndex -> {
+                                        // Dragged downward: items between start and target shift UP
+                                        if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
+                                    }
+                                    dragStartIndex > queueDragTargetIndex -> {
+                                        // Dragged upward: items between target and start shift DOWN
+                                        if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
+                                    }
+                                    else -> 0f
+                                }
                             },
-                            isDropTarget = activeQueueDragId != null && !isDragging && queueIndex == queueDragTargetIndex
+                            isDropTarget = false
                         )
                     }
                 }
@@ -1180,22 +1200,23 @@ private fun UpNextTrackRow(
     isDragging: Boolean,
     dragOffsetY: Float,
     virtualDisplacementY: Float,
-    isDropTarget: Boolean,
+    isDropTarget: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    var rowWidthPx by remember { mutableFloatStateOf(0f) }
     var swipeOffset by remember(track.id) { mutableFloatStateOf(0f) }
     var thresholdLatched by remember(track.id) { mutableStateOf(false) }
     val swipeSettle = remember(track.id) { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
-    val thresholdPx = with(density) { 90.dp.toPx() }
+    val thresholdPx = if (rowWidthPx > 0f) rowWidthPx * 0.38f else with(density) { 140.dp.toPx() }
     val swipeLimitPx = with(density) { 600.dp.toPx() }
 
     val isSwiping = abs(swipeOffset) > 1f
     val isPastThreshold = abs(swipeOffset) >= thresholdPx
 
-    // Trigger haptic vibration when threshold is crossed into action mode
+    // Trigger one short haptic vibration exactly at the instant threshold is crossed into action mode
     LaunchedEffect(isPastThreshold) {
         if (isPastThreshold && !thresholdLatched) {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1206,30 +1227,34 @@ private fun UpNextTrackRow(
     }
 
     // Dynamic background transition during swipe:
-    // Pure dark (#0C0E10) at rest, smoothly transitioning to vibrant green for Play Next and vibrant red for Delete
-    val swipeProgress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
-    val pureDark = Color(0xFF0C0E10)
-    val actionBackground = when {
-        swipeOffset > 1f -> {
-            // Swipe right: Play Next -> pure dark to vibrant green
-            if (abs(swipeOffset) >= thresholdPx * 0.5f) {
-                val f = ((abs(swipeOffset) - thresholdPx * 0.5f) / (thresholdPx * 0.5f)).coerceIn(0f, 1f)
-                interpolateColor(Color(0xFF1E3A1E), Color(0xFF22C55E), f)
-            } else {
-                interpolateColor(pureDark, Color(0xFF1E3A1E), swipeProgress * 0.7f)
-            }
-        }
-        swipeOffset < -1f -> {
-            // Swipe left: Delete -> pure dark to vibrant red
-            if (abs(swipeOffset) >= thresholdPx * 0.5f) {
-                val f = ((abs(swipeOffset) - thresholdPx * 0.5f) / (thresholdPx * 0.5f)).coerceIn(0f, 1f)
-                interpolateColor(Color(0xFF3B1818), Color(0xFFDC2626), f)
-            } else {
-                interpolateColor(pureDark, Color(0xFF3B1818), swipeProgress * 0.7f)
-            }
-        }
-        else -> pureDark
+    // Initial drag state: Standard dark/black (#141418).
+    // Threshold trigger state: Transitions to vibrant green (#22C55E) for Play Next and vibrant red (#EF4444) for Delete.
+    val targetActionColor = when {
+        !isPastThreshold -> Color(0xFF141418)
+        swipeOffset > 0f -> Color(0xFF22C55E)
+        else -> Color(0xFFEF4444)
     }
+    val animatedActionBg by animateColorAsState(
+        targetValue = targetActionColor,
+        animationSpec = tween(160),
+        label = "swipe_action_bg"
+    )
+
+    // Icon scale and alpha animation as drag reaches action threshold
+    val progress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
+    val iconScale by animateFloatAsState(
+        targetValue = if (isPastThreshold) 1.2f else (0.65f + progress * 0.35f),
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
+        label = "swipe_icon_scale"
+    )
+    val iconAlpha by animateFloatAsState(
+        targetValue = if (isPastThreshold) 1f else (0.35f + progress * 0.65f),
+        animationSpec = tween(120),
+        label = "swipe_icon_alpha"
+    )
 
     val displacement by animateFloatAsState(
         targetValue = virtualDisplacementY,
@@ -1239,82 +1264,68 @@ private fun UpNextTrackRow(
         ),
         label = "queue_virtual_displacement"
     )
-    val scale by animateFloatAsState(if (isDragging) 1.03f else 1f, tween(120), label = "queue_drag_scale")
-    val elevation by animateFloatAsState(if (isDragging) 10f else 0f, tween(120), label = "queue_drag_elevation")
+    val scale by animateFloatAsState(if (isDragging) 1.01f else 1f, tween(120), label = "queue_drag_scale")
+    val elevation by animateFloatAsState(if (isDragging) 4f else 0f, tween(120), label = "queue_drag_elevation")
 
     // Active Item Highlight:
-    // Regular items are transparent, inheriting the player surface and exact lighting.
-    // The currently playing track has an elegant accent tint.
-    // When touched / dragged or drop target: shines brightly with high-contrast accent glow.
+    // Solid, fully opaque surface color (#121214) prevents any background bleeding through the card.
+    // Dragged item has a subtle flat dark surface lift (#24242A), matching YouTube Music aesthetic.
     val activeRowBg = when {
-        isDragging || isDropTarget -> accentColor.copy(alpha = 0.38f).compositeOver(surfaceColor)
-        isCurrent -> accentColor.copy(alpha = 0.16f).compositeOver(surfaceColor)
-        else -> Color.Transparent
+        isDragging -> Color(0xFF24242A)
+        isCurrent -> accentColor.copy(alpha = 0.16f).compositeOver(Color(0xFF121214))
+        else -> Color(0xFF121214)
     }
 
-    // Full-Bleed Surface Layer: Spans 100% width, no margin
+    // Full-Bleed Surface Layer: Spans 100% width, no border, subtle flat elevation
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(60.dp)
+            .onSizeChanged { rowWidthPx = it.width.toFloat() }
             .graphicsLayer {
                 translationY = if (isDragging) dragOffsetY else displacement
                 scaleX = scale
                 scaleY = scale
             }
-            .zIndex(if (isDragging) 10f else 0f)
-            .shadow(elevation.dp, shape = RoundedCornerShape(4.dp), spotColor = accentColor, clip = false)
-            .then(
-                if (isDragging) Modifier.border(1.5.dp, accentColor.copy(alpha = 0.85f), RoundedCornerShape(4.dp))
-                else Modifier
+            .zIndex(if (isDragging) 5f else 0f)
+            .shadow(
+                elevation = elevation.dp,
+                shape = RoundedCornerShape(4.dp),
+                ambientColor = Color.Black.copy(alpha = 0.45f),
+                spotColor = Color.Black.copy(alpha = 0.45f),
+                clip = false
             )
     ) {
-        // Step 1: Background Reveal Layer - revealed during swipe behind the moving row
+        // Step 1: Background Reveal Layer - strictly sits behind moving card, revealed only as card is swiped open
         if (isSwiping && !isCurrent) {
-            val showingPlayNext = swipeOffset > 1f
+            val showingPlayNext = swipeOffset > 0f
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(actionBackground),
+                    .background(animatedActionBg),
                 contentAlignment = if (showingPlayNext) Alignment.CenterStart else Alignment.CenterEnd
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 22.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp)
+                        .graphicsLayer {
+                            scaleX = iconScale
+                            scaleY = iconScale
+                            alpha = iconAlpha
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (showingPlayNext) {
-                        Icon(
-                            imageVector = Icons.Default.QueueMusic,
-                            contentDescription = "Play Next",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Text(
-                            text = "Play Next",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
-                    } else {
-                        Text(
-                            text = "Delete",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = if (showingPlayNext) Icons.Default.QueueMusic else Icons.Default.Delete,
+                        contentDescription = if (showingPlayNext) "Play Next" else "Delete",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
             }
         }
 
-        // Step 2: Track Row Content
+        // Step 2: Track Row Content - Solid opaque surface
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -1488,7 +1499,7 @@ private fun UpNextTrackRow(
                                 .width(18.dp)
                                 .height(2.dp)
                                 .clip(RoundedCornerShape(1.dp))
-                                .background(if (isDragging) accentColor else Color.White.copy(alpha = 0.85f))
+                                .background(if (isDragging) Color.White else Color.White.copy(alpha = 0.65f))
                         )
                     }
                 }

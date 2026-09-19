@@ -2,6 +2,8 @@ package com.example
 
 import com.example.recognition.BatchRecognitionResponse
 import com.example.recognition.BatchRecognitionResults
+import com.example.recognition.PlaybackResolveRequest
+import com.example.recognition.PlaybackResolveResponse
 import com.example.recognition.RecognitionResponse
 import com.example.recognition.RecognitionResult
 import com.example.recognition.RecognizedSongDto
@@ -29,12 +31,18 @@ class RemoteSongRecognitionRepositoryTest {
 
     private fun createFakeApi(
         response: BatchRecognitionResponse?,
-        throwException: Throwable? = null
+        throwException: Throwable? = null,
+        playbackResponse: PlaybackResolveResponse? = null
     ): SongRecognitionApi {
         return object : SongRecognitionApi {
             override suspend fun recognizeBatch(audio: MultipartBody.Part): BatchRecognitionResponse {
                 if (throwException != null) throw throwException
                 return response ?: throw IllegalStateException("No response configured")
+            }
+
+            override suspend fun resolvePlayback(request: PlaybackResolveRequest): PlaybackResolveResponse {
+                if (throwException != null) throw throwException
+                return playbackResponse ?: PlaybackResolveResponse(success = false, error = "Not configured")
             }
         }
     }

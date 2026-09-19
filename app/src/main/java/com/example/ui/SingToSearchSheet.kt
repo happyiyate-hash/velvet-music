@@ -276,9 +276,10 @@ fun SingToSearchSheet(
                 modifier = Modifier.fillMaxSize()
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // Ethereal Ambient Smoke Overlay
+                    // Bottom Animated Wave
                     BottomEtherealSmoke(
                         amplitude = visualizerAmplitude,
+                        isListening = state is HumRecognitionState.Listening || state is HumRecognitionState.Idle,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(totalHeight * 0.45f)
@@ -329,9 +330,12 @@ fun SingToSearchSheet(
                             horizontalArrangement = Arrangement.Center,
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            val isMicListening = state is HumRecognitionState.Listening || state is HumRecognitionState.Idle
+
                             TaperedWaveformBars(
                                 isLeft = true,
                                 amplitude = visualizerAmplitude,
+                                isListening = isMicListening,
                                 modifier = Modifier.width(100.dp).height(80.dp)
                             )
 
@@ -340,6 +344,7 @@ fun SingToSearchSheet(
                             CentralGlassOrb(
                                 orbSize = 78.dp,
                                 amplitude = visualizerAmplitude,
+                                isListening = isMicListening,
                                 onTap = {
                                     recognitionEngine.startListening(context, libraryTracks)
                                 }
@@ -350,6 +355,7 @@ fun SingToSearchSheet(
                             TaperedWaveformBars(
                                 isLeft = false,
                                 amplitude = visualizerAmplitude,
+                                isListening = isMicListening,
                                 modifier = Modifier.width(100.dp).height(80.dp)
                             )
                         }
@@ -572,14 +578,16 @@ private fun FullAtmosphericBackground(modifier: Modifier = Modifier) {
 private fun TaperedWaveformBars(
     isLeft: Boolean,
     amplitude: Float,
+    isListening: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "tapered_wave_loop")
+    // Slow, serene wave cycle (5600ms)
     val wavePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 6.28318f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = LinearEasing),
+            animation = tween(5600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "phase"
@@ -587,7 +595,7 @@ private fun TaperedWaveformBars(
 
     val animatedAmp by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
-        animationSpec = tween(90, easing = LinearEasing),
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
         label = "animated_amplitude"
     )
 
@@ -608,12 +616,12 @@ private fun TaperedWaveformBars(
             // Tallest (~28.dp) adjacent to the orb, tapering smoothly down to tiny points (2.dp) at the outer edge
             val gaussian = exp(-((normDist * 2.3f) * (normDist * 2.3f)))
 
-            // Organic subtle breathing per bar
-            val organicJitter = sin(wavePhase * 2.1f + distFromOrb * 0.65f) * 0.18f
+            // Organic subtle slow wave breathing per bar
+            val slowWave = if (isListening) sin(wavePhase + normDist * 2.4f) * 0.12f else 0f
 
-            val baseH = (2.dp.toPx() + 26.dp.toPx() * gaussian.toFloat())
-            val voiceBoost = animatedAmp * (20.dp.toPx() * gaussian.toFloat())
-            val totalH = ((baseH + voiceBoost) * (1f + organicJitter)).coerceIn(2.dp.toPx(), 54.dp.toPx())
+            val baseH = (2.dp.toPx() + 24.dp.toPx() * gaussian.toFloat())
+            val voiceBoost = animatedAmp * (22.dp.toPx() * gaussian.toFloat())
+            val totalH = ((baseH + voiceBoost) * (1f + slowWave)).coerceIn(2.dp.toPx(), 54.dp.toPx())
 
             val xPos = if (isLeft) {
                 size.width - ((distFromOrb + 0.5f) * (barWidthPx + barGapPx))
@@ -659,29 +667,60 @@ private fun TaperedWaveformBars(
 private fun CentralGlassOrb(
     orbSize: Dp,
     amplitude: Float,
+    isListening: Boolean = true,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "orb_pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.22f,
-        targetValue = 0.38f,
+
+    // Very slow, smooth bounce cycle (2800ms): expands slightly from 1.0f, then bounces back to original size 1.0f
+    val bounceProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
+            animation = tween(2800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "pulse"
+        label = "mic_slow_bounce"
+    )
+
+    // Slow circular acoustic waves emitting outward from the orb (4000ms period, calm and slow)
+    val ripple1 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "slow_wave_1"
+    )
+    val ripple2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, delayMillis = 2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "slow_wave_2"
     )
 
     val animatedAmp by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
-        animationSpec = tween(90, easing = LinearEasing),
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
         label = "orb_amp"
     )
 
+    // Strictly remains its original size (1.0f baseline, never shrinks tiny).
+    // Bounces very slowly and slightly, expanding up to ~1.08f, then reduces back to original size.
+    val micScale = if (isListening) {
+        1.0f + (0.08f * bounceProgress) + (0.05f * animatedAmp)
+    } else {
+        1.0f
+    }
+
     Box(
         modifier = modifier
-            .size(orbSize + 40.dp), // allows outer rings to draw comfortably
+            .size(orbSize + 48.dp), // allows outer slow waves to draw comfortably
         contentAlignment = Alignment.Center
     ) {
         // Outer rings and glass orb canvas
@@ -689,9 +728,25 @@ private fun CentralGlassOrb(
             val center = Offset(size.width / 2f, size.height / 2f)
             val orbRadius = orbSize.toPx() / 2f
 
-            // Single razor-thin outer circular ring (1.dp stroke width) 8.dp outside main orb (alpha ~0.3f)
+            // Slow concentric acoustic waves emitting outward from the microphone orb
+            if (isListening) {
+                listOf(ripple1, ripple2).forEach { progress ->
+                    val rippleRadius = orbRadius + (32.dp.toPx() * progress)
+                    val rippleAlpha = (0.42f * (1f - progress) + animatedAmp * 0.18f * (1f - progress)).coerceIn(0f, 0.55f)
+                    if (rippleAlpha > 0.01f) {
+                        drawCircle(
+                            color = Color(0xFFFF2448).copy(alpha = rippleAlpha),
+                            radius = rippleRadius,
+                            center = center,
+                            style = Stroke(width = 1.2.dp.toPx())
+                        )
+                    }
+                }
+            }
+
+            // Single razor-thin outer circular ring (1.dp stroke width) 8.dp outside main orb
             val ring1Radius = orbRadius + 8.dp.toPx()
-            val ring1Alpha = (pulseAlpha + animatedAmp * 0.20f).coerceIn(0.2f, 0.55f)
+            val ring1Alpha = (0.24f + 0.10f * bounceProgress + animatedAmp * 0.15f).coerceIn(0.18f, 0.5f)
             drawCircle(
                 color = Color(0xFFFF2448).copy(alpha = ring1Alpha),
                 radius = ring1Radius,
@@ -810,7 +865,12 @@ private fun CentralGlassOrb(
                 imageVector = Icons.Default.Mic,
                 contentDescription = "Sing or Hum",
                 tint = Color(0xFFFFF1F2),
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier
+                    .size(26.dp)
+                    .graphicsLayer {
+                        scaleX = micScale
+                        scaleY = micScale
+                    }
             )
         }
     }
@@ -826,6 +886,7 @@ private fun CentralGlassOrb(
 @Composable
 private fun BottomEtherealSmoke(
     amplitude: Float,
+    isListening: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "ethereal_smoke_loop")
@@ -844,7 +905,7 @@ private fun BottomEtherealSmoke(
         initialValue = 0f,
         targetValue = 6.28318f,
         animationSpec = infiniteRepeatable(
-            animation = tween(4600, easing = LinearEasing),
+            animation = tween(4800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "phase_fast"
@@ -852,23 +913,23 @@ private fun BottomEtherealSmoke(
 
     val animatedAmp by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
-        animationSpec = tween(120, easing = LinearEasing),
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
         label = "smoke_amp"
     )
 
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .blur(24.dp) // heavy radial blur for ethereal diffusion
+        modifier = modifier.fillMaxWidth()
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
             val height = size.height
 
-            // --- Layer 1: Ethereal Deep Wine Ambient Mist (BlendMode.Screen) ---
+            val activeAmp = if (isListening) (animatedAmp + 0.05f) else 0f
+
+            // --- Layer 1: Ethereal Deep Wine Ambient Mist ---
             val path1 = Path()
             path1.moveTo(0f, height)
-            val baseY1 = height * (0.32f - animatedAmp * 0.10f)
+            val baseY1 = height * (0.34f - activeAmp * 0.12f)
             for (x in 0..width.toInt() step 16) {
                 val nx = x / width
                 val y = baseY1 +
@@ -884,25 +945,24 @@ private fun BottomEtherealSmoke(
                 brush = Brush.verticalGradient(
                     colors = listOf(
                         Color(0x3348000C),
-                        Color(0x558F071F).copy(alpha = 0.22f + animatedAmp * 0.12f),
+                        Color(0x558F071F).copy(alpha = 0.22f + activeAmp * 0.12f),
                         Color(0x66260006),
                         Color(0x22120003)
                     ),
                     startY = baseY1 - 20f,
                     endY = height
-                ),
-                blendMode = BlendMode.Screen
+                )
             )
 
-            // --- Layer 2: Translucent Silky Wave Billows (BlendMode.Screen, alpha 0.18f - 0.32f) ---
+            // --- Layer 2: Translucent Silky Wave Billows ---
             val path2 = Path()
             path2.moveTo(0f, height)
-            val baseY2 = height * (0.45f - animatedAmp * 0.12f)
+            val baseY2 = height * (0.46f - activeAmp * 0.14f)
             for (x in 0..width.toInt() step 12) {
                 val nx = x / width
                 val y = baseY2 +
-                        sin(nx * 4.2f - phaseFast) * 28f +
-                        sin(nx * 8.6f + phaseSlow * 1.1f) * 16f
+                        sin(nx * 4.2f - phaseFast) * 26f +
+                        sin(nx * 8.6f + phaseSlow * 1.1f) * 15f
                 path2.lineTo(x.toFloat(), y)
             }
             path2.lineTo(width, height)
@@ -913,26 +973,25 @@ private fun BottomEtherealSmoke(
                 brush = Brush.horizontalGradient(
                     colors = listOf(
                         Color(0x338F071F),
-                        Color(0x55D51035).copy(alpha = 0.25f + animatedAmp * 0.15f),
-                        Color(0x66FF2448).copy(alpha = 0.30f + animatedAmp * 0.18f),
+                        Color(0x55D51035).copy(alpha = 0.25f + activeAmp * 0.15f),
+                        Color(0x66FF2448).copy(alpha = 0.30f + activeAmp * 0.18f),
                         Color(0x44D51035),
                         Color(0x2250000D)
                     ),
                     startX = 0f,
                     endX = width
-                ),
-                blendMode = BlendMode.Screen
+                )
             )
 
-            // --- Layer 3: Ethereal Light Ribbon Glow (BlendMode.Screen, alpha 0.20f - 0.35f) ---
+            // --- Layer 3: Ethereal Light Ribbon Glow ---
             val path3 = Path()
             path3.moveTo(0f, height)
-            val baseY3 = height * (0.60f - animatedAmp * 0.10f)
+            val baseY3 = height * (0.58f - activeAmp * 0.10f)
             for (x in 0..width.toInt() step 12) {
                 val nx = x / width
                 val y = baseY3 +
-                        sin(nx * 3.6f + phaseFast * 1.2f) * 24f +
-                        cos(nx * 7.2f - phaseSlow) * 15f
+                        sin(nx * 3.6f + phaseFast * 1.2f) * 22f +
+                        cos(nx * 7.2f - phaseSlow) * 14f
                 path3.lineTo(x.toFloat(), y)
             }
             path3.lineTo(width, height)
@@ -942,39 +1001,66 @@ private fun BottomEtherealSmoke(
                 path = path3,
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color(0x66FF2448).copy(alpha = 0.28f + animatedAmp * 0.15f),
-                        Color(0x55D51035).copy(alpha = 0.24f + animatedAmp * 0.12f),
+                        Color(0x66FF2448).copy(alpha = 0.28f + activeAmp * 0.15f),
+                        Color(0x55D51035).copy(alpha = 0.24f + activeAmp * 0.12f),
                         Color(0x338F071F),
                         Color(0x11120003)
                     ),
                     startY = baseY3 - 10f,
                     endY = height
-                ),
-                blendMode = BlendMode.Screen
+                )
             )
 
-            // --- Layer 4: Luminous Crest Filaments (BlendMode.Screen) ---
+            // --- Layer 4: Luminous Crest Filaments (Triple-glow strokes) ---
             val filamentPath = Path()
             for (x in 0..width.toInt() step 10) {
                 val nx = x / width
                 val y = baseY2 +
-                        sin(nx * 4.2f - phaseFast) * 28f +
-                        sin(nx * 8.6f + phaseSlow * 1.1f) * 16f
+                        sin(nx * 4.2f - phaseFast) * 26f +
+                        sin(nx * 8.6f + phaseSlow * 1.1f) * 15f
                 if (x == 0) filamentPath.moveTo(0f, y) else filamentPath.lineTo(x.toFloat(), y)
             }
+            // Pass 1: Diffuse ambient glow
+            drawPath(
+                path = filamentPath,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0x00FF2448),
+                        Color(0x40FF2448).copy(alpha = 0.25f + activeAmp * 0.15f),
+                        Color(0x60FF4D6D).copy(alpha = 0.35f + activeAmp * 0.15f),
+                        Color(0x40FF2448).copy(alpha = 0.25f + activeAmp * 0.15f),
+                        Color(0x00FF2448)
+                    )
+                ),
+                style = Stroke(width = 14f, cap = StrokeCap.Round)
+            )
+            // Pass 2: Vivid mid glow
             drawPath(
                 path = filamentPath,
                 brush = Brush.horizontalGradient(
                     colors = listOf(
                         Color(0x11FF2448),
-                        Color(0x88FF2448).copy(alpha = 0.35f + animatedAmp * 0.20f),
-                        Color(0xAAFFA0B0).copy(alpha = 0.45f + animatedAmp * 0.20f),
-                        Color(0x77FF2448).copy(alpha = 0.30f + animatedAmp * 0.15f),
+                        Color(0x88FF2448).copy(alpha = 0.40f + activeAmp * 0.20f),
+                        Color(0xAAFFA0B0).copy(alpha = 0.50f + activeAmp * 0.20f),
+                        Color(0x77FF2448).copy(alpha = 0.35f + activeAmp * 0.15f),
                         Color(0x11FF2448)
                     )
                 ),
-                style = Stroke(width = 3.dp.toPx()),
-                blendMode = BlendMode.Screen
+                style = Stroke(width = 5f, cap = StrokeCap.Round)
+            )
+            // Pass 3: Crisp high-luminance core edge
+            drawPath(
+                path = filamentPath,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0x22FF889E),
+                        Color(0xDDFF889E),
+                        Color(0xFFFFF0F2),
+                        Color(0xDDFF889E),
+                        Color(0x22FF889E)
+                    )
+                ),
+                style = Stroke(width = 1.8f, cap = StrokeCap.Round)
             )
         }
     }
@@ -1232,27 +1318,33 @@ private fun SeamlessMatchedResultView(
                 }
             }
 
-            // 2. TRACK HEADER: Left Album Thumbnail + Right Track Metadata & Soundwave
-            Row(
+            // 2. RESULTS CONTENT: Pushed up a little bit (not too close to the line)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    // Keep the thumbnail closer to the left edge like the reference.
-                    .graphicsLayer {
-                        alpha = trackInfoAlpha.value
-                        translationY = trackInfoOffsetY.value - 10f
-                    },
-                verticalAlignment = Alignment.CenterVertically
+                    .weight(1f)
+                    .offset(y = (-14).dp)
             ) {
-                // Album Art Thumbnail (Left Side)
-                Box(
+                // TRACK HEADER: Left Album Thumbnail + Right Track Metadata & Soundwave
+                Row(
                     modifier = Modifier
-                        .size(82.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF141418))
-                        .border(1.dp, Color(0x33FF2448), RoundedCornerShape(18.dp)),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .graphicsLayer {
+                            alpha = trackInfoAlpha.value
+                            translationY = trackInfoOffsetY.value
+                        },
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Album Art Thumbnail (Left Side) - slightly bigger with sharp edges
+                    Box(
+                        modifier = Modifier
+                            .size(94.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF141418))
+                            .border(1.dp, Color(0x33FF2448), RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
                     if (!resolvedArtworkUrl.isNullOrBlank()) {
                         SubcomposeAsyncImage(
                             model = ImageRequest.Builder(context)
@@ -1492,8 +1584,10 @@ private fun SeamlessMatchedResultView(
                         onClick = { platform.launch(context) }
                     )
                 }
+                Spacer(modifier = Modifier.height(bottomPadding + 16.dp))
             }
         }
+    }
 
         // TOP NAV OVERLAY: Circular Back Button (Left) and More Options (Right)
         Row(
