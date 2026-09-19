@@ -328,12 +328,14 @@ fun SingToSearchSheet(
                         )
                     }
 
-                    // Center Visualizer Engine (Thin Needle Waveform Bars + Central 3D Glass Sphere Orb)
+                    // Center Visualizer Engine
+                    // Keep the microphone/waveform centered in the actual screen rather than
+                    // allowing the visual mass to sit low on the sheet.
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.Center)
-                            .offset(y = 12.dp),
+                            .offset(y = (-92).dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
@@ -796,148 +798,86 @@ private fun CentralGlassOrb(
             val center = Offset(size.width / 2f, size.height / 2f)
             val orbRadius = (orbSize.toPx() / 2f) * currentOrbScale
 
-            // 1. Radar Expanding Ripple Effect (ONLY in Listening state; instantly removed when Identifying)
+            // 1. Very quiet listening ripple — kept behind the glass, never neon-bright.
             if (isListening) {
                 listOf(ripple1Progress, ripple2Progress, ripple3Progress).forEach { progress ->
                     val rippleScale = 1.0f + 0.85f * progress
                     val rippleRadius = (orbSize.toPx() / 2f) * rippleScale
                     val fadeOut = (1f - progress).coerceIn(0f, 1f)
-                    val rippleAlpha = (fadeOut * (0.35f + voiceIntensity * 0.30f)).coerceIn(0f, 0.70f)
+                    val rippleAlpha = (fadeOut * (0.10f + voiceIntensity * 0.08f)).coerceIn(0f, 0.18f)
 
                     if (rippleAlpha > 0.005f) {
                         drawCircle(
                             color = Color(0xFFFF1E4B).copy(alpha = rippleAlpha),
                             radius = rippleRadius,
                             center = center,
-                            style = Stroke(width = (1.2.dp * fadeOut).toPx().coerceAtLeast(0.5f))
+                            style = Stroke(width = (0.8.dp * fadeOut).toPx().coerceAtLeast(0.4f))
                         )
                     }
                 }
             }
 
-            // 2. Halo Rings (Target Spec: "The thin outer halo ring should sit closer to the main orb,
-            // colored in ultra-thin muted translucent crimson (alpha 0.3).")
-            val haloRadius = (orbSize.toPx() / 2f) + 15.dp.toPx()
-
-            // Outer halo ring (sitting close to the main orb, alpha 0.30)
+            // 2. Quiet halo: one thin, settled ring around the glass.
+            // No stacked neon borders and no bright bloom outside the bubble.
+            val haloRadius = (orbSize.toPx() / 2f) + 12.dp.toPx()
             drawCircle(
-                color = Color(0xFFFF1E4B).copy(alpha = 0.30f + voiceIntensity * 0.15f),
+                color = Color(0xFFFF2448).copy(alpha = 0.16f + voiceIntensity * 0.04f),
                 radius = haloRadius,
                 center = center,
-                style = Stroke(width = 0.9.dp.toPx())
+                style = Stroke(width = 0.8.dp.toPx())
             )
 
-            // Faint inner concentric guide ring
-            drawCircle(
-                color = Color(0xFFFF2448).copy(alpha = 0.14f),
-                radius = (orbSize.toPx() / 2f) + 7.dp.toPx(),
-                center = center,
-                style = Stroke(width = 0.6.dp.toPx())
-            )
-
-            // Soft radial bloom behind the glass orb
-            val glowRadius = orbRadius + 8.dp.toPx() + (24.dp.toPx() * voiceIntensity)
-            val glowAlpha = (0.28f + voiceIntensity * 0.35f).coerceIn(0.15f, 0.65f)
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFFFF1E4B).copy(alpha = glowAlpha),
-                        Color(0xFFD5002C).copy(alpha = glowAlpha * 0.6f),
-                        Color.Transparent
-                    ),
-                    center = center,
-                    radius = glowRadius
-                ),
-                radius = glowRadius,
-                center = center
-            )
-
-            // 3. 3D Glass / Bubble Sphere Shader:
-            // Inner Radial Center: Dark crimson/burgundy center (#3A000E to #1A0005)
-            // Inner Edge Highlight: Glowing neon red edge (#FF1E4B / #FF0033) around inner perimeter,
-            // giving it a thick "glass bubble" rim.
+            // 3. One continuous glass surface with a restrained internal red gradient.
+            // The red is carried inside the sphere instead of being painted as a bright rim.
             drawCircle(
                 brush = Brush.radialGradient(
                     colorStops = arrayOf(
-                        0.00f to Color(0xFF3A000E),
-                        0.40f to Color(0xFF200007),
-                        0.68f to Color(0xFF140004),
-                        0.82f to Color(0xFF6B0018),
-                        0.93f to Color(0xFFE00030),
-                        1.00f to Color(0xFFFF1E4B)
+                        0.00f to Color(0xFF260009),
+                        0.48f to Color(0xFF160005),
+                        0.76f to Color(0xFF1B0008),
+                        0.91f to Color(0xFF3B0011),
+                        1.00f to Color(0xFF7A1028)
                     ),
-                    center = center,
-                    radius = orbRadius
+                    center = Offset(center.x - orbRadius * 0.18f, center.y - orbRadius * 0.18f),
+                    radius = orbRadius * 1.05f
                 ),
                 radius = orbRadius,
                 center = center
             )
 
-            // Volumetric inner neon red edge illumination (gives thick "glass bubble" rim)
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colorStops = arrayOf(
-                        0.00f to Color.Transparent,
-                        0.70f to Color.Transparent,
-                        0.85f to Color(0x77FF0033),
-                        0.94f to Color(0xEEFF1E4B),
-                        1.00f to Color(0xFFFF2448)
-                    ),
-                    center = center,
-                    radius = orbRadius
-                ),
-                radius = orbRadius,
-                center = center
-            )
-
-            // Additional bottom-weighted radiant glow inside the sphere
+            // Very subtle lower red smoke inside the glass.
+            val innerGlowAlpha = (0.10f + voiceIntensity * 0.08f).coerceIn(0.08f, 0.18f)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x99FF1E4B).copy(alpha = 0.55f + voiceIntensity * 0.25f),
-                        Color(0x55A00028),
+                        Color(0xFFFF2448).copy(alpha = innerGlowAlpha),
+                        Color(0xFFD51035).copy(alpha = innerGlowAlpha * 0.35f),
                         Color.Transparent
                     ),
-                    center = Offset(center.x, center.y + orbRadius * 0.40f),
-                    radius = orbRadius * 0.78f
+                    center = Offset(center.x, center.y + orbRadius * 0.32f),
+                    radius = orbRadius * 0.72f
                 ),
-                radius = orbRadius * 0.78f,
-                center = Offset(center.x, center.y + orbRadius * 0.40f)
+                radius = orbRadius * 0.72f,
+                center = Offset(center.x, center.y + orbRadius * 0.32f)
             )
 
-            // Ultra-fine glowing neon red perimeter rim stroke
+            // Fine perimeter rim — visible, but never neon-bright.
             drawCircle(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFFFF5E7B).copy(alpha = 0.90f),
-                        Color(0xFFFF1E4B),
-                        Color(0xFFFF0033)
-                    ),
-                    startY = center.y - orbRadius,
-                    endY = center.y + orbRadius
-                ),
+                color = Color(0xFFFF4868).copy(alpha = 0.42f + voiceIntensity * 0.08f),
                 radius = orbRadius - 0.5.dp.toPx(),
                 center = center,
-                style = Stroke(width = 1.5.dp.toPx())
+                style = Stroke(width = 1.0.dp.toPx())
             )
 
-            // 3D Glass Specular Highlight (top-left crescent reflection)
+            // Small glass reflection only; kept quiet so the surface reads as one material.
             drawArc(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.88f),
-                        Color(0x99FF99AA),
-                        Color.Transparent
-                    ),
-                    start = Offset(center.x - orbRadius * 0.60f, center.y - orbRadius * 0.95f),
-                    end = Offset(center.x + orbRadius * 0.60f, center.y - orbRadius * 0.35f)
-                ),
+                color = Color.White.copy(alpha = 0.22f),
                 startAngle = 205f,
-                sweepAngle = 130f,
+                sweepAngle = 100f,
                 useCenter = false,
-                topLeft = Offset(center.x - orbRadius + 1.2.dp.toPx(), center.y - orbRadius + 1.2.dp.toPx()),
-                size = Size((orbRadius - 1.2.dp.toPx()) * 2, (orbRadius - 1.2.dp.toPx()) * 2),
-                style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
+                topLeft = Offset(center.x - orbRadius + 2.dp.toPx(), center.y - orbRadius + 2.dp.toPx()),
+                size = Size((orbRadius - 2.dp.toPx()) * 2, (orbRadius - 2.dp.toPx()) * 2),
+                style = Stroke(width = 1.1.dp.toPx(), cap = StrokeCap.Round)
             )
         }
 
