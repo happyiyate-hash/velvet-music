@@ -914,10 +914,10 @@ private fun CentralGlassOrb(
 
             drawArc(
                 color = micColor,
-                startAngle = 0f,
+                startAngle = 180f,
                 sweepAngle = 180f,
                 useCenter = false,
-                topLeft = arcLeft to arcTop,
+                topLeft = Offset(arcLeft, arcTop),
                 size = arcSize,
                 style = Stroke(width = micW * 0.24f, cap = StrokeCap.Round)
             )
