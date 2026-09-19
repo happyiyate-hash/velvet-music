@@ -822,9 +822,7 @@ private fun CentralGlassOrb(
             )
         }
 
-        // Exact reference microphone geometry from the supplied 24x24 SVG.
-        // Rendered much smaller than the previous custom microphone while preserving
-        // the original SVG proportions, stroke weight, and white color.
+        // Microphone matching the supplied 32x32 SVG.
         Canvas(
             modifier = Modifier
                 .size(42.dp)
@@ -839,58 +837,84 @@ private fun CentralGlassOrb(
                 )
                 .testTag("sing_center_mic_orb")
         ) {
-            val scale = size.minDimension / 24f
-            val micColor = Color.White
-            val stroke = 2f * scale
+            val scale = size.minDimension / 32f
+            val micGradient = Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF8B0000),
+                    Color(0xFFC62828),
+                    Color(0xFFF06A6A),
+                    Color(0xFFFFEAEA),
+                    Color.White
+                ),
+                start = Offset(8f * scale, 5f * scale),
+                end = Offset(25f * scale, 26f * scale)
+            )
+            val glassHighlight = Brush.linearGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.85f),
+                    Color.White.copy(alpha = 0.18f),
+                    Color.Transparent
+                ),
+                start = Offset(11f * scale, 5f * scale),
+                end = Offset(20f * scale, 19f * scale)
+            )
+            val stroke = 2.2f * scale
 
-            // Microphone: <rect x="8" y="3" width="8" height="12" rx="4" ... />
+            // Mic capsule.
             drawRoundRect(
-                color = micColor,
-                topLeft = Offset(8f * scale, 3f * scale),
-                size = Size(8f * scale, 12f * scale),
-                cornerRadius = CornerRadius(4f * scale, 4f * scale),
-                style = Stroke(width = stroke)
+                brush = micGradient,
+                topLeft = Offset(11f * scale, 4f * scale),
+                size = Size(10f * scale, 17f * scale),
+                cornerRadius = CornerRadius(5f * scale, 5f * scale)
             )
 
-            // Outer microphone curve: exact SVG cubic path.
+            // Glass highlight.
+            drawLine(
+                brush = glassHighlight,
+                start = Offset(14f * scale, 6.5f * scale),
+                end = Offset(14f * scale, 14.5f * scale),
+                strokeWidth = 1.5f * scale,
+                cap = StrokeCap.Round
+            )
+
+            // Short, tight outer curve.
             val outer = Path().apply {
-                moveTo(5f * scale, 11f * scale)
-                lineTo(5f * scale, 12f * scale)
+                moveTo(8.5f * scale, 17.5f * scale)
                 cubicTo(
-                    5f * scale, 15.866f * scale,
-                    8.134f * scale, 19f * scale,
-                    12f * scale, 19f * scale
+                    8.5f * scale, 21.8f * scale,
+                    11.8f * scale, 24.5f * scale,
+                    16f * scale, 24.5f * scale
                 )
                 cubicTo(
-                    15.866f * scale, 19f * scale,
-                    19f * scale, 15.866f * scale,
-                    19f * scale, 12f * scale
+                    20.2f * scale, 24.5f * scale,
+                    23.5f * scale, 21.8f * scale,
+                    23.5f * scale, 17.5f * scale
                 )
-                lineTo(19f * scale, 11f * scale)
             }
             drawPath(
                 path = outer,
-                color = micColor,
+                brush = micGradient,
                 style = Stroke(width = stroke, cap = StrokeCap.Round)
             )
 
-            // Stand: M12 19V22
+            // Short stem.
             drawLine(
-                color = micColor,
-                start = Offset(12f * scale, 19f * scale),
-                end = Offset(12f * scale, 22f * scale),
+                brush = micGradient,
+                start = Offset(16f * scale, 24.5f * scale),
+                end = Offset(16f * scale, 27.5f * scale),
                 strokeWidth = stroke,
                 cap = StrokeCap.Round
             )
 
-            // Base: M9 22H15
+            // Base.
             drawLine(
-                color = micColor,
-                start = Offset(9f * scale, 22f * scale),
-                end = Offset(15f * scale, 22f * scale),
+                brush = micGradient,
+                start = Offset(13f * scale, 27.5f * scale),
+                end = Offset(19f * scale, 27.5f * scale),
                 strokeWidth = stroke,
                 cap = StrokeCap.Round
             )
+
         }
     }
 }
