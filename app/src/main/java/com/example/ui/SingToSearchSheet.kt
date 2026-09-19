@@ -130,7 +130,6 @@ import com.example.media.HumRecognitionState
 import com.example.media.HummingRecognitionEngine
 import com.example.model.Track
 import com.example.recognition.RecognitionDiagnostics
-import com.example.recognition.RemoteSongRecognitionRepository
 import com.example.recognition.SongArtworkResolver
 import com.example.ui.theme.VelvetBloodPlum
 import com.example.ui.theme.VelvetDeepCrimson
@@ -165,12 +164,6 @@ fun SingToSearchSheet(
     val liveAmplitude by recognitionEngine.liveAmplitude.collectAsState()
     val lastSavedDiagnostics by recognitionEngine.lastDiagnostics.collectAsState()
     var showDiagnosticsModal by remember { mutableStateOf(false) }
-
-    val playbackRepository = remember { RemoteSongRecognitionRepository() }
-    var playbackResolving by remember { mutableStateOf(false) }
-    var playbackReady by remember { mutableStateOf(false) }
-    var playbackStreamUrl by remember { mutableStateOf<String?>(null) }
-    var playbackResolveError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         recognitionEngine.loadSavedDiagnostics(context)
@@ -427,32 +420,6 @@ fun SingToSearchSheet(
             ) {
                 val matched = (state as? HumRecognitionState.Matched)?.result
                 if (matched != null) {
-                    LaunchedEffect(matched.id, matched.title, matched.artist, matched.isrc) {
-                        playbackResolving = true
-                        playbackReady = false
-                        playbackStreamUrl = null
-                        playbackResolveError = null
-                        runCatching {
-                            playbackRepository.resolvePlayback(
-                                artist = matched.artist,
-                                title = matched.title,
-                                isrc = matched.isrc,
-                                durationMs = matched.durationMs
-                            )
-                        }.onSuccess { response ->
-                            val resolvedUrl = response.streamUrl?.trim()?.takeIf { it.isNotBlank() }
-                            playbackStreamUrl = resolvedUrl
-                            playbackReady = response.success && resolvedUrl != null
-                            playbackResolveError = if (playbackReady) null else response.error ?: "No playable source was found."
-                            playbackResolving = false
-                        }.onFailure { error ->
-                            playbackResolving = false
-                            playbackReady = false
-                            playbackStreamUrl = null
-                            playbackResolveError = error.message ?: error.javaClass.simpleName
-                        }
-                    }
-
                     SeamlessMatchedResultView(
                         result = matched,
                         playbackReady = playbackReady,
@@ -461,23 +428,13 @@ fun SingToSearchSheet(
                         topPadding = topStatusBarInset + 16.dp,
                         bottomPadding = bottomNavBarInset + 20.dp,
                         onPlayInVelvet = {
-                            val streamUrl = playbackStreamUrl ?: return@SeamlessMatchedResultView
-                            val trackToPlay = (matched.track ?: Track(
-                                id = matched.id,
-                                title = matched.title,
-                                artist = matched.artist,
-                                album = matched.album,
-                                durationMs = if (matched.durationMs > 0L) matched.durationMs else 210000L,
-                                coverResId = matched.coverResId,
-                                dominantColor = VelvetDeepCrimson,
-                                secondaryColor = VelvetBloodPlum,
-                                catalogSource = "Sing It Matched",
-                                artworkUri = matched.artworkUrl
-                            )).copy(
-                                contentUri = streamUrl,
-                                artworkUri = matched.artworkUrl ?: matched.track?.artworkUri
+                            val localTrack = matched.track ?: return@SeamlessMatchedResultView
+                            if (localTrack.contentUri.isNullOrBlank()) return@SeamlessMatchedResultView
+                            onPlayTrack(
+                                localTrack.copy(
+                                    artworkUri = matched.artworkUrl ?: localTrack.artworkUri
+                                )
                             )
-                            onPlayTrack(trackToPlay)
                             onDismiss()
                         },
                         onRestartMic = {
@@ -1131,8 +1088,6 @@ private fun SeamlessMatchedResultView(
     topPadding: Dp,
     bottomPadding: Dp,
     playbackReady: Boolean,
-    playbackResolving: Boolean,
-    playbackResolveError: String?,
     onPlayInVelvet: () -> Unit,
     onRestartMic: () -> Unit,
     onClose: () -> Unit,
@@ -1508,7 +1463,7 @@ private fun SeamlessMatchedResultView(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (playbackResolving) "Loading…" else "Play",
+                            text = "Play",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White
