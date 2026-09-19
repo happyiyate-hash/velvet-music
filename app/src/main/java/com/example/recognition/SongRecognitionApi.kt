@@ -1,6 +1,7 @@
 package com.example.recognition
 
 import okhttp3.MultipartBody
+import retrofit2.http.Body
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
@@ -16,6 +17,12 @@ interface SongRecognitionApi {
     suspend fun recognizeBatch(
         @Part audio: MultipartBody.Part
     ): BatchRecognitionResponse
+
+    /** Resolve an already-recognized song into a currently playable remote stream. */
+    @POST("v1/playback/resolve")
+    suspend fun resolvePlayback(
+        @Body request: PlaybackResolveRequest
+    ): PlaybackResolveResponse
 }
 
 data class RecognitionResponse(
@@ -54,4 +61,21 @@ data class RecognizedSongDto(
     val audiomackUrl: String? = null,
     val soundcloudUrl: String? = null,
     val boomplayUrl: String? = null
+)
+
+
+data class PlaybackResolveRequest(
+    val artist: String,
+    val title: String,
+    val isrc: String? = null,
+    val durationMs: Long? = null
+)
+
+data class PlaybackResolveResponse(
+    val success: Boolean = false,
+    val provider: String? = null,
+    val streamUrl: String? = null,
+    val expiresAt: Long? = null,
+    val trackUrl: String? = null,
+    val error: String? = null
 )
