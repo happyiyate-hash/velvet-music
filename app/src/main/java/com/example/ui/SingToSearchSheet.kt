@@ -779,7 +779,6 @@ private fun CentralGlassOrb(
             val center = Offset(size.width / 2f, size.height / 2f)
             val radius = (orbSize.toPx() / 2f) * currentOrbScale
             val red = Color(0xFFFF1744)
-            val deepRed = Color(0xFFB4002A)
 
             // Very restrained ambient ring: a soft trace, not a neon outline.
             if (isListening) {
@@ -914,7 +913,7 @@ private fun CentralGlassOrb(
 
             drawArc(
                 color = micColor,
-                startAngle = 180f,
+                startAngle = 0f,
                 sweepAngle = 180f,
                 useCenter = false,
                 topLeft = Offset(arcLeft, arcTop),
