@@ -3,6 +3,8 @@ interface Env {
   ACRCLOUD_HOST: string
   ACRCLOUD_ACCESS_KEY: string
   ACRCLOUD_ACCESS_SECRET: string
+  SOUNDCLOUD_CLIENT_ID: string
+  SOUNDCLOUD_CLIENT_SECRET: string
 }
 
 type RecognitionSong = {
@@ -41,6 +43,27 @@ type BatchResponse = {
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" }
 const PROVIDER_TIMEOUT_MS = 18_000
 const MAX_AUDIO_BYTES = 5_000_000
+const SOUNDCLOUD_API_BASE = "https://api.soundcloud.com"
+const SOUNDCLOUD_TOKEN_URL = "https://secure.soundcloud.com/oauth/token"
+const SOUNDCLOUD_SEARCH_LIMIT = 10
+
+let soundCloudTokenCache: { accessToken: string; expiresAt: number } | null = null
+
+type PlaybackResolveRequest = {
+  artist?: string
+  title?: string
+  isrc?: string | null
+  durationMs?: number | null
+}
+
+type PlaybackResolveResponse = {
+  success: boolean
+  provider?: "soundcloud"
+  streamUrl?: string
+  expiresAt?: number | null
+  trackUrl?: string | null
+  error?: string
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -52,6 +75,18 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors })
     if (request.method === "GET" && path === "/health") return json({ ok: true, service: "velvet-recognition", requestId }, 200, cors, requestId)
     if (request.method !== "POST") return json({ success: false, confidence: 0, requestId, error: "POST required" }, 405, cors, requestId)
+    if (path === "/v1/playback/resolve") {
+      try {
+        const body = await request.json<PlaybackResolveRequest>()
+        const result = await resolvePlayback(body, env, requestId)
+        log(requestId, "PLAYBACK_RESPONSE_SENT", { elapsedMs: Date.now() - startedAt, success: result.success, provider: result.provider })
+        return json(result, result.success ? 200 : 422, cors, requestId)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Playback resolution failed"
+        log(requestId, "PLAYBACK_REQUEST_FAILED", { elapsedMs: Date.now() - startedAt, error: message })
+        return json({ success: false, error: message }, 502, cors, requestId)
+      }
+    }
     if (!path.endsWith("/hum") && !path.endsWith("/audio") && !path.endsWith("/batch")) return json({ success: false, confidence: 0, requestId, error: "Unknown recognition endpoint" }, 404, cors, requestId)
     try {
       const form = await request.formData()
@@ -132,6 +167,195 @@ async function recognizeHumming(audio: File, env: Env, requestId: string): Promi
   if (!title || !artist) return { success: false, confidence: 0, error: "ACRCloud: recognition returned incomplete metadata" }
   const score = Number(candidate.score), spotifyId = candidate.external_metadata?.spotify?.track?.id, youtubeId = candidate.external_metadata?.youtube?.vid
   return { success: true, confidence: Number.isFinite(score) ? Math.round(Math.max(0, Math.min(1, score)) * 100) : 0, song: { id: candidate.acrid || `${artist}:${title}`, title, artist, album: String(candidate.album?.name || "Unknown Album"), artworkUrl: null, durationMs: Number(candidate.duration_ms || 0), isrc: candidate.external_ids?.isrc || null, spotifyUrl: spotifyId ? `https://open.spotify.com/track/${spotifyId}` : null, appleMusicUrl: null, youtubeMusicUrl: youtubeId ? `https://music.youtube.com/watch?v=${youtubeId}` : `https://music.youtube.com/search?q=${encodeURIComponent(`${artist} ${title}`)}`, audiomackUrl: `https://audiomack.com/search?q=${encodeURIComponent(`${artist} ${title}`)}`, soundcloudUrl: `https://soundcloud.com/search?q=${encodeURIComponent(`${artist} ${title}`)}`, boomplayUrl: `https://www.boomplay.com/search/default-${encodeURIComponent(`${artist} ${title}`)}` } }
+}
+
+async function resolvePlayback(body: PlaybackResolveRequest, env: Env, requestId: string): Promise<PlaybackResolveResponse> {
+  const artist = String(body.artist || "").trim()
+  const title = String(body.title || "").trim()
+  const isrc = String(body.isrc || "").trim() || null
+  const durationMs = Number(body.durationMs)
+
+  if (!artist || !title) return { success: false, error: "artist and title are required" }
+  if (artist.length > 300 || title.length > 300) return { success: false, error: "artist or title is too long" }
+
+  const accessToken = await getSoundCloudAccessToken(env, requestId)
+  const query = encodeURIComponent(\`${artist} ${title}\`)
+  const searchUrl = \`${SOUNDCLOUD_API_BASE}/tracks?q=${query}&access=playable&limit=${SOUNDCLOUD_SEARCH_LIMIT}&linked_partitioning=true\`
+  log(requestId, "PLAYBACK_SEARCH_STARTED", { provider: "SoundCloud", hasIsrc: Boolean(isrc), hasDuration: Number.isFinite(durationMs) && durationMs > 0 })
+
+  let searchResponse = await fetchWithTimeout(searchUrl, {
+    headers: { Authorization: \`OAuth ${accessToken}\`, Accept: "application/json" },
+  })
+  if (searchResponse.status === 401) {
+    invalidateSoundCloudToken()
+    const refreshedToken = await getSoundCloudAccessToken(env, requestId)
+    searchResponse = await fetchWithTimeout(searchUrl, {
+      headers: { Authorization: \`OAuth ${refreshedToken}\`, Accept: "application/json" },
+    })
+  }
+
+  const searchData = await readJsonSafely(searchResponse)
+  if (searchResponse.status === 429) return { success: false, error: "SoundCloud playback search rate limit reached" }
+  if (!searchResponse.ok) return { success: false, error: \`SoundCloud search failed (HTTP ${searchResponse.status})\` }
+
+  const candidates = Array.isArray(searchData?.collection) ? searchData.collection : []
+  const match = selectSoundCloudTrack(candidates, artist, title, isrc, Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null)
+  if (!match) {
+    log(requestId, "PLAYBACK_NO_EXACT_MATCH", { provider: "SoundCloud", candidates: candidates.length })
+    return { success: false, error: "No sufficiently exact playable SoundCloud match was found." }
+  }
+
+  const trackId = match.urn || (match.id != null ? String(match.id) : "")
+  if (!trackId) return { success: false, error: "SoundCloud match has no playable track identifier" }
+
+  const streamLookupUrl = \`${SOUNDCLOUD_API_BASE}/tracks/${encodeURIComponent(trackId)}/streams\`
+  let streamResponse = await fetchWithTimeout(streamLookupUrl, {
+    headers: { Authorization: \`OAuth ${accessToken}\`, Accept: "application/json" },
+  })
+  if (streamResponse.status === 401) {
+    invalidateSoundCloudToken()
+    const refreshedToken = await getSoundCloudAccessToken(env, requestId)
+    streamResponse = await fetchWithTimeout(streamLookupUrl, {
+      headers: { Authorization: \`OAuth ${refreshedToken}\`, Accept: "application/json" },
+    })
+  }
+
+  const streamData = await readJsonSafely(streamResponse)
+  if (streamResponse.status === 429) return { success: false, error: "SoundCloud playback rate limit reached" }
+  if (!streamResponse.ok) return { success: false, error: \`SoundCloud stream lookup failed (HTTP ${streamResponse.status})\` }
+
+  const playableStream = pickSoundCloudStream(streamData)
+  if (!playableStream) {
+    log(requestId, "PLAYBACK_NOT_STREAMABLE", { provider: "SoundCloud", trackId })
+    return { success: false, error: "The matched SoundCloud track is not currently streamable." }
+  }
+
+  log(requestId, "PLAYBACK_RESOLVED", { provider: "SoundCloud", trackId, streamType: playableStream.type })
+  return {
+    success: true,
+    provider: "soundcloud",
+    streamUrl: playableStream.url,
+    expiresAt: null,
+    trackUrl: typeof match.permalink_url === "string" ? match.permalink_url : null,
+  }
+}
+
+async function getSoundCloudAccessToken(env: Env, requestId: string): Promise<string> {
+  if (!env.SOUNDCLOUD_CLIENT_ID || !env.SOUNDCLOUD_CLIENT_SECRET) {
+    throw new Error("SOUNDCLOUD_CLIENT_ID and SOUNDCLOUD_CLIENT_SECRET are required")
+  }
+  if (soundCloudTokenCache && soundCloudTokenCache.expiresAt > Date.now() + 60_000) {
+    return soundCloudTokenCache.accessToken
+  }
+
+  const basic = btoa(\`${env.SOUNDCLOUD_CLIENT_ID}:${env.SOUNDCLOUD_CLIENT_SECRET}\`)
+  const body = new URLSearchParams({ grant_type: "client_credentials" })
+  const response = await fetchWithTimeout(SOUNDCLOUD_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      Authorization: \`Basic ${basic}\`,
+      "content-type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body,
+  })
+  const data = await readJsonSafely(response)
+  if (!response.ok || !data?.access_token) {
+    throw new Error(\`SoundCloud authentication failed (HTTP ${response.status})\`)
+  }
+
+  const expiresIn = Number(data.expires_in)
+  const expiresAt = Date.now() + (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn * 1000 : 3_600_000)
+  soundCloudTokenCache = { accessToken: String(data.access_token), expiresAt }
+  log(requestId, "SOUNDCLOUD_TOKEN_READY", { expiresInSeconds: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)) })
+  return soundCloudTokenCache.accessToken
+}
+
+function invalidateSoundCloudToken() {
+  soundCloudTokenCache = null
+}
+
+function selectSoundCloudTrack(
+  candidates: any[],
+  wantedArtist: string,
+  wantedTitle: string,
+  wantedIsrc: string | null,
+  wantedDurationMs: number | null,
+): any | null {
+  const targetArtist = normalizeMusicText(wantedArtist)
+  const targetTitle = normalizeMusicText(wantedTitle)
+
+  const scored = candidates
+    .map(candidate => {
+      const candidateTitle = normalizeMusicText(candidate?.title)
+      const candidateArtist = normalizeMusicText(candidate?.user?.username || candidate?.publisher_metadata?.artist)
+      const candidateIsrc = String(candidate?.publisher_metadata?.isrc || candidate?.isrc || "").trim().toUpperCase()
+      const candidateDuration = Number(candidate?.duration)
+      const titleExact = candidateTitle === targetTitle
+      const artistExact = candidateArtist === targetArtist
+      const titleSimilarity = textSimilarity(candidateTitle, targetTitle)
+      const artistSimilarity = textSimilarity(candidateArtist, targetArtist)
+      const durationSimilarity = durationScore(wantedDurationMs, candidateDuration)
+      const isrcExact = Boolean(wantedIsrc && candidateIsrc && candidateIsrc === wantedIsrc.toUpperCase())
+
+      let score = titleSimilarity * 45 + artistSimilarity * 40 + durationSimilarity * 15
+      if (titleExact) score += 20
+      if (artistExact) score += 20
+      if (isrcExact) score += 100
+
+      return { candidate, score, titleExact, artistExact, isrcExact, durationSimilarity }
+    })
+    .filter(item => (item.titleExact && item.artistExact) || item.isrcExact)
+    .sort((a, b) => b.score - a.score)
+
+  const best = scored[0]
+  if (!best) return null
+
+  const durationAcceptable = wantedDurationMs == null || best.durationSimilarity >= 0.70
+  const identityAcceptable = best.isrcExact || (best.titleExact && best.artistExact)
+  if (!durationAcceptable || !identityAcceptable || best.score < 100) return null
+  return best.candidate
+}
+
+function normalizeMusicText(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+}
+
+function textSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0
+  if (a === b) return 1
+  const aTokens = new Set(a.split(" "))
+  const bTokens = new Set(b.split(" "))
+  const intersection = [...aTokens].filter(token => bTokens.has(token)).length
+  return intersection / Math.max(aTokens.size, bTokens.size)
+}
+
+function durationScore(wantedMs: number | null, candidateMs: number): number {
+  if (wantedMs == null || !Number.isFinite(candidateMs) || candidateMs <= 0) return 1
+  const difference = Math.abs(wantedMs - candidateMs)
+  const tolerance = Math.max(8_000, wantedMs * 0.10)
+  return Math.max(0, 1 - difference / tolerance)
+}
+
+function pickSoundCloudStream(data: any): { url: string; type: string } | null {
+  const preferred = [
+    ["hls_aac_160_url", "hls_aac_160"],
+    ["hls_aac_96_url", "hls_aac_96"],
+    ["hls_mp3_128_url", "hls_mp3_128"],
+    ["http_mp3_128_url", "http_mp3_128"],
+  ] as const
+  for (const [key, type] of preferred) {
+    const url = typeof data?.[key] === "string" ? data[key].trim() : ""
+    if (url) return { url, type }
+  }
+  return null
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
