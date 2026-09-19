@@ -179,24 +179,24 @@ async function resolvePlayback(body: PlaybackResolveRequest, env: Env, requestId
   if (artist.length > 300 || title.length > 300) return { success: false, error: "artist or title is too long" }
 
   const accessToken = await getSoundCloudAccessToken(env, requestId)
-  const query = encodeURIComponent(\`${artist} ${title}\`)
-  const searchUrl = \`${SOUNDCLOUD_API_BASE}/tracks?q=${query}&access=playable&limit=${SOUNDCLOUD_SEARCH_LIMIT}&linked_partitioning=true\`
+  const query = encodeURIComponent(`${artist} ${title}`)
+  const searchUrl = `${SOUNDCLOUD_API_BASE}/tracks?q=${query}&access=playable&limit=${SOUNDCLOUD_SEARCH_LIMIT}&linked_partitioning=true`
   log(requestId, "PLAYBACK_SEARCH_STARTED", { provider: "SoundCloud", hasIsrc: Boolean(isrc), hasDuration: Number.isFinite(durationMs) && durationMs > 0 })
 
   let searchResponse = await fetchWithTimeout(searchUrl, {
-    headers: { Authorization: \`OAuth ${accessToken}\`, Accept: "application/json" },
+    headers: { Authorization: `OAuth ${accessToken}`, Accept: "application/json" },
   })
   if (searchResponse.status === 401) {
     invalidateSoundCloudToken()
     const refreshedToken = await getSoundCloudAccessToken(env, requestId)
     searchResponse = await fetchWithTimeout(searchUrl, {
-      headers: { Authorization: \`OAuth ${refreshedToken}\`, Accept: "application/json" },
+      headers: { Authorization: `OAuth ${refreshedToken}`, Accept: "application/json" },
     })
   }
 
   const searchData = await readJsonSafely(searchResponse)
   if (searchResponse.status === 429) return { success: false, error: "SoundCloud playback search rate limit reached" }
-  if (!searchResponse.ok) return { success: false, error: \`SoundCloud search failed (HTTP ${searchResponse.status})\` }
+  if (!searchResponse.ok) return { success: false, error: `SoundCloud search failed (HTTP ${searchResponse.status})` }
 
   const candidates = Array.isArray(searchData?.collection) ? searchData.collection : []
   const match = selectSoundCloudTrack(candidates, artist, title, isrc, Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null)
@@ -208,21 +208,21 @@ async function resolvePlayback(body: PlaybackResolveRequest, env: Env, requestId
   const trackId = match.urn || (match.id != null ? String(match.id) : "")
   if (!trackId) return { success: false, error: "SoundCloud match has no playable track identifier" }
 
-  const streamLookupUrl = \`${SOUNDCLOUD_API_BASE}/tracks/${encodeURIComponent(trackId)}/streams\`
+  const streamLookupUrl = `${SOUNDCLOUD_API_BASE}/tracks/${encodeURIComponent(trackId)}/streams`
   let streamResponse = await fetchWithTimeout(streamLookupUrl, {
-    headers: { Authorization: \`OAuth ${accessToken}\`, Accept: "application/json" },
+    headers: { Authorization: `OAuth ${accessToken}`, Accept: "application/json" },
   })
   if (streamResponse.status === 401) {
     invalidateSoundCloudToken()
     const refreshedToken = await getSoundCloudAccessToken(env, requestId)
     streamResponse = await fetchWithTimeout(streamLookupUrl, {
-      headers: { Authorization: \`OAuth ${refreshedToken}\`, Accept: "application/json" },
+      headers: { Authorization: `OAuth ${refreshedToken}`, Accept: "application/json" },
     })
   }
 
   const streamData = await readJsonSafely(streamResponse)
   if (streamResponse.status === 429) return { success: false, error: "SoundCloud playback rate limit reached" }
-  if (!streamResponse.ok) return { success: false, error: \`SoundCloud stream lookup failed (HTTP ${streamResponse.status})\` }
+  if (!streamResponse.ok) return { success: false, error: `SoundCloud stream lookup failed (HTTP ${streamResponse.status})` }
 
   const playableStream = pickSoundCloudStream(streamData)
   if (!playableStream) {
@@ -248,12 +248,12 @@ async function getSoundCloudAccessToken(env: Env, requestId: string): Promise<st
     return soundCloudTokenCache.accessToken
   }
 
-  const basic = btoa(\`${env.SOUNDCLOUD_CLIENT_ID}:${env.SOUNDCLOUD_CLIENT_SECRET}\`)
+  const basic = btoa(`${env.SOUNDCLOUD_CLIENT_ID}:${env.SOUNDCLOUD_CLIENT_SECRET}`)
   const body = new URLSearchParams({ grant_type: "client_credentials" })
   const response = await fetchWithTimeout(SOUNDCLOUD_TOKEN_URL, {
     method: "POST",
     headers: {
-      Authorization: \`Basic ${basic}\`,
+      Authorization: `Basic ${basic}`,
       "content-type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
@@ -261,7 +261,7 @@ async function getSoundCloudAccessToken(env: Env, requestId: string): Promise<st
   })
   const data = await readJsonSafely(response)
   if (!response.ok || !data?.access_token) {
-    throw new Error(\`SoundCloud authentication failed (HTTP ${response.status})\`)
+    throw new Error(`SoundCloud authentication failed (HTTP ${response.status})`)
   }
 
   const expiresIn = Number(data.expires_in)
