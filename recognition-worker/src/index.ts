@@ -77,7 +77,7 @@ export default {
     if (request.method !== "POST") return json({ success: false, confidence: 0, requestId, error: "POST required" }, 405, cors, requestId)
     if (path === "/v1/playback/resolve") {
       try {
-        const body = await request.json<PlaybackResolveRequest>()
+        const body = await request.json() as PlaybackResolveRequest
         const result = await resolvePlayback(body, env, requestId)
         log(requestId, "PLAYBACK_RESPONSE_SENT", { elapsedMs: Date.now() - startedAt, success: result.success, provider: result.provider })
         return json(result, result.success ? 200 : 422, cors, requestId)
