@@ -26,7 +26,9 @@ data class BatchRecognitionResponse(
     val requestId: String? = null,
     val song: RecognizedSongDto? = null,
     val error: String? = null,
-    val trace: List<String>? = null
+    val trace: List<String>? = null,
+    /** Backward-compatible legacy backend payload. */
+    val results: LegacyProviderResultsDto? = null
 )
 
 data class RecognizedSongDto(
@@ -44,6 +46,34 @@ data class RecognizedSongDto(
 )
 
 data class PlatformLinksDto(
+    val spotifyUrl: String? = null,
+    val appleMusicUrl: String? = null,
+    val youtubeMusicUrl: String? = null,
+    val audiomackUrl: String? = null
+)
+
+
+data class LegacyProviderResultsDto(
+    val audd: LegacyProviderResultDto? = null,
+    val acrcloud: LegacyProviderResultDto? = null
+)
+
+data class LegacyProviderResultDto(
+    val success: Boolean = false,
+    val status: String? = null,
+    val confidence: Int? = null,
+    val song: LegacySongDto? = null,
+    val error: String? = null
+)
+
+data class LegacySongDto(
+    val id: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    val artworkUrl: String? = null,
+    val durationMs: Long? = null,
+    val isrc: String? = null,
     val spotifyUrl: String? = null,
     val appleMusicUrl: String? = null,
     val youtubeMusicUrl: String? = null,
