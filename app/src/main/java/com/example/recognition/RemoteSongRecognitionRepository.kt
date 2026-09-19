@@ -173,8 +173,8 @@ class RemoteSongRecognitionRepository(
             Log.d(TAG, "BATCH_RESPONSE_HTTP=200")
             Log.d(TAG, "BATCH_RESPONSE_RECEIVED requestId=${reqId ?: "none"} elapsedMs=$elapsed")
 
-            val auddResult = response.results.audd
-            val acrResult = response.results.acrcloud
+            val unifiedSong = response.song
+            val backendConfidence = unifiedSong?.confidence?.coerceIn(0, 100) ?: 0
 
             val diag = RecognitionDiagnostics(
                 timestamp = RecognitionDiagnostics.currentFormattedTimestamp(),
@@ -186,99 +186,42 @@ class RemoteSongRecognitionRepository(
                 backendSuccess = response.success,
                 backendError = response.error,
                 backendTrace = response.trace,
-                auddSuccess = auddResult.success,
-                auddStatus = auddResult.status,
-                auddError = auddResult.error,
-                acrcloudSuccess = acrResult.success,
-                acrcloudStatus = acrResult.status,
-                acrcloudError = acrResult.error,
+                auddSuccess = null,
+                auddStatus = null,
+                auddError = null,
+                acrcloudSuccess = null,
+                acrcloudStatus = null,
+                acrcloudError = null,
                 isNetworkFailure = false
             )
 
-            val auddMatched = isMatched(auddResult)
-            val acrMatched = isMatched(acrResult)
-
             when {
-                // Case 1: Both matched -> compare and merge metadata
-                auddMatched && acrMatched -> {
-                    val auddSong = auddResult.song!!
-                    val acrSong = acrResult.song!!
-
-                    val auddIsrc = auddSong.isrc?.trim()?.takeIf { it.isNotBlank() }
-                    val acrIsrc = acrSong.isrc?.trim()?.takeIf { it.isNotBlank() }
-                    val sameIsrc = auddIsrc != null && acrIsrc != null && auddIsrc.equals(acrIsrc, ignoreCase = true)
-
-                    val auddKey = normalizeKey(auddSong.artist.orEmpty(), auddSong.title.orEmpty())
-                    val acrKey = normalizeKey(acrSong.artist.orEmpty(), acrSong.title.orEmpty())
-                    val sameTrack = sameIsrc || (auddKey.isNotBlank() && auddKey == acrKey)
-
-                    val finalSong: RecognizedSong = if (sameTrack) {
-                        Log.d(TAG, "DUAL_MATCH_AGREED isrcMatch=$sameIsrc keyMatch=${auddKey == acrKey} - merging metadata")
-                        mergeMetadata(auddResult, acrResult)
-                    } else {
-                        Log.d(TAG, "DUAL_MATCH_DIFFERENT audd='${auddSong.title}' acr='${acrSong.title}' - picking higher confidence")
-                        if (auddResult.confidence >= acrResult.confidence) {
-                            auddSong.toRecognizedSong(auddResult.confidence)
-                        } else {
-                            acrSong.toRecognizedSong(acrResult.confidence)
-                        }
-                    }
-                    RecognitionResult.Match(finalSong, diagnostics = diag)
+                response.success && unifiedSong != null && !unifiedSong.title.isNullOrBlank() && !unifiedSong.artist.isNullOrBlank() -> {
+                    Log.d(TAG, "UNIFIED_MATCH title='${unifiedSong.title}' artist='${unifiedSong.artist}' provider='${unifiedSong.provider}' confidence=$backendConfidence artworkSource='${unifiedSong.artworkSource}'")
+                    RecognitionResult.Match(
+                        unifiedSong.toRecognizedSong(backendConfidence),
+                        diagnostics = diag
+                    )
                 }
 
-                // Case 2: Only AudD matched
-                auddMatched -> {
-                    Log.d(TAG, "AUDD_ONLY_MATCH title='${auddResult.song?.title}' artist='${auddResult.song?.artist}'")
-                    RecognitionResult.Match(auddResult.song!!.toRecognizedSong(auddResult.confidence), diagnostics = diag)
+                !response.success && !response.error.isNullOrBlank() -> {
+                    Log.w(TAG, "TOP_LEVEL_BACKEND_ERROR error=${response.error}")
+                    RecognitionResult.ProviderError(
+                        title = "Recognition service error",
+                        reason = response.error,
+                        httpStatus = 200,
+                        responseBody = rawBody,
+                        diagnostics = diag
+                    )
                 }
 
-                // Case 3: Only ACRCloud matched
-                acrMatched -> {
-                    Log.d(TAG, "ACRCLOUD_ONLY_MATCH title='${acrResult.song?.title}' artist='${acrResult.song?.artist}'")
-                    RecognitionResult.Match(acrResult.song!!.toRecognizedSong(acrResult.confidence), diagnostics = diag)
-                }
-
-                // Case 4: Neither recognized the song
                 else -> {
-                    val auddIsError = isError(auddResult)
-                    val acrIsError = isError(acrResult)
-
-                    if (!response.success && !response.error.isNullOrBlank()) {
-                        Log.w(TAG, "TOP_LEVEL_BACKEND_ERROR error=${response.error}")
-                        RecognitionResult.ProviderError(
-                            title = "Recognition service error",
-                            reason = response.error,
-                            httpStatus = 200,
-                            responseBody = rawBody,
-                            diagnostics = diag
-                        )
-                    } else if (auddIsError && acrIsError) {
-                        Log.w(TAG, "BOTH_PROVIDERS_ERROR auddErr=${auddResult.error} acrErr=${acrResult.error}")
-                        RecognitionResult.ProviderError(
-                            title = "Couldn't search right now",
-                            reason = "AudD: ${auddResult.error ?: "Error"}; ACRCloud: ${acrResult.error ?: "Error"}",
-                            httpStatus = 200,
-                            responseBody = rawBody,
-                            diagnostics = diag
-                        )
-                    } else if (auddIsError || acrIsError) {
-                        val providerMsg = if (auddIsError) "AudD: ${auddResult.error}" else "ACRCloud: ${acrResult.error}"
-                        Log.w(TAG, "SINGLE_PROVIDER_ERROR $providerMsg")
-                        RecognitionResult.ProviderError(
-                            title = "Provider error",
-                            reason = providerMsg,
-                            httpStatus = 200,
-                            responseBody = rawBody,
-                            diagnostics = diag
-                        )
-                    } else {
-                        Log.d(TAG, "NO_MATCH_FOUND auddStatus=${auddResult.status} acrStatus=${acrResult.status} auddErr=${auddResult.error} acrErr=${acrResult.error}")
-                        RecognitionResult.NoMatch(
-                            title = "Couldn't identify that song",
-                            reason = "Try singing a little louder or move closer to the music.",
-                            diagnostics = diag
-                        )
-                    }
+                    Log.d(TAG, "NO_MATCH_FOUND unifiedSuccess=${response.success} songPresent=${unifiedSong != null}")
+                    RecognitionResult.NoMatch(
+                        title = "Couldn't identify that song",
+                        reason = "Try singing a little louder or move closer to the music.",
+                        diagnostics = diag
+                    )
                 }
             }
         } catch (e: HttpException) {
@@ -519,41 +462,6 @@ class RemoteSongRecognitionRepository(
         }
     }
 
-    /** Ask Velvet's backend to find and resolve a playable source for a recognized song. */
-    suspend fun resolvePlayback(
-        artist: String,
-        title: String,
-        isrc: String? = null,
-        durationMs: Long? = null
-    ): PlaybackResolveResponse = withContext(Dispatchers.IO) {
-        api.resolvePlayback(
-            PlaybackResolveRequest(
-                artist = artist,
-                title = title,
-                isrc = isrc?.trim()?.takeIf { it.isNotBlank() },
-                durationMs = durationMs?.takeIf { it > 0L }
-            )
-        )
-    }
-
-    private fun isMatched(result: RecognitionResponse?): Boolean {
-        if (result == null) return false
-        val s = result.song ?: return false
-        val validSong = !s.title.isNullOrBlank() && !s.artist.isNullOrBlank()
-        return (result.status == "matched" || (result.success && validSong)) && validSong
-    }
-
-    private fun isError(result: RecognitionResponse?): Boolean {
-        if (result == null) return true
-        val errorMsg = result.error.orEmpty()
-        // If the error message is just that fingerprint couldn't be generated (silence / ambient noise / unrecognized sound),
-        // it means the audio had no recognizable music, so it's a no-match, NOT a server/provider failure!
-        if (errorMsg.contains("fingerprint", ignoreCase = true) || errorMsg.contains("problem with creating", ignoreCase = true)) {
-            return false
-        }
-        return result.status == "error" || (!result.success && result.status != "no_match" && !result.error.isNullOrBlank())
-    }
-
     /** Merge available metadata across providers: first non-null useful value. */
     private fun mergeMetadata(
         audd: RecognitionResponse,
@@ -622,6 +530,7 @@ class RemoteSongRecognitionRepository(
     private fun RecognizedSongDto.toRecognizedSong(confidence: Int): RecognizedSong {
         val cleanTitle = title?.trim().orEmpty().ifBlank { "Unknown Title" }
         val cleanArtist = artist?.trim().orEmpty().ifBlank { "Unknown Artist" }
+        val links = platforms
         return RecognizedSong(
             id = id?.takeIf { it.isNotBlank() } ?: "$cleanArtist:$cleanTitle",
             title = cleanTitle,
@@ -629,19 +538,15 @@ class RemoteSongRecognitionRepository(
             album = album?.trim().orEmpty().ifBlank { "Unknown Album" },
             artworkUrl = artworkUrl?.trim()?.takeIf { it.isNotBlank() },
             durationMs = durationMs?.coerceAtLeast(0L) ?: 0L,
-            confidence = confidence.coerceIn(0, 100),
+            confidence = (this.confidence ?: confidence).coerceIn(0, 100),
             isrc = isrc?.trim()?.takeIf { it.isNotBlank() },
-            spotifyUrl = spotifyUrl?.trim()?.takeIf { it.isNotBlank() },
-            appleMusicUrl = appleMusicUrl?.trim()?.takeIf { it.isNotBlank() },
-            youtubeMusicUrl = youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() },
-            audiomackUrl = audiomackUrl?.trim()?.takeIf { it.isNotBlank() },
-            soundcloudUrl = soundcloudUrl?.trim()?.takeIf { it.isNotBlank() },
-            boomplayUrl = boomplayUrl?.trim()?.takeIf { it.isNotBlank() }
+            spotifyUrl = links?.spotifyUrl?.trim()?.takeIf { it.isNotBlank() },
+            appleMusicUrl = links?.appleMusicUrl?.trim()?.takeIf { it.isNotBlank() },
+            youtubeMusicUrl = links?.youtubeMusicUrl?.trim()?.takeIf { it.isNotBlank() },
+            audiomackUrl = links?.audiomackUrl?.trim()?.takeIf { it.isNotBlank() },
+            soundcloudUrl = null,
+            boomplayUrl = null
         )
-    }
-
-    private fun normalizeKey(artist: String, title: String): String {
-        return "$artist $title".lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
     }
 
     companion object {
