@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -106,6 +107,7 @@ fun ExploreScreen(
     val searchFocusRequester = remember { FocusRequester() }
 
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchFocused by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("All") } // "All", "Music", "Video"
     var showComingSoonDialog by remember { mutableStateOf<String?>(null) } // "Say It"
 
@@ -365,51 +367,75 @@ fun ExploreScreen(
 
             // 2. REFINED SEARCH INPUT (Glowing wine-crimson glass capsule)
             item {
+                val capsuleShape = RoundedCornerShape(16.dp)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .height(50.dp)
+                        .shadow(
+                            elevation = if (isSearchFocused) 8.dp else 4.dp,
+                            shape = capsuleShape,
+                            spotColor = if (isSearchFocused) Color(0x66FF2448) else Color(0x3348000C),
+                            ambientColor = Color(0x22120003)
+                        )
+                        .clip(capsuleShape)
                         .background(
                             Brush.horizontalGradient(
-                                listOf(
-                                    Color(0x4048000C),
-                                    Color(0x2B260006)
-                                )
+                                if (isSearchFocused) {
+                                    listOf(Color(0x5548000C), Color(0x3D260006))
+                                } else {
+                                    listOf(Color(0x3D48000C), Color(0x28260006))
+                                }
                             )
                         )
                         .border(
-                            width = 1.dp,
+                            width = if (isSearchFocused) 1.2.dp else 1.dp,
                             brush = Brush.horizontalGradient(
-                                listOf(
-                                    Color(0x66FF2448),
-                                    Color(0x28FFFFFF),
-                                    Color(0x44FF2448)
-                                )
+                                if (isSearchFocused) {
+                                    listOf(
+                                        Color(0xFFFF3355),
+                                        Color(0xFFFF889E),
+                                        Color(0xFFFF3355)
+                                    )
+                                } else {
+                                    listOf(
+                                        Color(0x66FF2448),
+                                        Color(0x28FFFFFF),
+                                        Color(0x44FF2448)
+                                    )
+                                }
                             ),
-                            shape = RoundedCornerShape(14.dp)
+                            shape = capsuleShape
                         )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = { searchFocusRequester.requestFocus() }
                         )
-                        .padding(horizontal = 14.dp),
+                        .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = Color(0xFFFF2448),
+                        Box(
                             modifier = Modifier
-                                .size(20.dp)
-                                .clickable { searchFocusRequester.requestFocus() }
-                                .testTag("search_icon_button")
-                        )
+                                .size(30.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x24FF2448)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = Color(0xFFFF3355),
+                                modifier = Modifier
+                                    .size(17.dp)
+                                    .clickable { searchFocusRequester.requestFocus() }
+                                    .testTag("search_icon_button")
+                            )
+                        }
 
                         Spacer(modifier = Modifier.width(10.dp))
 
@@ -423,7 +449,7 @@ fun ExploreScreen(
                                 Text(
                                     text = "Search music, artists, or paste URL...",
                                     color = Color(0xFF8E8E93),
-                                    fontSize = 13.sp,
+                                    fontSize = 13.5.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -435,10 +461,11 @@ fun ExploreScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .focusRequester(searchFocusRequester)
+                                    .onFocusChanged { isSearchFocused = it.isFocused }
                                     .testTag("explore_search_input"),
                                 textStyle = TextStyle(
                                     color = Color.White,
-                                    fontSize = 13.sp,
+                                    fontSize = 13.5.sp,
                                     fontWeight = FontWeight.Normal
                                 ),
                                 cursorBrush = SolidColor(Color(0xFFFF2448)),
@@ -449,13 +476,27 @@ fun ExploreScreen(
                         if (searchQuery.isNotEmpty()) {
                             IconButton(
                                 onClick = { searchQuery = "" },
-                                modifier = Modifier.size(26.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Clear,
                                     contentDescription = "Clear",
-                                    tint = Color(0xFF8E8E93),
+                                    tint = Color(0xFFB0B0B8),
                                     modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else {
+                            IconButton(
+                                onClick = onOpenSingToSearch,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("search_quick_sing_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.GraphicEq,
+                                    contentDescription = "Sing to Search",
+                                    tint = Color(0xFFFF4D6D),
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
@@ -506,6 +547,7 @@ fun ExploreScreen(
                         title = "Sing it",
                         icon = Icons.Default.GraphicEq,
                         modifier = Modifier.weight(1f),
+                        isHighlighted = true,
                         isComingSoon = false,
                         onClick = onOpenSingToSearch,
                         tag = "action_sing_it"
@@ -918,25 +960,80 @@ fun ExploreScreen(
 
                 if (filteredTracks.isEmpty()) {
                     item {
+                        val emptyCardShape = RoundedCornerShape(20.dp)
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 36.dp),
+                                .padding(top = 28.dp, bottom = 20.dp)
+                                .clip(emptyCardShape)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color(0x3848000C),
+                                            Color(0x18260006)
+                                        )
+                                    )
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    brush = Brush.verticalGradient(
+                                        listOf(
+                                            Color(0x44FF2448),
+                                            Color(0x15FFFFFF)
+                                        )
+                                    ),
+                                    shape = emptyCardShape
+                                )
+                                .padding(vertical = 32.dp, horizontal = 24.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = "No results",
-                                    tint = VelvetTextTertiary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x22FF2448))
+                                        .border(1.dp, Color(0x55FF2448), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "No results",
+                                        tint = Color(0xFFFF4D6D),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(14.dp))
                                 Text(
-                                    text = "No music or video matching \"$searchQuery\"",
-                                    fontSize = 13.sp,
-                                    color = VelvetTextTertiary
+                                    text = "No matches found",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
                                 )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "We couldn't find any music matching \"$searchQuery\". Try checking the spelling or search by artist name.",
+                                    fontSize = 12.5.sp,
+                                    color = Color(0xFF8E8E93),
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 17.sp
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0x28FF2448))
+                                        .border(1.dp, Color(0x66FF2448), RoundedCornerShape(12.dp))
+                                        .clickable { searchQuery = "" }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = "Clear Search",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFFFF6B84)
+                                    )
+                                }
                             }
                         }
                     }
@@ -975,9 +1072,8 @@ private fun SearchTrackResultRow(
 /**
  * Compact Red Glass Action Card
  *
- * Sits at the top right of the Search screen.
  * Taller than wide, beautifully translucent red glass with illuminated borders,
- * specular highlight, centered icon, label underneath, and subtle coming-soon indicator.
+ * specular highlight, centered icon, label underneath, and subtle coming-soon or highlight indicator.
  */
 @Composable
 private fun RedGlassActionCard(
@@ -986,36 +1082,53 @@ private fun RedGlassActionCard(
     onClick: () -> Unit,
     tag: String,
     modifier: Modifier = Modifier,
+    isHighlighted: Boolean = false,
     isComingSoon: Boolean = false
 ) {
     val shape = RoundedCornerShape(14.dp)
     Box(
         modifier = modifier
-            .height(52.dp)
+            .height(48.dp)
             .shadow(
-                elevation = 6.dp,
+                elevation = if (isHighlighted) 8.dp else 4.dp,
                 shape = shape,
-                spotColor = Color(0x66FF2448),
+                spotColor = if (isHighlighted) Color(0x88FF2448) else Color(0x44FF2448),
                 ambientColor = Color(0x3348000C)
             )
             .clip(shape)
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0x55FF2448),
-                        Color(0x3348000C),
-                        Color(0x22260006)
-                    )
+                    colors = if (isHighlighted) {
+                        listOf(
+                            Color(0x88FF2448),
+                            Color(0x448F071F),
+                            Color(0x33260006)
+                        )
+                    } else {
+                        listOf(
+                            Color(0x44FF2448),
+                            Color(0x2848000C),
+                            Color(0x1F260006)
+                        )
+                    }
                 )
             )
             .border(
-                width = 1.dp,
+                width = if (isHighlighted) 1.2.dp else 1.dp,
                 brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0x80FF4D6D),
-                        Color(0x33FFFFFF),
-                        Color(0x22FF2448)
-                    )
+                    colors = if (isHighlighted) {
+                        listOf(
+                            Color(0xFFFF889E),
+                            Color(0xFFFF2448),
+                            Color(0x66FF2448)
+                        )
+                    } else {
+                        listOf(
+                            Color(0x66FF4D6D),
+                            Color(0x28FFFFFF),
+                            Color(0x22FF2448)
+                        )
+                    }
                 ),
                 shape = shape
             )
@@ -1035,8 +1148,8 @@ private fun RedGlassActionCard(
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = Color(0xFFFF4D6D),
-                modifier = Modifier.size(19.dp)
+                tint = if (isHighlighted) Color.White else Color(0xFFFF4D6D),
+                modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(

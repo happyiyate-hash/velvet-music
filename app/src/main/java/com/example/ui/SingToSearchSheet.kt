@@ -276,7 +276,7 @@ fun SingToSearchSheet(
                 modifier = Modifier.fillMaxSize()
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // Bottom Animated Wave
+                    // Bottom Animated Washed-Out Smoky Glow
                     BottomEtherealSmoke(
                         amplitude = visualizerAmplitude,
                         isListening = state is HumRecognitionState.Listening || state is HumRecognitionState.Idle,
@@ -286,19 +286,54 @@ fun SingToSearchSheet(
                             .align(Alignment.BottomCenter)
                     )
 
-                    // Status Text ("Listening…" or "Identifying…")
-                    Text(
-                        text = statusText,
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Light,
-                        letterSpacing = 2.sp,
-                        textAlign = TextAlign.Center,
+                    // Status Header ("Listening…" or "Identifying…" with pulsating glowing dot)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = textTopPadding)
-                            .testTag("sing_status_text")
-                    )
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            val dotAlpha = if (state is HumRecognitionState.Listening) {
+                                (0.5f + visualizerAmplitude * 0.5f).coerceIn(0.4f, 1f)
+                            } else {
+                                0.7f
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFF2448).copy(alpha = dotAlpha))
+                                    .shadow(elevation = 4.dp, shape = CircleShape, spotColor = Color(0xFFFF2448))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = statusText,
+                                color = Color.White.copy(alpha = 0.90f),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Normal,
+                                letterSpacing = 2.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.testTag("sing_status_text")
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = if (state is HumRecognitionState.Searching) {
+                                "Matching against music fingerprint catalog…"
+                            } else {
+                                "Sing, hum, or speak near your microphone"
+                            },
+                            color = Color(0xFF9E8C90),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Light,
+                            letterSpacing = 0.4.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
 
                     // Subtle Header Diagnostics Button if previous diagnostics exist
                     if (lastSavedDiagnostics != null) {
@@ -336,10 +371,10 @@ fun SingToSearchSheet(
                                 isLeft = true,
                                 amplitude = visualizerAmplitude,
                                 isListening = isMicListening,
-                                modifier = Modifier.width(100.dp).height(80.dp)
+                                modifier = Modifier.width(105.dp).height(84.dp)
                             )
 
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
 
                             CentralGlassOrb(
                                 orbSize = 78.dp,
@@ -350,13 +385,13 @@ fun SingToSearchSheet(
                                 }
                             )
 
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
 
                             TaperedWaveformBars(
                                 isLeft = false,
                                 amplitude = visualizerAmplitude,
                                 isListening = isMicListening,
-                                modifier = Modifier.width(100.dp).height(80.dp)
+                                modifier = Modifier.width(105.dp).height(84.dp)
                             )
                         }
                     }
@@ -570,9 +605,11 @@ private fun FullAtmosphericBackground(modifier: Modifier = Modifier) {
 
 /**
  * 1. Audio Wave Bars (Side Visualizer):
- * - Symmetric Amplitude Gaussian Curve: tallest (~28.dp) adjacent to orb, tapering smoothly down to tiny points (2.dp) at far edges.
- * - Line width strictly 2.dp with rounded caps (StrokeCap.Round) and 4.dp gap.
- * - Vertical gradient fading: Color.Red transitioning to Color.Transparent on ends.
+ * - Audio-Responsive Dynamics: linked directly to audio amplitude and FFT harmonics.
+ * - Phase-Shifted Motion: sine-wave phase shift traveling outwards from center orb to tips.
+ * - Dual-Side Synchrony: left and right arrays mirror each other's frequency response gracefully.
+ * - Symmetric Gaussian Curve envelope: tallest (~32-48dp with voice) adjacent to orb, tapering down to tips.
+ * - Vertical gradient fading: vibrant crimson in center fading to transparent on top and bottom ends.
  */
 @Composable
 private fun TaperedWaveformBars(
@@ -582,63 +619,94 @@ private fun TaperedWaveformBars(
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "tapered_wave_loop")
-    // Slow, serene wave cycle (5600ms)
+
+    // Active wave cycle (1300ms) for smooth continuous propagation from center outwards
     val wavePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 6.28318f,
+        targetValue = 6.2831853f,
         animationSpec = infiniteRepeatable(
-            animation = tween(5600, easing = LinearEasing),
+            animation = tween(1300, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "phase"
+        label = "continuous_phase"
     )
 
+    // Secondary subtle harmonic ripple (2100ms) for organic fluid variety
+    val harmonicPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.2831853f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2100, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "harmonic_phase"
+    )
+
+    // FastOutSlowInEasing interpolation for dynamic, natural voice audio response
     val animatedAmp by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
-        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        animationSpec = tween(120, easing = FastOutSlowInEasing),
         label = "animated_amplitude"
     )
 
     Canvas(modifier = modifier) {
-        val barCount = 14
+        val barCount = 15
         val barWidthPx = 2.dp.toPx()
-        val barGapPx = 4.5.dp.toPx()
+        val barGapPx = 4.2.dp.toPx()
         val centerY = size.height / 2f
 
         for (i in 0 until barCount) {
             // Index distance from the orb:
-            // For left side: bars go from left edge (i=0) to near orb (i=barCount-1)
-            // For right side: bars go from near orb (i=0) to right edge (i=barCount-1)
+            // 0 is directly adjacent to the center orb, (barCount - 1) is at the outer tip
             val distFromOrb = if (isLeft) (barCount - 1 - i) else i
             val normDist = distFromOrb.toFloat() / (barCount - 1) // 0.0 at orb, 1.0 at outer tip
 
-            // Symmetric Amplitude Gaussian Curve:
-            // Tallest (~28.dp) adjacent to the orb, tapering smoothly down to tiny points (2.dp) at the outer edge
-            val gaussian = exp(-((normDist * 2.3f) * (normDist * 2.3f)))
+            // Symmetric Amplitude Gaussian Curve envelope:
+            // Tallest adjacent to orb, tapering smoothly down to tiny points at outer edges
+            val gaussian = exp(-((normDist * 2.1f) * (normDist * 2.1f)))
 
-            // Organic subtle slow wave breathing per bar
-            val slowWave = if (isListening) sin(wavePhase + normDist * 2.4f) * 0.12f else 0f
+            // Phase-Shifted Motion:
+            // Applying a sine-wave phase shift across the bars so waves travel outward from center:
+            // (wavePhase - normDist * 4.2f) causes crests to propagate outward from center to outer tip
+            val primarySine = sin(wavePhase - normDist * 4.2f)
+            val secondarySine = sin(harmonicPhase + normDist * 2.8f)
 
-            val baseH = (2.dp.toPx() + 24.dp.toPx() * gaussian.toFloat())
-            val voiceBoost = animatedAmp * (22.dp.toPx() * gaussian.toFloat())
-            val totalH = ((baseH + voiceBoost) * (1f + slowWave)).coerceIn(2.dp.toPx(), 54.dp.toPx())
+            // Dynamic Bar Amplitudes:
+            // Dual-Side Synchrony: identical frequency/harmonic simulation on left and right
+            val simulatedFftFactor = (0.55f + 0.45f * sin(normDist * 5.5f - wavePhase * 0.5f)).coerceIn(0.1f, 1f)
+            val liveVoiceBoost = animatedAmp * (28.dp.toPx() * gaussian * simulatedFftFactor)
 
+            // Active fluid undulating baseline motion (always lively, never frozen/static)
+            val baseMotion = if (isListening) {
+                0.28f + 0.24f * primarySine + 0.12f * secondarySine
+            } else {
+                0.12f + 0.08f * primarySine
+            }
+
+            val minBarHeight = 2.5.dp.toPx()
+            val baseTaperedHeight = 3.dp.toPx() + 22.dp.toPx() * gaussian
+            val dynamicWaveHeight = baseTaperedHeight * (1f + baseMotion * 0.65f)
+            val totalH = (dynamicWaveHeight + liveVoiceBoost).coerceIn(minBarHeight, 56.dp.toPx())
+
+            // Dual-side horizontal positioning
             val xPos = if (isLeft) {
                 size.width - ((distFromOrb + 0.5f) * (barWidthPx + barGapPx))
             } else {
                 (distFromOrb + 0.5f) * (barWidthPx + barGapPx)
             }
 
-            val barAlpha = (0.35f + 0.65f * gaussian.toFloat() + animatedAmp * 0.25f).coerceIn(0.2f, 1f)
+            // Alpha mirrors amplitude and gaussian taper
+            val barAlpha = (0.35f + 0.55f * gaussian + animatedAmp * 0.35f).coerceIn(0.25f, 1f)
 
-            // Vertical gradient fading: Red transitioning to Transparent on top and bottom ends
+            // Vertical gradient fading: rich crimson in center, smoothly transparent on top and bottom ends
             val barBrush = Brush.verticalGradient(
                 colors = listOf(
-                    Color(0x00FF2448),
-                    Color(0xFFFF3355).copy(alpha = barAlpha),
+                    Color.Transparent,
+                    Color(0xFFFF4D6D).copy(alpha = barAlpha * 0.85f),
+                    Color(0xFFFF2448).copy(alpha = barAlpha),
                     Color(0xFFE51B3E).copy(alpha = barAlpha),
-                    Color(0xFFFF3355).copy(alpha = barAlpha),
-                    Color(0x00FF2448)
+                    Color(0xFFFF4D6D).copy(alpha = barAlpha * 0.85f),
+                    Color.Transparent
                 ),
                 startY = centerY - (totalH / 2f),
                 endY = centerY + (totalH / 2f)
@@ -656,12 +724,11 @@ private fun TaperedWaveformBars(
 }
 
 /**
- * 2. Center Orb & Glassmorphic Ring:
- * - Refined diameter: 78.dp
- * - Subtle inner glass reflection rim on the top edge using fine white/rose radial gradient stroke (1.dp thickness).
- * - Single razor-thin outer circular ring (1.dp stroke width) positioned 8.dp outside the main orb with low opacity (alpha = 0.3f).
- * - Concentric secondary outer ring at 18.dp with alpha = 0.12f.
- * - Soft warm white (#FFF1F2) minimalist microphone icon.
+ * 2. Central Mic Button & Glowing Ring:
+ * - Subtle pulsing breath effect to the central orb (scale animation between 0.95f and 1.05f).
+ * - Outer soft-glow radius expanding and contracting in sync with user's voice intensity during speech detection.
+ * - Reactive acoustic soundwave ripples and glowing rings.
+ * - Dark red glass interior with luminous ruby rim and frosted reflection.
  */
 @Composable
 private fun CentralGlassOrb(
@@ -673,120 +740,114 @@ private fun CentralGlassOrb(
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "orb_pulse")
 
-    // Very slow, smooth bounce cycle (2800ms): expands slightly from 1.0f, then bounces back to original size 1.0f
-    val bounceProgress by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
+    // Subtle pulsing breath effect to the central orb (scale animation between 0.95f and 1.05f)
+    val breathScale by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.05f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2800, easing = FastOutSlowInEasing),
+            animation = tween(1600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "mic_slow_bounce"
+        label = "orb_breath_scale"
     )
 
-    // Slow circular acoustic waves emitting outward from the orb (4000ms period, calm and slow)
-    val ripple1 by infiniteTransition.animateFloat(
+    // Acoustic soundwave ripple expanding outward
+    val soundwaveRipple by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
+            animation = tween(2200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "slow_wave_1"
-    )
-    val ripple2 by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, delayMillis = 2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "slow_wave_2"
+        label = "soundwave_ripple"
     )
 
-    val animatedAmp by animateFloatAsState(
+    // Incoming voice intensity with smooth easing interpolation
+    val voiceIntensity by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
-        animationSpec = tween(320, easing = FastOutSlowInEasing),
-        label = "orb_amp"
+        animationSpec = tween(140, easing = FastOutSlowInEasing),
+        label = "voice_intensity"
     )
 
-    // Strictly remains its original size (1.0f baseline, never shrinks tiny).
-    // Bounces very slowly and slightly, expanding up to ~1.08f, then reduces back to original size.
-    val micScale = if (isListening) {
-        1.0f + (0.08f * bounceProgress) + (0.05f * animatedAmp)
+    // Combined orb scale with breath effect and subtle voice dynamic push
+    val totalOrbScale = if (isListening) {
+        breathScale * (1f + 0.08f * voiceIntensity)
     } else {
         1.0f
     }
 
     Box(
         modifier = modifier
-            .size(orbSize + 48.dp), // allows outer slow waves to draw comfortably
+            .size(orbSize + 60.dp), // Spacious container for outer soft-glow radius
         contentAlignment = Alignment.Center
     ) {
-        // Outer rings and glass orb canvas
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            val orbRadius = orbSize.toPx() / 2f
+            val orbRadius = (orbSize.toPx() / 2f) * totalOrbScale
 
-            // Slow concentric acoustic waves emitting outward from the microphone orb
+            // Outer soft-glow radius that expands and contracts in sync with voice intensity & listening breath
+            val breathFraction = (breathScale - 0.95f) / 0.10f
+            val softGlowRadius = orbRadius + 12.dp.toPx() + (38.dp.toPx() * voiceIntensity) + (5.dp.toPx() * breathFraction)
+            val glowAlpha = if (isListening) (0.35f + voiceIntensity * 0.45f).coerceIn(0.2f, 0.85f) else 0.15f
+
+            // Soft-glow diffused radial aura
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFFFF2448).copy(alpha = glowAlpha),
+                        Color(0xFFD51035).copy(alpha = glowAlpha * 0.65f),
+                        Color(0xFF8F071F).copy(alpha = glowAlpha * 0.35f),
+                        Color.Transparent
+                    ),
+                    center = center,
+                    radius = softGlowRadius
+                ),
+                radius = softGlowRadius,
+                center = center
+            )
+
+            // Acoustic soundwave ripple when listening
             if (isListening) {
-                listOf(ripple1, ripple2).forEach { progress ->
-                    val rippleRadius = orbRadius + (32.dp.toPx() * progress)
-                    val rippleAlpha = (0.42f * (1f - progress) + animatedAmp * 0.18f * (1f - progress)).coerceIn(0f, 0.55f)
-                    if (rippleAlpha > 0.01f) {
-                        drawCircle(
-                            color = Color(0xFFFF2448).copy(alpha = rippleAlpha),
-                            radius = rippleRadius,
-                            center = center,
-                            style = Stroke(width = 1.2.dp.toPx())
-                        )
-                    }
+                val rippleRadius = orbRadius + 6.dp.toPx() + (32.dp.toPx() * soundwaveRipple)
+                val rippleAlpha = (0.45f * (1f - soundwaveRipple) + voiceIntensity * 0.25f * (1f - soundwaveRipple)).coerceIn(0f, 0.6f)
+                if (rippleAlpha > 0.01f) {
+                    drawCircle(
+                        color = Color(0xFFFF4D6D).copy(alpha = rippleAlpha),
+                        radius = rippleRadius,
+                        center = center,
+                        style = Stroke(width = 1.2.dp.toPx())
+                    )
                 }
             }
 
-            // Single razor-thin outer circular ring (1.dp stroke width) 8.dp outside main orb
-            val ring1Radius = orbRadius + 8.dp.toPx()
-            val ring1Alpha = (0.24f + 0.10f * bounceProgress + animatedAmp * 0.15f).coerceIn(0.18f, 0.5f)
+            // Primary outer glowing ring (expands in sync with speech intensity)
+            val ring1Radius = orbRadius + 7.dp.toPx() + (10.dp.toPx() * voiceIntensity)
+            val ring1Alpha = (0.28f + 0.12f * breathFraction + voiceIntensity * 0.35f).coerceIn(0.2f, 0.75f)
             drawCircle(
                 color = Color(0xFFFF2448).copy(alpha = ring1Alpha),
                 radius = ring1Radius,
                 center = center,
-                style = Stroke(width = 1.dp.toPx())
+                style = Stroke(width = (1.dp + 0.6.dp * voiceIntensity).toPx())
             )
 
-            // Secondary subtle outer ring at 18.dp outside orb (alpha ~0.12f)
-            val ring2Radius = orbRadius + 18.dp.toPx()
+            // Secondary outer glowing ring (reactive radius and alpha)
+            val ring2Radius = orbRadius + 16.dp.toPx() + (18.dp.toPx() * voiceIntensity)
+            val ring2Alpha = (0.12f + voiceIntensity * 0.20f).coerceIn(0.08f, 0.38f)
             drawCircle(
-                color = Color(0xFFE51B3E).copy(alpha = 0.12f + animatedAmp * 0.10f),
+                color = Color(0xFFE51B3E).copy(alpha = ring2Alpha),
                 radius = ring2Radius,
                 center = center,
                 style = Stroke(width = 0.8.dp.toPx())
             )
 
-            // Soft radial ambient bloom behind orb
-            val bloomRadius = orbRadius * 1.35f
+            // Deep Obsidian Glass Interior with subtle gradient
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x55FF2448).copy(alpha = 0.35f + animatedAmp * 0.30f),
-                        Color(0x22D51035),
-                        Color.Transparent
-                    ),
-                    center = center,
-                    radius = bloomRadius
-                ),
-                radius = bloomRadius,
-                center = center
-            )
-
-            // Dark glass interior
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF040001),
-                        Color(0xFF100004),
-                        Color(0xFF240008),
-                        Color(0xFF38000C)
+                        Color(0xFF060002),
+                        Color(0xFF140005),
+                        Color(0xFF28000A),
+                        Color(0xFF3F0010)
                     ),
                     center = center,
                     radius = orbRadius
@@ -795,21 +856,21 @@ private fun CentralGlassOrb(
                 center = center
             )
 
-            // Soft inner red illumination at bottom
+            // Soft inner red illumination at bottom of orb
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x44FF2448),
+                        Color(0x55FF2448).copy(alpha = 0.35f + voiceIntensity * 0.35f),
                         Color.Transparent
                     ),
-                    center = Offset(center.x, center.y + orbRadius * 0.40f),
+                    center = Offset(center.x, center.y + orbRadius * 0.38f),
                     radius = orbRadius * 0.65f
                 ),
                 radius = orbRadius * 0.65f,
-                center = Offset(center.x, center.y + orbRadius * 0.40f)
+                center = Offset(center.x, center.y + orbRadius * 0.38f)
             )
 
-            // Luminous crimson gradient perimeter ring (fine 1.5.dp stroke)
+            // Luminous crimson gradient perimeter ring
             drawCircle(
                 brush = Brush.sweepGradient(
                     listOf(
@@ -825,15 +886,15 @@ private fun CentralGlassOrb(
                 ),
                 radius = orbRadius - 0.75.dp.toPx(),
                 center = center,
-                style = Stroke(width = 1.5.dp.toPx())
+                style = Stroke(width = (1.5.dp + 0.5.dp * voiceIntensity).toPx())
             )
 
-            // Subtle inner glass reflection rim on top edge using fine white/rose gradient stroke (1.dp thickness)
+            // Subtle inner glass reflection rim on top edge
             drawArc(
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.70f),
-                        Color(0x66FF889E),
+                        Color.White.copy(alpha = 0.75f),
+                        Color(0x77FF889E),
                         Color.Transparent
                     ),
                     start = Offset(center.x - orbRadius * 0.6f, center.y - orbRadius * 0.9f),
@@ -852,6 +913,10 @@ private fun CentralGlassOrb(
         Box(
             modifier = Modifier
                 .size(orbSize)
+                .graphicsLayer {
+                    scaleX = totalOrbScale
+                    scaleY = totalOrbScale
+                }
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -863,13 +928,14 @@ private fun CentralGlassOrb(
         ) {
             Icon(
                 imageVector = Icons.Default.Mic,
-                contentDescription = "Sing or Hum",
+                contentDescription = "Sing or Speak to Search",
                 tint = Color(0xFFFFF1F2),
                 modifier = Modifier
                     .size(26.dp)
                     .graphicsLayer {
-                        scaleX = micScale
-                        scaleY = micScale
+                        val iconScale = 1.0f + 0.08f * voiceIntensity
+                        scaleX = iconScale
+                        scaleY = iconScale
                     }
             )
         }
@@ -877,11 +943,10 @@ private fun CentralGlassOrb(
 }
 
 /**
- * 3. Bottom Ethereal Ambient Smoke Overlay (NOT Solid Wave):
- * - Additive Blend Overlay (BlendMode.Screen)
- * - Multi-layered bezier paths with low opacity (alpha = 0.15f to 0.35f)
- * - Heavy blurring (Modifier.blur(24.dp)) so it looks like light glowing through deep red silk/smoke, not a solid wave block.
- * - Delicate luminous silk filament lines along flowing crests.
+ * 3. Bottom Visualizer Background (Smoky Gradient Glow):
+ * - Replaced hard-edged static vector paths and top outline strokes with an organic, washed-out radial/linear smoke blur.
+ * - Diffused dark red/crimson ambient aura coming up smoothly from the bottom edge.
+ * - Uses large Gaussian blur (Modifier.blur(60.dp)), radial gradient brushes, and BlendMode.Screen.
  */
 @Composable
 private fun BottomEtherealSmoke(
@@ -889,178 +954,125 @@ private fun BottomEtherealSmoke(
     isListening: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "ethereal_smoke_loop")
+    val infiniteTransition = rememberInfiniteTransition(label = "smoky_ambient_loop")
 
-    val phaseSlow by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 6.28318f,
+    // Organic slow atmospheric breathing & drift
+    val smokeBreath by infiniteTransition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.12f,
         animationSpec = infiniteRepeatable(
-            animation = tween(7200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            animation = tween(4500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "phase_slow"
+        label = "smoke_breath"
     )
 
-    val phaseFast by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 6.28318f,
+    val driftOffset1 by infiniteTransition.animateFloat(
+        initialValue = -0.12f,
+        targetValue = 0.12f,
         animationSpec = infiniteRepeatable(
-            animation = tween(4800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            animation = tween(6800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "phase_fast"
+        label = "drift_1"
+    )
+
+    val driftOffset2 by infiniteTransition.animateFloat(
+        initialValue = 0.15f,
+        targetValue = -0.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(8400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "drift_2"
     )
 
     val animatedAmp by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
-        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
         label = "smoke_amp"
     )
 
+    val activeIntensity = if (isListening) (0.28f + animatedAmp * 0.72f) else 0.18f
+
+    // Organic washed-out smoky gradient glow with large 60.dp Gaussian blur & BlendMode.Screen
     Box(
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .blur(60.dp)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
             val height = size.height
 
-            val activeAmp = if (isListening) (animatedAmp + 0.05f) else 0f
-
-            // --- Layer 1: Ethereal Deep Wine Ambient Mist ---
-            val path1 = Path()
-            path1.moveTo(0f, height)
-            val baseY1 = height * (0.34f - activeAmp * 0.12f)
-            for (x in 0..width.toInt() step 16) {
-                val nx = x / width
-                val y = baseY1 +
-                        sin(nx * 3.4f + phaseSlow) * 22f +
-                        cos(nx * 6.8f - phaseSlow * 0.8f) * 14f
-                path1.lineTo(x.toFloat(), y)
-            }
-            path1.lineTo(width, height)
-            path1.close()
-
-            drawPath(
-                path = path1,
+            // 1. Washed-out atmospheric linear gradient rising smoothly from bottom edge
+            drawRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color(0x3348000C),
-                        Color(0x558F071F).copy(alpha = 0.22f + activeAmp * 0.12f),
-                        Color(0x66260006),
-                        Color(0x22120003)
+                        Color.Transparent,
+                        Color(0x1A4A000E),
+                        Color(0x448F071F).copy(alpha = (0.22f + activeIntensity * 0.18f) * smokeBreath),
+                        Color(0x664A000C).copy(alpha = (0.32f + activeIntensity * 0.22f) * smokeBreath)
                     ),
-                    startY = baseY1 - 20f,
+                    startY = 0f,
                     endY = height
-                )
+                ),
+                blendMode = BlendMode.Screen
             )
 
-            // --- Layer 2: Translucent Silky Wave Billows ---
-            val path2 = Path()
-            path2.moveTo(0f, height)
-            val baseY2 = height * (0.46f - activeAmp * 0.14f)
-            for (x in 0..width.toInt() step 12) {
-                val nx = x / width
-                val y = baseY2 +
-                        sin(nx * 4.2f - phaseFast) * 26f +
-                        sin(nx * 8.6f + phaseSlow * 1.1f) * 15f
-                path2.lineTo(x.toFloat(), y)
-            }
-            path2.lineTo(width, height)
-            path2.close()
-
-            drawPath(
-                path = path2,
-                brush = Brush.horizontalGradient(
+            // 2. Central diffused crimson ambient aura
+            val centerRadius = (width * 0.70f) * (smokeBreath + activeIntensity * 0.20f)
+            drawCircle(
+                brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x338F071F),
-                        Color(0x55D51035).copy(alpha = 0.25f + activeAmp * 0.15f),
-                        Color(0x66FF2448).copy(alpha = 0.30f + activeAmp * 0.18f),
-                        Color(0x44D51035),
-                        Color(0x2250000D)
+                        Color(0xFFFF2448).copy(alpha = (0.34f + activeIntensity * 0.26f)),
+                        Color(0xFFD51035).copy(alpha = (0.25f + activeIntensity * 0.20f)),
+                        Color(0xFF7A0014).copy(alpha = (0.16f + activeIntensity * 0.14f)),
+                        Color(0x22300008),
+                        Color.Transparent
                     ),
-                    startX = 0f,
-                    endX = width
-                )
+                    center = Offset(width * (0.50f + driftOffset1 * 0.35f), height * 0.95f),
+                    radius = centerRadius
+                ),
+                center = Offset(width * (0.50f + driftOffset1 * 0.35f), height * 0.95f),
+                radius = centerRadius,
+                blendMode = BlendMode.Screen
             )
 
-            // --- Layer 3: Ethereal Light Ribbon Glow ---
-            val path3 = Path()
-            path3.moveTo(0f, height)
-            val baseY3 = height * (0.58f - activeAmp * 0.10f)
-            for (x in 0..width.toInt() step 12) {
-                val nx = x / width
-                val y = baseY3 +
-                        sin(nx * 3.6f + phaseFast * 1.2f) * 22f +
-                        cos(nx * 7.2f - phaseSlow) * 14f
-                path3.lineTo(x.toFloat(), y)
-            }
-            path3.lineTo(width, height)
-            path3.close()
-
-            drawPath(
-                path = path3,
-                brush = Brush.verticalGradient(
+            // 3. Left-flanking diffused wine/crimson smoke plume
+            val leftRadius = (width * 0.58f) * (smokeBreath * 0.96f + activeIntensity * 0.18f)
+            drawCircle(
+                brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x66FF2448).copy(alpha = 0.28f + activeAmp * 0.15f),
-                        Color(0x55D51035).copy(alpha = 0.24f + activeAmp * 0.12f),
-                        Color(0x338F071F),
-                        Color(0x11120003)
+                        Color(0xFFE51B3E).copy(alpha = (0.26f + activeIntensity * 0.22f)),
+                        Color(0xFF8F071F).copy(alpha = (0.18f + activeIntensity * 0.16f)),
+                        Color(0x1A48000C),
+                        Color.Transparent
                     ),
-                    startY = baseY3 - 10f,
-                    endY = height
-                )
+                    center = Offset(width * (0.24f + driftOffset2 * 0.25f), height * 0.86f),
+                    radius = leftRadius
+                ),
+                center = Offset(width * (0.24f + driftOffset2 * 0.25f), height * 0.86f),
+                radius = leftRadius,
+                blendMode = BlendMode.Screen
             )
 
-            // --- Layer 4: Luminous Crest Filaments (Triple-glow strokes) ---
-            val filamentPath = Path()
-            for (x in 0..width.toInt() step 10) {
-                val nx = x / width
-                val y = baseY2 +
-                        sin(nx * 4.2f - phaseFast) * 26f +
-                        sin(nx * 8.6f + phaseSlow * 1.1f) * 15f
-                if (x == 0) filamentPath.moveTo(0f, y) else filamentPath.lineTo(x.toFloat(), y)
-            }
-            // Pass 1: Diffuse ambient glow
-            drawPath(
-                path = filamentPath,
-                brush = Brush.horizontalGradient(
+            // 4. Right-flanking diffused ruby smoke plume
+            val rightRadius = (width * 0.60f) * (smokeBreath * 1.04f + activeIntensity * 0.18f)
+            drawCircle(
+                brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x00FF2448),
-                        Color(0x40FF2448).copy(alpha = 0.25f + activeAmp * 0.15f),
-                        Color(0x60FF4D6D).copy(alpha = 0.35f + activeAmp * 0.15f),
-                        Color(0x40FF2448).copy(alpha = 0.25f + activeAmp * 0.15f),
-                        Color(0x00FF2448)
-                    )
+                        Color(0xFFFF3355).copy(alpha = (0.25f + activeIntensity * 0.22f)),
+                        Color(0xFFB50E29).copy(alpha = (0.17f + activeIntensity * 0.15f)),
+                        Color(0x1A48000C),
+                        Color.Transparent
+                    ),
+                    center = Offset(width * (0.76f + driftOffset1 * 0.28f), height * 0.88f),
+                    radius = rightRadius
                 ),
-                style = Stroke(width = 14f, cap = StrokeCap.Round)
-            )
-            // Pass 2: Vivid mid glow
-            drawPath(
-                path = filamentPath,
-                brush = Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0x11FF2448),
-                        Color(0x88FF2448).copy(alpha = 0.40f + activeAmp * 0.20f),
-                        Color(0xAAFFA0B0).copy(alpha = 0.50f + activeAmp * 0.20f),
-                        Color(0x77FF2448).copy(alpha = 0.35f + activeAmp * 0.15f),
-                        Color(0x11FF2448)
-                    )
-                ),
-                style = Stroke(width = 5f, cap = StrokeCap.Round)
-            )
-            // Pass 3: Crisp high-luminance core edge
-            drawPath(
-                path = filamentPath,
-                brush = Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0x22FF889E),
-                        Color(0xDDFF889E),
-                        Color(0xFFFFF0F2),
-                        Color(0xDDFF889E),
-                        Color(0x22FF889E)
-                    )
-                ),
-                style = Stroke(width = 1.8f, cap = StrokeCap.Round)
+                center = Offset(width * (0.76f + driftOffset1 * 0.28f), height * 0.88f),
+                radius = rightRadius,
+                blendMode = BlendMode.Screen
             )
         }
     }
