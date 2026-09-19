@@ -190,7 +190,7 @@ async function resolvePlayback(body: PlaybackResolveRequest, env: Env, requestId
     headers: { Authorization: `OAuth ${accessToken}`, Accept: "application/json" },
   })
   if (searchResponse.status === 401) {
-    invalidateSoundCloudToken(env)
+    await invalidateSoundCloudToken(env)
     const refreshedToken = await getSoundCloudAccessToken(env, requestId)
     searchResponse = await fetchWithTimeout(searchUrl, {
       headers: { Authorization: `OAuth ${refreshedToken}`, Accept: "application/json" },
