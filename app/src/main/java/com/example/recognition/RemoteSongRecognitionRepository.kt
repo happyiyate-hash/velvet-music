@@ -173,7 +173,7 @@ class RemoteSongRecognitionRepository(
             Log.d(TAG, "BATCH_RESPONSE_HTTP=200")
             Log.d(TAG, "BATCH_RESPONSE_RECEIVED requestId=${reqId ?: "none"} elapsedMs=$elapsed")
 
-            val unifiedSong = response.song
+            val unifiedSong = response.song ?: response.results?.toUnifiedSong()
             val backendConfidence = unifiedSong?.confidence?.coerceIn(0, 100) ?: 0
 
             val diag = RecognitionDiagnostics(
@@ -186,12 +186,12 @@ class RemoteSongRecognitionRepository(
                 backendSuccess = response.success,
                 backendError = response.error,
                 backendTrace = response.trace,
-                auddSuccess = null,
-                auddStatus = null,
-                auddError = null,
-                acrcloudSuccess = null,
-                acrcloudStatus = null,
-                acrcloudError = null,
+                auddSuccess = response.results?.audd?.success,
+                auddStatus = response.results?.audd?.status,
+                auddError = response.results?.audd?.error,
+                acrcloudSuccess = response.results?.acrcloud?.success,
+                acrcloudStatus = response.results?.acrcloud?.status,
+                acrcloudError = response.results?.acrcloud?.error,
                 isNetworkFailure = false
             )
 
@@ -460,6 +460,31 @@ class RemoteSongRecognitionRepository(
                 diagnostics = diag
             )
         }
+    }
+
+    private fun LegacyProviderResultsDto.toUnifiedSong(): RecognizedSongDto? {
+        val auddMatch = audd?.takeIf { it.success && it.song != null }
+        val acrMatch = acrcloud?.takeIf { it.success && it.song != null }
+        val primary = auddMatch?.song ?: acrMatch?.song ?: return null
+        val secondary = if (auddMatch?.song != null && primary !== auddMatch.song) auddMatch.song else if (acrMatch?.song != null && primary !== acrMatch.song) acrMatch.song else null
+        return RecognizedSongDto(
+            id = primary.id ?: secondary?.id,
+            title = primary.title ?: secondary?.title,
+            artist = primary.artist ?: secondary?.artist,
+            album = primary.album ?: secondary?.album,
+            artworkUrl = primary.artworkUrl ?: secondary?.artworkUrl,
+            artworkSource = if (primary.artworkUrl != null || secondary?.artworkUrl != null) "recognition" else null,
+            durationMs = primary.durationMs ?: secondary?.durationMs,
+            isrc = primary.isrc ?: secondary?.isrc,
+            confidence = maxOf(auddMatch?.confidence ?: 0, acrMatch?.confidence ?: 0),
+            provider = if (auddMatch != null) "audd" else "acrcloud",
+            platforms = PlatformLinksDto(
+                spotifyUrl = primary.spotifyUrl ?: secondary?.spotifyUrl,
+                appleMusicUrl = primary.appleMusicUrl ?: secondary?.appleMusicUrl,
+                youtubeMusicUrl = primary.youtubeMusicUrl ?: secondary?.youtubeMusicUrl,
+                audiomackUrl = primary.audiomackUrl ?: secondary?.audiomackUrl
+            )
+        )
     }
 
     private fun RecognizedSongDto.toRecognizedSong(confidence: Int): RecognizedSong {
