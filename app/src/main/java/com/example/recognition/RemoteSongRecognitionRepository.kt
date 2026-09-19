@@ -519,6 +519,23 @@ class RemoteSongRecognitionRepository(
         }
     }
 
+    /** Ask Velvet's backend to find and resolve a playable source for a recognized song. */
+    suspend fun resolvePlayback(
+        artist: String,
+        title: String,
+        isrc: String? = null,
+        durationMs: Long? = null
+    ): PlaybackResolveResponse = withContext(Dispatchers.IO) {
+        api.resolvePlayback(
+            PlaybackResolveRequest(
+                artist = artist,
+                title = title,
+                isrc = isrc?.trim()?.takeIf { it.isNotBlank() },
+                durationMs = durationMs?.takeIf { it > 0L }
+            )
+        )
+    }
+
     private fun isMatched(result: RecognitionResponse?): Boolean {
         if (result == null) return false
         val s = result.song ?: return false
