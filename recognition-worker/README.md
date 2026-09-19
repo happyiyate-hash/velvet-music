@@ -6,6 +6,7 @@ This is the server-side bridge for Velvet's real song recognition feature.
 
 - `POST /v1/recognition/audio` — identifies recorded/background music through AudD.
 - `POST /v1/recognition/hum` — identifies humming/singing through an ACRCloud project configured for cover/humming recognition.
+- `POST /v1/playback/resolve` — resolves a recognized song to a playable SoundCloud stream without exposing SoundCloud credentials to the Android app.
 
 Both accept a multipart field named `audio`.
 
@@ -18,6 +19,8 @@ AUDD_API_TOKEN
 ACRCLOUD_HOST
 ACRCLOUD_ACCESS_KEY
 ACRCLOUD_ACCESS_SECRET
+SOUNDCLOUD_CLIENT_ID
+SOUNDCLOUD_CLIENT_SECRET
 ```
 
 ACRCloud's project must have its music bucket and humming/cover-song recognition enabled. AudD handles normal microphone/background-song fingerprint recognition.
@@ -31,6 +34,8 @@ npx wrangler secret put AUDD_API_TOKEN
 npx wrangler secret put ACRCLOUD_HOST
 npx wrangler secret put ACRCLOUD_ACCESS_KEY
 npx wrangler secret put ACRCLOUD_ACCESS_SECRET
+npx wrangler secret put SOUNDCLOUD_CLIENT_ID
+npx wrangler secret put SOUNDCLOUD_CLIENT_SECRET
 npx wrangler deploy
 ```
 
