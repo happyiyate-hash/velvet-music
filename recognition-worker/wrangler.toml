@@ -10,3 +10,8 @@ compatibility_date = "2026-09-15"
 # ACRCLOUD_ACCESS_SECRET
 # SOUNDCLOUD_CLIENT_ID
 # SOUNDCLOUD_CLIENT_SECRET
+
+[[kv_namespaces]]
+binding = "SOUNDCLOUD_KV"
+# Set this to the ID of your production KV namespace.
+# id = "<SOUNDCLOUD_KV_NAMESPACE_ID>"
