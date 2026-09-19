@@ -283,9 +283,8 @@ fun SingToSearchSheet(
             val topStatusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val bottomNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-            // Calculate responsive positions
-            val textTopPadding = maxOf(topStatusBarInset + 18.dp, 120.dp)
-            val micCenterY = totalHeight * 0.35f
+            // Calculate responsive positions (clean top-third positioning with dark breathing room)
+            val textTopPadding = maxOf(topStatusBarInset + 64.dp, totalHeight * 0.20f)
             val closeButtonSize = 52.dp
             val closeButtonBottomPadding = bottomNavBarInset + 28.dp
 
@@ -311,71 +310,38 @@ fun SingToSearchSheet(
                             .align(Alignment.BottomCenter)
                     )
 
-                    // Status Header (Progressive Status Pipeline with glowing dot; subtitle text removed)
+                    // 3. Header Status & Typography (Minimal, clean, ultra-light sans-serif font, no red dot)
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = textTopPadding)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            val dotAlpha = if (state is HumRecognitionState.Listening) {
-                                (0.5f + visualizerAmplitude * 0.5f).coerceIn(0.4f, 1f)
-                            } else {
-                                0.7f
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFFF2448).copy(alpha = dotAlpha))
-                                    .shadow(elevation = 4.dp, shape = CircleShape, spotColor = Color(0xFFFF2448))
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = statusText,
-                                color = Color.White.copy(alpha = 0.90f),
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Normal,
-                                letterSpacing = 2.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.testTag("sing_status_text")
-                            )
-                        }
+                        Text(
+                            text = statusText,
+                            color = Color(0xFFE5E5E5),
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Light,
+                            letterSpacing = 2.2.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.testTag("sing_status_text")
+                        )
                     }
 
-                    // Subtle Header Diagnostics Button if previous diagnostics exist
-                    if (lastSavedDiagnostics != null) {
-                        IconButton(
-                            onClick = { showDiagnosticsModal = true },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = topStatusBarInset + 12.dp, end = 16.dp)
-                                .testTag("sing_header_diagnostics_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Terminal,
-                                contentDescription = "View diagnostic details",
-                                tint = Color(0xFFE28492).copy(alpha = 0.75f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    // Center Visualizer Engine (Tapered Waveform Bars + Central Glowing Orb)
+                    // Center Visualizer Engine (Thin Needle Waveform Bars + Central 3D Glass Sphere Orb)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .offset(y = micCenterY - 60.dp),
+                            .align(Alignment.Center)
+                            .offset(y = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
                         ) {
                             val isMicListening = state is HumRecognitionState.Listening || state is HumRecognitionState.Idle
 
@@ -383,13 +349,13 @@ fun SingToSearchSheet(
                                 isLeft = true,
                                 amplitude = visualizerAmplitude,
                                 isListening = isMicListening,
-                                modifier = Modifier.width(116.dp).height(100.dp)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(84.dp)
                             )
 
-                            Spacer(modifier = Modifier.width(6.dp))
-
                             CentralGlassOrb(
-                                orbSize = 80.dp,
+                                orbSize = 114.dp,
                                 amplitude = visualizerAmplitude,
                                 isListening = isMicListening,
                                 onTap = {
@@ -397,13 +363,13 @@ fun SingToSearchSheet(
                                 }
                             )
 
-                            Spacer(modifier = Modifier.width(6.dp))
-
                             TaperedWaveformBars(
                                 isLeft = false,
                                 amplitude = visualizerAmplitude,
                                 isListening = isMicListening,
-                                modifier = Modifier.width(116.dp).height(100.dp)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(84.dp)
                             )
                         }
                     }
@@ -616,12 +582,13 @@ private fun FullAtmosphericBackground(modifier: Modifier = Modifier) {
 }
 
 /**
- * 1. Flanking Waveform Bars (Inward Dynamic Wave Motion):
- * - Increased Scale & Thickness: Prominent 3.5dp bar width with 4dp spacing for a mature visual aesthetic.
- * - Inward Ingestion Wave: Travelling sine wave translating towards the center microphone
- *   (left side translates left-to-right toward mic; right side translates right-to-left toward mic).
- * - Tapering Envelope: Waves originate small at outer edges, grow large as they travel inward,
- *   and collapse cleanly into the central mic ring.
+ * 1. Flanking Waveform Bars (Thin Needle Bars & Bell-Curve Gaussian Alignment):
+ * - Thin Needle Bars: Stroke width 1.8dp with 3dp spacing, resembling fine frequency needles.
+ * - Proximity & Zero Gap: Extends directly up to the edge of the outer mic halo ring.
+ * - Strict Gaussian Bell-Curve Envelope: Bars start as tiny dots at far edges, grow taller towards
+ *   the middle of the cluster, and taper back down smoothly as they meet the mic bubble.
+ * - Rich Crimson-Red Gradient: #FF2D55 blending to #A00028 on each vertical line.
+ * - Inward Travelling Wave Motion: Left side translates left-to-right toward mic; right side right-to-left.
  */
 @Composable
 private fun TaperedWaveformBars(
@@ -630,7 +597,7 @@ private fun TaperedWaveformBars(
     isListening: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "inward_wave_loop")
+    val infiniteTransition = rememberInfiniteTransition(label = "inward_needle_loop")
 
     // Travelling wave phase advancing continuously (1200ms cycle)
     val wavePhase by infiniteTransition.animateFloat(
@@ -640,7 +607,7 @@ private fun TaperedWaveformBars(
             animation = tween(1200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "inward_wave_phase"
+        label = "inward_needle_wave_phase"
     )
 
     // Secondary harmonic wave (1900ms cycle) for acoustic depth and fluid organic motion
@@ -651,78 +618,84 @@ private fun TaperedWaveformBars(
             animation = tween(1900, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "inward_harmonic_phase"
+        label = "inward_needle_harmonic_phase"
     )
 
     // Fast-response amplitude interpolation for live voice audio
     val animatedAmp by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
         animationSpec = tween(110, easing = FastOutSlowInEasing),
-        label = "inward_amp"
+        label = "inward_needle_amp"
     )
 
     Canvas(modifier = modifier) {
-        val barCount = 15
-        val barWidthPx = 3.5.dp.toPx()
-        val barGapPx = 4.dp.toPx()
+        val barWidthPx = 1.6.dp.toPx()
+        val barGapPx = 3.0.dp.toPx()
+        val stepPx = barWidthPx + barGapPx
         val centerY = size.height / 2f
 
+        // Dynamically compute bar count based on available span so needles fill seamlessly up to the halo edge
+        val barCount = (size.width / stepPx).toInt().coerceIn(12, 34)
+
         for (i in 0 until barCount) {
-            // distFromOrb: distance index in bars from central mic orb (0 = adjacent to orb, barCount-1 = outermost)
-            val distFromOrb = i
-            // u: normalized inward position (0.0 at outermost edge, 1.0 directly adjacent to central mic)
-            val u = 1f - (distFromOrb.toFloat() / (barCount - 1).coerceAtLeast(1))
+            // i = 0 is directly adjacent to the central mic halo ring
+            // i = barCount - 1 is at the outer edge of the screen
+            // t: normalized position from 0.0 (outer screen edge) to 1.0 (innermost, meeting halo)
+            val t = 1f - (i.toFloat() / (barCount - 1).coerceAtLeast(1))
 
-            // 1. Tapering Ingestion Envelope:
-            // Waves originate small at outer edges (u=0), swell large as they travel inward (u ≈ 0.75-0.85),
-            // and collapse cleanly into the central mic ring (u=1).
-            val swellFactor = exp(-(((u - 0.80f) / 0.38f) * ((u - 0.80f) / 0.38f)))
-            // Clean collapse right as it meets the central mic ring
-            val collapseNearMic = 1f - 0.40f * ((u - 0.75f) / 0.25f).coerceIn(0f, 1f)
-            val envelope = (0.10f + 0.90f * swellFactor) * collapseNearMic
+            // 1. Strict Bell-Curve (Gaussian) Amplitude Envelope:
+            // Peak at t = 0.50 (middle of the cluster).
+            // Bars start as tiny dots at far edges (t=0) and taper back down smoothly as they meet the mic bubble (t=1).
+            val peakT = 0.50f
+            val sigma = 0.22f
+            val diff = (t - peakT) / sigma
+            val gaussian = exp(-(diff * diff))
 
-            // 2. Inward Travelling Wave Formula:
-            // Travelling wave towards mic: sin(wavePhase - u * spatialFrequency).
-            // As wavePhase increases, the wave crest moves in the direction of increasing u (toward mic).
-            // Left side translates left-to-right toward mic; Right side translates right-to-left toward mic.
-            val primarySine = sin(wavePhase - u * 5.2f)
-            val secondarySine = sin(harmonicPhase - u * 3.1f)
-            val travellingWave = 0.60f * primarySine + 0.40f * secondarySine
+            // 2. Inward Travelling Wave towards the mic:
+            // Wave crest moves in direction of increasing t (towards the mic).
+            val primarySine = sin(wavePhase - t * 4.8f)
+            val secondarySine = sin(harmonicPhase - t * 2.8f)
+            val travellingWave = 0.65f * primarySine + 0.35f * secondarySine
 
-            // Dynamic Bar Amplitudes linked to audio energy
-            val simulatedFft = (0.55f + 0.45f * sin(u * 6.28f - wavePhase * 0.4f)).coerceIn(0.15f, 1f)
-            val liveVoiceHeight = animatedAmp * (42.dp.toPx() * envelope * simulatedFft)
-
+            // Base gentle motion when idle or listening
             val baseMotion = if (isListening) {
-                0.32f + 0.28f * travellingWave
+                0.30f + 0.25f * travellingWave
             } else {
-                0.14f + 0.10f * travellingWave
+                0.12f + 0.08f * travellingWave
             }
 
-            val minBarHeight = 4.dp.toPx()
-            val baseTaperedHeight = 4.dp.toPx() + 26.dp.toPx() * envelope
-            val dynamicWaveHeight = baseTaperedHeight * (1f + baseMotion * 0.75f)
-            val totalH = (dynamicWaveHeight + liveVoiceHeight).coerceIn(minBarHeight, 72.dp.toPx())
+            // Frequency variation across bars
+            val frequencyMod = (0.60f + 0.40f * sin(t * 6.28f - wavePhase * 0.4f)).coerceIn(0.2f, 1f)
 
-            // Dual-side horizontal positioning:
-            // Left side: distFromOrb = 0 is closest to the orb (at the right of left canvas).
-            // Right side: distFromOrb = 0 is closest to the orb (at the left of right canvas).
+            // Dynamic heights:
+            // Tiny needle dots at outer edges and mic contact (~2.2dp) to ~26dp baseline in cluster center,
+            // expanding up to ~48dp during live voice audio peaks.
+            val minBarHeight = 2.2.dp.toPx()
+            val baseClusterHeight = 2.2.dp.toPx() + 24.dp.toPx() * gaussian
+            val waveHeight = baseClusterHeight * (1f + baseMotion * 0.70f)
+            val liveVoiceHeight = animatedAmp * (28.dp.toPx() * gaussian * frequencyMod)
+            val totalH = (waveHeight + liveVoiceHeight).coerceIn(minBarHeight, 52.dp.toPx())
+
+            // Needle bar horizontal positioning:
+            // Left side: i = 0 is closest to the central orb (right edge of left canvas)
+            // Right side: i = 0 is closest to the central orb (left edge of right canvas)
             val xPos = if (isLeft) {
-                size.width - ((distFromOrb + 0.5f) * (barWidthPx + barGapPx))
+                size.width - (i * stepPx + barWidthPx / 2f + 1.dp.toPx())
             } else {
-                (distFromOrb + 0.5f) * (barWidthPx + barGapPx)
+                i * stepPx + barWidthPx / 2f + 1.dp.toPx()
             }
 
-            val barAlpha = (0.35f + 0.55f * envelope + animatedAmp * 0.35f).coerceIn(0.25f, 1f)
+            // Alpha gradient: highest in peak cluster, softer at outer and inner contact tips
+            val barAlpha = (0.28f + 0.68f * gaussian + animatedAmp * 0.25f).coerceIn(0.20f, 1f)
 
-            // Vertical gradient fading: vibrant crimson in center fading to transparent on top and bottom ends
+            // Rich crimson-red gradient on each vertical line (#FF2D55 blending to #A00028)
             val barBrush = Brush.verticalGradient(
                 colors = listOf(
                     Color.Transparent,
-                    Color(0xFFFF5270).copy(alpha = barAlpha * 0.85f),
-                    Color(0xFFFF2448).copy(alpha = barAlpha),
-                    Color(0xFFE51B3E).copy(alpha = barAlpha),
-                    Color(0xFFFF5270).copy(alpha = barAlpha * 0.85f),
+                    Color(0xFFA00028).copy(alpha = barAlpha * 0.65f),
+                    Color(0xFFFF2D55).copy(alpha = barAlpha),
+                    Color(0xFFFF1E4B).copy(alpha = barAlpha),
+                    Color(0xFFA00028).copy(alpha = barAlpha * 0.65f),
                     Color.Transparent
                 ),
                 startY = centerY - (totalH / 2f),
@@ -741,40 +714,42 @@ private fun TaperedWaveformBars(
 }
 
 /**
- * 2. Central Mic Button & Ripple Pulse Engine:
- * - Listening State: Continuous expanding pulse (radar ripple effect) with concentric translucent
- *   red rings originating behind the center button, scaling up (1.0f -> 1.8f), fading out to alpha(0f).
- *   No static outer border rings!
- * - Identifying State: Settle & Freeze. Instantly stops emitting expanding ripples, removes radial
- *   ring overlays, and settles into gentle subtle breathing animation (1.0f to 1.03f at slow speed).
+ * 2. Central Mic Orb/Bubble Overhaul (Glassmorphic 3D Spherical Glow):
+ * - Size & Scale: Increased diameter by ~30% (114dp) with proportionally scaled white mic vector (42dp).
+ * - 3D Glass/Bubble Shader:
+ *   * Inner Radial Center: Dark crimson/burgundy center (#3A000E to #1A0005).
+ *   * Inner Edge Highlight: Glowing neon red edge (#FF1E4B / #FF0033) around the inner perimeter,
+ *     giving it a thick, incandescent "glass bubble" rim.
+ *   * Top Specular Glass Highlight: Crescent curved reflection for realistic 3D glass sphere depth.
+ * - Concentric Halo Rings: Thin outer halo ring sits close to main orb, colored in ultra-thin
+ *   muted translucent crimson (alpha 0.3).
+ * - State Dynamics: Continuous radar ripples when listening; instantly freezes & settles when identifying.
  */
 @Composable
 private fun CentralGlassOrb(
-    orbSize: Dp,
+    orbSize: Dp = 114.dp,
     amplitude: Float,
     isListening: Boolean = true,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "central_orb_motion")
+    val infiniteTransition = rememberInfiniteTransition(label = "central_glass_orb_motion")
 
-    // Continuous expanding radar ripple pulse when listening (period: 2100ms)
+    // Continuous expanding radar ripple pulse when listening (period: 2200ms)
     val ripple1Progress by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2100, easing = LinearEasing),
+            animation = tween(2200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "ripple_pulse_1"
     )
 
-    // Staggered secondary ripple phase (+700ms offset via loop calculation)
     val ripple2Progress = (ripple1Progress + 0.333f) % 1f
-    // Staggered tertiary ripple phase (+1400ms offset)
     val ripple3Progress = (ripple1Progress + 0.666f) % 1f
 
-    // Identifying State subtle breathing animation: 1.0f to 1.03f at slow speed (2400ms)
+    // Identifying State subtle breathing animation: 1.0f to 1.03f at slow speed
     val identifyingBreath by infiniteTransition.animateFloat(
         initialValue = 1.0f,
         targetValue = 1.03f,
@@ -785,33 +760,36 @@ private fun CentralGlassOrb(
         label = "identifying_breath"
     )
 
-    // Listening breathing animation (0.97f to 1.03f)
+    // Listening breathing animation (0.98f to 1.03f)
     val listeningBreath by infiniteTransition.animateFloat(
-        initialValue = 0.97f,
+        initialValue = 0.98f,
         targetValue = 1.03f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
+            animation = tween(1600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "listening_breath"
     )
 
-    // Incoming voice intensity
+    // Real-time voice intensity
     val voiceIntensity by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
-        animationSpec = tween(130, easing = FastOutSlowInEasing),
+        animationSpec = tween(120, easing = FastOutSlowInEasing),
         label = "orb_voice_intensity"
     )
 
     val currentOrbScale = if (isListening) {
-        listeningBreath * (1f + 0.06f * voiceIntensity)
+        listeningBreath * (1f + 0.05f * voiceIntensity)
     } else {
         identifyingBreath
     }
 
+    // Outer container width matches the halo ring diameter (orbSize + 30dp = 144dp)
+    // so flanking waveform needle bars meet the halo ring exactly at the edges of this box
+    val containerSize = orbSize + 30.dp
+
     Box(
-        modifier = modifier
-            .size(orbSize + 70.dp), // Spacious container for expanding ripples
+        modifier = modifier.size(containerSize),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -821,51 +799,72 @@ private fun CentralGlassOrb(
             // 1. Radar Expanding Ripple Effect (ONLY in Listening state; instantly removed when Identifying)
             if (isListening) {
                 listOf(ripple1Progress, ripple2Progress, ripple3Progress).forEach { progress ->
-                    // Concentric rings originate behind the center button (scale 1.0f) and scale up to 1.8f
-                    val rippleScale = 1.0f + 0.80f * progress
+                    val rippleScale = 1.0f + 0.85f * progress
                     val rippleRadius = (orbSize.toPx() / 2f) * rippleScale
-                    // Fades out to alpha(0f) and disposes continuously
                     val fadeOut = (1f - progress).coerceIn(0f, 1f)
-                    val rippleAlpha = (fadeOut * (0.42f + voiceIntensity * 0.35f)).coerceIn(0f, 0.75f)
+                    val rippleAlpha = (fadeOut * (0.35f + voiceIntensity * 0.30f)).coerceIn(0f, 0.70f)
 
                     if (rippleAlpha > 0.005f) {
                         drawCircle(
-                            color = Color(0xFFFF2448).copy(alpha = rippleAlpha),
+                            color = Color(0xFFFF1E4B).copy(alpha = rippleAlpha),
                             radius = rippleRadius,
                             center = center,
-                            style = Stroke(width = (1.4.dp * fadeOut).toPx().coerceAtLeast(0.5f))
+                            style = Stroke(width = (1.2.dp * fadeOut).toPx().coerceAtLeast(0.5f))
                         )
                     }
                 }
-
-                // Soft-glow diffused radial aura behind button
-                val softGlowRadius = orbRadius + 10.dp.toPx() + (32.dp.toPx() * voiceIntensity)
-                val glowAlpha = (0.28f + voiceIntensity * 0.40f).coerceIn(0.15f, 0.70f)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFFF2448).copy(alpha = glowAlpha),
-                            Color(0xFFD51035).copy(alpha = glowAlpha * 0.55f),
-                            Color.Transparent
-                        ),
-                        center = center,
-                        radius = softGlowRadius
-                    ),
-                    radius = softGlowRadius,
-                    center = center
-                )
             }
 
-            // NOTE: No static outer border rings!
+            // 2. Halo Rings (Target Spec: "The thin outer halo ring should sit closer to the main orb,
+            // colored in ultra-thin muted translucent crimson (alpha 0.3).")
+            val haloRadius = (orbSize.toPx() / 2f) + 15.dp.toPx()
 
-            // 2. Obsidian Glass Orb Body
+            // Outer halo ring (sitting close to the main orb, alpha 0.30)
+            drawCircle(
+                color = Color(0xFFFF1E4B).copy(alpha = 0.30f + voiceIntensity * 0.15f),
+                radius = haloRadius,
+                center = center,
+                style = Stroke(width = 0.9.dp.toPx())
+            )
+
+            // Faint inner concentric guide ring
+            drawCircle(
+                color = Color(0xFFFF2448).copy(alpha = 0.14f),
+                radius = (orbSize.toPx() / 2f) + 7.dp.toPx(),
+                center = center,
+                style = Stroke(width = 0.6.dp.toPx())
+            )
+
+            // Soft radial bloom behind the glass orb
+            val glowRadius = orbRadius + 8.dp.toPx() + (24.dp.toPx() * voiceIntensity)
+            val glowAlpha = (0.28f + voiceIntensity * 0.35f).coerceIn(0.15f, 0.65f)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF070002),
-                        Color(0xFF140005),
-                        Color(0xFF28000A),
-                        Color(0xFF3E0010)
+                        Color(0xFFFF1E4B).copy(alpha = glowAlpha),
+                        Color(0xFFD5002C).copy(alpha = glowAlpha * 0.6f),
+                        Color.Transparent
+                    ),
+                    center = center,
+                    radius = glowRadius
+                ),
+                radius = glowRadius,
+                center = center
+            )
+
+            // 3. 3D Glass / Bubble Sphere Shader:
+            // Inner Radial Center: Dark crimson/burgundy center (#3A000E to #1A0005)
+            // Inner Edge Highlight: Glowing neon red edge (#FF1E4B / #FF0033) around inner perimeter,
+            // giving it a thick "glass bubble" rim.
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colorStops = arrayOf(
+                        0.00f to Color(0xFF3A000E),
+                        0.40f to Color(0xFF200007),
+                        0.68f to Color(0xFF140004),
+                        0.82f to Color(0xFF6B0018),
+                        0.93f to Color(0xFFE00030),
+                        1.00f to Color(0xFFFF1E4B)
                     ),
                     center = center,
                     radius = orbRadius
@@ -874,38 +873,75 @@ private fun CentralGlassOrb(
                 center = center
             )
 
-            // Inner crimson bottom illumination
+            // Volumetric inner neon red edge illumination (gives thick "glass bubble" rim)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colorStops = arrayOf(
+                        0.00f to Color.Transparent,
+                        0.70f to Color.Transparent,
+                        0.85f to Color(0x77FF0033),
+                        0.94f to Color(0xEEFF1E4B),
+                        1.00f to Color(0xFFFF2448)
+                    ),
+                    center = center,
+                    radius = orbRadius
+                ),
+                radius = orbRadius,
+                center = center
+            )
+
+            // Additional bottom-weighted radiant glow inside the sphere
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFFFF2448).copy(alpha = if (isListening) 0.38f + voiceIntensity * 0.25f else 0.22f),
+                        Color(0x99FF1E4B).copy(alpha = 0.55f + voiceIntensity * 0.25f),
+                        Color(0x55A00028),
                         Color.Transparent
                     ),
-                    center = Offset(center.x, center.y + orbRadius * 0.42f),
-                    radius = orbRadius * 0.85f
+                    center = Offset(center.x, center.y + orbRadius * 0.40f),
+                    radius = orbRadius * 0.78f
                 ),
-                radius = orbRadius * 0.85f,
-                center = Offset(center.x, center.y + orbRadius * 0.42f)
+                radius = orbRadius * 0.78f,
+                center = Offset(center.x, center.y + orbRadius * 0.40f)
             )
 
-            // Fine illuminated perimeter border rim (1.2dp)
+            // Ultra-fine glowing neon red perimeter rim stroke
             drawCircle(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFFFF6685).copy(alpha = if (isListening) 0.85f else 0.55f),
-                        Color(0xFFFF2448).copy(alpha = if (isListening) 0.65f else 0.40f),
-                        Color(0xFF8F071F).copy(alpha = 0.35f)
+                        Color(0xFFFF5E7B).copy(alpha = 0.90f),
+                        Color(0xFFFF1E4B),
+                        Color(0xFFFF0033)
                     ),
                     startY = center.y - orbRadius,
                     endY = center.y + orbRadius
                 ),
-                radius = orbRadius,
+                radius = orbRadius - 0.5.dp.toPx(),
                 center = center,
-                style = Stroke(width = 1.2.dp.toPx())
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+
+            // 3D Glass Specular Highlight (top-left crescent reflection)
+            drawArc(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.88f),
+                        Color(0x99FF99AA),
+                        Color.Transparent
+                    ),
+                    start = Offset(center.x - orbRadius * 0.60f, center.y - orbRadius * 0.95f),
+                    end = Offset(center.x + orbRadius * 0.60f, center.y - orbRadius * 0.35f)
+                ),
+                startAngle = 205f,
+                sweepAngle = 130f,
+                useCenter = false,
+                topLeft = Offset(center.x - orbRadius + 1.2.dp.toPx(), center.y - orbRadius + 1.2.dp.toPx()),
+                size = Size((orbRadius - 1.2.dp.toPx()) * 2, (orbRadius - 1.2.dp.toPx()) * 2),
+                style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
             )
         }
 
-        // Tap target & Centered Microphone Icon
+        // Tap target & Centered Microphone Icon (proportionally scaled pure white vector)
         Box(
             modifier = Modifier
                 .size(orbSize)
@@ -925,11 +961,11 @@ private fun CentralGlassOrb(
             Icon(
                 imageVector = Icons.Default.Mic,
                 contentDescription = "Sing or Speak to Search",
-                tint = Color(0xFFFFF1F2),
+                tint = Color(0xFFFFFFFF),
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(42.dp)
                     .graphicsLayer {
-                        val iconScale = 1.0f + 0.08f * voiceIntensity
+                        val iconScale = 1.0f + 0.05f * voiceIntensity
                         scaleX = iconScale
                         scaleY = iconScale
                     }
