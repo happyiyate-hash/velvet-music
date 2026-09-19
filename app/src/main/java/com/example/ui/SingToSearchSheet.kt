@@ -822,16 +822,16 @@ private fun CentralGlassOrb(
             )
         }
 
-        // Custom microphone matching the reference: larger capsule, warm white,
-        // open U-shaped pickup, central stem and a short horizontal foot.
+        // Exact reference microphone geometry from the supplied 24x24 SVG.
+        // Rendered much smaller than the previous custom microphone while preserving
+        // the original SVG proportions, stroke weight, and white color.
         Canvas(
             modifier = Modifier
-                .size(orbSize)
+                .size(42.dp)
                 .graphicsLayer {
                     scaleX = currentOrbScale
                     scaleY = currentOrbScale
                 }
-                .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -839,60 +839,56 @@ private fun CentralGlassOrb(
                 )
                 .testTag("sing_center_mic_orb")
         ) {
-            val micColor = Color(0xFFF8EEF0)
-            val glowColor = Color(0xFFFF5572)
+            val scale = size.minDimension / 24f
+            val micColor = Color.White
+            val stroke = 2f * scale
 
-            val micW = size.minDimension * 0.15f
-            val micH = size.minDimension * 0.43f
-            val micLeft = size.width / 2f - micW / 2f
-            val micTop = size.height / 2f - micH * 0.72f
-            val micBottom = micTop + micH
-
+            // Microphone: <rect x="8" y="3" width="8" height="12" rx="4" ... />
             drawRoundRect(
                 color = micColor,
-                topLeft = Offset(micLeft, micTop),
-                size = Size(micW, micH),
-                cornerRadius = CornerRadius(micW / 2f, micW / 2f)
+                topLeft = Offset(8f * scale, 3f * scale),
+                size = Size(8f * scale, 12f * scale),
+                cornerRadius = CornerRadius(4f * scale, 4f * scale),
+                style = Stroke(width = stroke)
             )
 
-            // Subtle red stain on the lower portion of the microphone.
-            drawRoundRect(
-                color = glowColor.copy(alpha = 0.16f),
-                topLeft = Offset(micLeft, micTop + micH * 0.62f),
-                size = Size(micW, micH * 0.38f),
-                cornerRadius = CornerRadius(micW / 2f, micW / 2f)
-            )
-
-            val arcLeft = size.width / 2f - micW * 1.05f
-            val arcTop = micBottom - micW * 0.55f
-            val arcSize = Size(micW * 2.10f, micW * 1.65f)
-
-            drawArc(
+            // Outer microphone curve: exact SVG cubic path.
+            val outer = Path().apply {
+                moveTo(5f * scale, 11f * scale)
+                lineTo(5f * scale, 12f * scale)
+                cubicTo(
+                    5f * scale, 15.866f * scale,
+                    8.134f * scale, 19f * scale,
+                    12f * scale, 19f * scale
+                )
+                cubicTo(
+                    15.866f * scale, 19f * scale,
+                    19f * scale, 15.866f * scale,
+                    19f * scale, 12f * scale
+                )
+                lineTo(19f * scale, 11f * scale)
+            }
+            drawPath(
+                path = outer,
                 color = micColor,
-                startAngle = 0f,
-                sweepAngle = 180f,
-                useCenter = false,
-                topLeft = Offset(arcLeft, arcTop),
-                size = arcSize,
-                style = Stroke(width = micW * 0.24f, cap = StrokeCap.Round)
+                style = Stroke(width = stroke, cap = StrokeCap.Round)
             )
 
-            // Correct the arc orientation into the familiar open-bottom microphone cradle.
+            // Stand: M12 19V22
             drawLine(
                 color = micColor,
-                start = Offset(size.width / 2f, arcTop + arcSize.height * 0.58f),
-                end = Offset(size.width / 2f, arcTop + arcSize.height * 0.92f),
-                strokeWidth = micW * 0.24f,
+                start = Offset(12f * scale, 19f * scale),
+                end = Offset(12f * scale, 22f * scale),
+                strokeWidth = stroke,
                 cap = StrokeCap.Round
             )
 
-            // Short bottom dash/foot from the reference icon.
-            val footY = arcTop + arcSize.height * 0.92f
+            // Base: M9 22H15
             drawLine(
-                color = micColor.copy(alpha = 0.92f),
-                start = Offset(size.width / 2f - micW * 0.72f, footY),
-                end = Offset(size.width / 2f + micW * 0.72f, footY),
-                strokeWidth = micW * 0.22f,
+                color = micColor,
+                start = Offset(9f * scale, 22f * scale),
+                end = Offset(15f * scale, 22f * scale),
+                strokeWidth = stroke,
                 cap = StrokeCap.Round
             )
         }
