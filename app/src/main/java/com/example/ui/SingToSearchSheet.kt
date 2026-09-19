@@ -353,7 +353,7 @@ fun SingToSearchSheet(
                                 isListening = isMicListening,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(84.dp)
+                                    .height(104.dp)
                             )
 
                             CentralGlassOrb(
@@ -737,43 +737,26 @@ private fun CentralGlassOrb(
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "central_glass_orb_motion")
 
-    // Continuous expanding radar ripple pulse when listening (period: 2200ms)
-    val ripple1Progress by infiniteTransition.animateFloat(
+    val rippleProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
+            animation = tween(2600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "ripple_pulse_1"
+        label = "settled_ripple"
     )
 
-    val ripple2Progress = (ripple1Progress + 0.333f) % 1f
-    val ripple3Progress = (ripple1Progress + 0.666f) % 1f
-
-    // Identifying State subtle breathing animation: 1.0f to 1.03f at slow speed
-    val identifyingBreath by infiniteTransition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = 1.03f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "identifying_breath"
-    )
-
-    // Listening breathing animation (0.98f to 1.03f)
     val listeningBreath by infiniteTransition.animateFloat(
-        initialValue = 0.98f,
-        targetValue = 1.03f,
+        initialValue = 0.99f,
+        targetValue = 1.015f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1600, easing = FastOutSlowInEasing),
+            animation = tween(1900, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "listening_breath"
     )
 
-    // Real-time voice intensity
     val voiceIntensity by animateFloatAsState(
         targetValue = amplitude.coerceIn(0f, 1f),
         animationSpec = tween(120, easing = FastOutSlowInEasing),
@@ -781,14 +764,12 @@ private fun CentralGlassOrb(
     )
 
     val currentOrbScale = if (isListening) {
-        listeningBreath * (1f + 0.05f * voiceIntensity)
+        listeningBreath * (1f + 0.025f * voiceIntensity)
     } else {
-        identifyingBreath
+        1f
     }
 
-    // Outer container width matches the halo ring diameter (orbSize + 30dp = 144dp)
-    // so flanking waveform needle bars meet the halo ring exactly at the edges of this box
-    val containerSize = orbSize + 30.dp
+    val containerSize = orbSize + 20.dp
 
     Box(
         modifier = modifier.size(containerSize),
@@ -796,93 +777,99 @@ private fun CentralGlassOrb(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            val orbRadius = (orbSize.toPx() / 2f) * currentOrbScale
+            val radius = (orbSize.toPx() / 2f) * currentOrbScale
+            val red = Color(0xFFFF1744)
+            val deepRed = Color(0xFFB4002A)
 
-            // 1. Very quiet listening ripple — kept behind the glass, never neon-bright.
+            // Very restrained ambient ring: a soft trace, not a neon outline.
             if (isListening) {
-                listOf(ripple1Progress, ripple2Progress, ripple3Progress).forEach { progress ->
-                    val rippleScale = 1.0f + 0.85f * progress
-                    val rippleRadius = (orbSize.toPx() / 2f) * rippleScale
-                    val fadeOut = (1f - progress).coerceIn(0f, 1f)
-                    val rippleAlpha = (fadeOut * (0.10f + voiceIntensity * 0.08f)).coerceIn(0f, 0.18f)
-
-                    if (rippleAlpha > 0.005f) {
-                        drawCircle(
-                            color = Color(0xFFFF1E4B).copy(alpha = rippleAlpha),
-                            radius = rippleRadius,
-                            center = center,
-                            style = Stroke(width = (0.8.dp * fadeOut).toPx().coerceAtLeast(0.4f))
-                        )
-                    }
-                }
+                val fade = 1f - rippleProgress
+                drawCircle(
+                    color = red.copy(alpha = fade * (0.075f + voiceIntensity * 0.035f)),
+                    radius = radius + 6.dp.toPx() + rippleProgress * 13.dp.toPx(),
+                    center = center,
+                    style = Stroke(width = 0.7.dp.toPx())
+                )
             }
 
-            // 2. Quiet halo: one thin, settled ring around the glass.
-            // No stacked neon borders and no bright bloom outside the bubble.
-            val haloRadius = (orbSize.toPx() / 2f) + 12.dp.toPx()
+            // Single quiet halo.
             drawCircle(
-                color = Color(0xFFFF2448).copy(alpha = 0.16f + voiceIntensity * 0.04f),
-                radius = haloRadius,
+                color = red.copy(alpha = 0.12f + voiceIntensity * 0.035f),
+                radius = radius + 7.dp.toPx(),
                 center = center,
                 style = Stroke(width = 0.8.dp.toPx())
             )
 
-            // 3. One continuous glass surface with a restrained internal red gradient.
-            // The red is carried inside the sphere instead of being painted as a bright rim.
+            // One continuous glass surface. Red is concentrated at the lower-right
+            // and upper-left, with a dark center and no bright painted rim.
             drawCircle(
                 brush = Brush.radialGradient(
                     colorStops = arrayOf(
-                        0.00f to Color(0xFF260009),
-                        0.48f to Color(0xFF160005),
-                        0.76f to Color(0xFF1B0008),
-                        0.91f to Color(0xFF3B0011),
-                        1.00f to Color(0xFF7A1028)
+                        0.00f to Color(0xFF210006),
+                        0.42f to Color(0xFF120003),
+                        0.70f to Color(0xFF1C0007),
+                        0.88f to Color(0xFF5E071E),
+                        1.00f to Color(0xFFB30D35)
                     ),
-                    center = Offset(center.x - orbRadius * 0.18f, center.y - orbRadius * 0.18f),
-                    radius = orbRadius * 1.05f
+                    center = Offset(center.x - radius * 0.25f, center.y - radius * 0.25f),
+                    radius = radius * 1.12f
                 ),
-                radius = orbRadius,
+                radius = radius,
                 center = center
             )
 
-            // Very subtle lower red smoke inside the glass.
-            val innerGlowAlpha = (0.10f + voiceIntensity * 0.08f).coerceIn(0.08f, 0.18f)
+            // Soft red stain at the lower-right, like light caught inside glass.
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFFFF2448).copy(alpha = innerGlowAlpha),
-                        Color(0xFFD51035).copy(alpha = innerGlowAlpha * 0.35f),
+                        red.copy(alpha = 0.34f + voiceIntensity * 0.06f),
+                        Color(0xFFD90038).copy(alpha = 0.12f),
                         Color.Transparent
                     ),
-                    center = Offset(center.x, center.y + orbRadius * 0.32f),
-                    radius = orbRadius * 0.72f
+                    center = Offset(center.x + radius * 0.43f, center.y + radius * 0.43f),
+                    radius = radius * 0.72f
                 ),
-                radius = orbRadius * 0.72f,
-                center = Offset(center.x, center.y + orbRadius * 0.32f)
+                radius = radius * 0.72f,
+                center = Offset(center.x + radius * 0.43f, center.y + radius * 0.43f)
             )
 
-            // Fine perimeter rim — visible, but never neon-bright.
+            // Very soft upper-left reflection/stain.
             drawCircle(
-                color = Color(0xFFFF4868).copy(alpha = 0.42f + voiceIntensity * 0.08f),
-                radius = orbRadius - 0.5.dp.toPx(),
-                center = center,
-                style = Stroke(width = 1.0.dp.toPx())
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFFFF365D).copy(alpha = 0.12f),
+                        Color.Transparent
+                    ),
+                    center = Offset(center.x - radius * 0.48f, center.y - radius * 0.46f),
+                    radius = radius * 0.62f
+                ),
+                radius = radius * 0.62f,
+                center = Offset(center.x - radius * 0.48f, center.y - radius * 0.46f)
             )
 
-            // Small glass reflection only; kept quiet so the surface reads as one material.
+            // Extremely restrained glass edge.
+            drawCircle(
+                color = Color(0xFFFF4668).copy(alpha = 0.24f + voiceIntensity * 0.035f),
+                radius = radius - 0.35.dp.toPx(),
+                center = center,
+                style = Stroke(width = 0.9.dp.toPx())
+            )
+
+            // Small top-left glass reflection, intentionally dim.
             drawArc(
-                color = Color.White.copy(alpha = 0.22f),
-                startAngle = 205f,
-                sweepAngle = 100f,
+                color = Color.White.copy(alpha = 0.16f),
+                startAngle = 210f,
+                sweepAngle = 82f,
                 useCenter = false,
-                topLeft = Offset(center.x - orbRadius + 2.dp.toPx(), center.y - orbRadius + 2.dp.toPx()),
-                size = Size((orbRadius - 2.dp.toPx()) * 2, (orbRadius - 2.dp.toPx()) * 2),
-                style = Stroke(width = 1.1.dp.toPx(), cap = StrokeCap.Round)
+                topLeft = Offset(center.x - radius + 2.dp.toPx(), center.y - radius + 2.dp.toPx()),
+                size = Size((radius - 2.dp.toPx()) * 2, (radius - 2.dp.toPx()) * 2),
+                style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round)
             )
         }
 
-        // Tap target & Centered Microphone Icon (proportionally scaled pure white vector)
-        Box(
+        // Custom microphone matching the reference: larger capsule, warm white,
+        // open U-shaped pickup, central stem and a short horizontal foot.
+        Canvas(
             modifier = Modifier
                 .size(orbSize)
                 .graphicsLayer {
@@ -895,20 +882,63 @@ private fun CentralGlassOrb(
                     indication = null,
                     onClick = onTap
                 )
-                .testTag("sing_center_mic_orb"),
-            contentAlignment = Alignment.Center
+                .testTag("sing_center_mic_orb")
         ) {
-            Icon(
-                imageVector = Icons.Default.Mic,
-                contentDescription = "Sing or Speak to Search",
-                tint = Color(0xFFFFFFFF),
-                modifier = Modifier
-                    .size(42.dp)
-                    .graphicsLayer {
-                        val iconScale = 1.0f + 0.05f * voiceIntensity
-                        scaleX = iconScale
-                        scaleY = iconScale
-                    }
+            val micColor = Color(0xFFF8EEF0)
+            val glowColor = Color(0xFFFF5572)
+
+            val micW = size.minDimension * 0.15f
+            val micH = size.minDimension * 0.43f
+            val micLeft = size.width / 2f - micW / 2f
+            val micTop = size.height / 2f - micH * 0.72f
+            val micBottom = micTop + micH
+
+            drawRoundRect(
+                color = micColor,
+                topLeft = Offset(micLeft, micTop),
+                size = Size(micW, micH),
+                cornerRadius = CornerRadius(micW / 2f, micW / 2f)
+            )
+
+            // Subtle red stain on the lower portion of the microphone.
+            drawRoundRect(
+                color = glowColor.copy(alpha = 0.16f),
+                topLeft = Offset(micLeft, micTop + micH * 0.62f),
+                size = Size(micW, micH * 0.38f),
+                cornerRadius = CornerRadius(micW / 2f, micW / 2f)
+            )
+
+            val arcLeft = size.width / 2f - micW * 1.05f
+            val arcTop = micBottom - micW * 0.55f
+            val arcSize = Size(micW * 2.10f, micW * 1.65f)
+
+            drawArc(
+                color = micColor,
+                startAngle = 0f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = arcLeft to arcTop,
+                size = arcSize,
+                style = Stroke(width = micW * 0.24f, cap = StrokeCap.Round)
+            )
+
+            // Correct the arc orientation into the familiar open-bottom microphone cradle.
+            drawLine(
+                color = micColor,
+                start = Offset(size.width / 2f, arcTop + arcSize.height * 0.58f),
+                end = Offset(size.width / 2f, arcTop + arcSize.height * 0.92f),
+                strokeWidth = micW * 0.24f,
+                cap = StrokeCap.Round
+            )
+
+            // Short bottom dash/foot from the reference icon.
+            val footY = arcTop + arcSize.height * 0.92f
+            drawLine(
+                color = micColor.copy(alpha = 0.92f),
+                start = Offset(size.width / 2f - micW * 0.72f, footY),
+                end = Offset(size.width / 2f + micW * 0.72f, footY),
+                strokeWidth = micW * 0.22f,
+                cap = StrokeCap.Round
             )
         }
     }
