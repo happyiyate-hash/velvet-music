@@ -734,97 +734,93 @@ private fun CentralGlassOrb(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
             val radius = (orbSize.toPx() / 2f) * currentOrbScale
-            val red = Color(0xFFFF1744)
+            val red = Color(0xFFFF2448)
 
-            // Very restrained ambient ring: a soft trace, not a neon outline.
             if (isListening) {
                 val fade = 1f - rippleProgress
                 drawCircle(
                     color = red.copy(alpha = fade * (0.075f + voiceIntensity * 0.035f)),
-                    radius = radius + 6.dp.toPx() + rippleProgress * 13.dp.toPx(),
+                    radius = radius + 7.dp.toPx() + rippleProgress * 14.dp.toPx(),
                     center = center,
-                    style = Stroke(width = 0.7.dp.toPx())
+                    style = Stroke(width = 1.2.dp.toPx())
                 )
             }
 
-            // Single quiet halo.
+            // Substantial outer glass ring: visible and dimensional, not a hairline outline.
             drawCircle(
-                color = red.copy(alpha = 0.12f + voiceIntensity * 0.035f),
+                color = Color(0xFFFF6A78).copy(alpha = 0.28f + voiceIntensity * 0.04f),
                 radius = radius + 7.dp.toPx(),
                 center = center,
-                style = Stroke(width = 0.8.dp.toPx())
+                style = Stroke(width = 2.2.dp.toPx())
             )
 
-            // One continuous glass surface. Red is concentrated at the lower-right
-            // and upper-left, with a dark center and no bright painted rim.
+            // Filled warm red/orange glass surface. The center is deliberately filled.
             drawCircle(
                 brush = Brush.radialGradient(
                     colorStops = arrayOf(
-                        0.00f to Color(0xFF210006),
-                        0.42f to Color(0xFF120003),
-                        0.70f to Color(0xFF1C0007),
-                        0.88f to Color(0xFF5E071E),
-                        1.00f to Color(0xFFB30D35)
+                        0.00f to Color(0xFFFFF7F5),
+                        0.28f to Color(0xFFFFE8E3),
+                        0.55f to Color(0xFFFFB7A9),
+                        0.78f to Color(0xFFFF684F),
+                        1.00f to Color(0xFFE82F45)
                     ),
-                    center = Offset(center.x - radius * 0.25f, center.y - radius * 0.25f),
-                    radius = radius * 1.12f
+                    center = Offset(center.x - radius * 0.30f, center.y - radius * 0.34f),
+                    radius = radius * 1.18f
                 ),
                 radius = radius,
                 center = center
             )
 
-            // Soft red stain at the lower-right, like light caught inside glass.
+            // Warm red glass reflection, keeping the orb related to the surrounding background.
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        red.copy(alpha = 0.34f + voiceIntensity * 0.06f),
-                        Color(0xFFD90038).copy(alpha = 0.12f),
+                        Color(0xFFFF3D54).copy(alpha = 0.42f + voiceIntensity * 0.06f),
+                        Color(0xFFFF6D52).copy(alpha = 0.16f),
                         Color.Transparent
                     ),
-                    center = Offset(center.x + radius * 0.43f, center.y + radius * 0.43f),
-                    radius = radius * 0.72f
+                    center = Offset(center.x + radius * 0.42f, center.y + radius * 0.40f),
+                    radius = radius * 0.78f
                 ),
-                radius = radius * 0.72f,
-                center = Offset(center.x + radius * 0.43f, center.y + radius * 0.43f)
+                radius = radius * 0.78f,
+                center = Offset(center.x + radius * 0.42f, center.y + radius * 0.40f)
             )
 
-            // Very soft upper-left reflection/stain.
+            // Crystal-white reflection across the upper-left glass.
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFFFF365D).copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.34f),
+                        Color.White.copy(alpha = 0.08f),
                         Color.Transparent
                     ),
-                    center = Offset(center.x - radius * 0.48f, center.y - radius * 0.46f),
-                    radius = radius * 0.62f
+                    center = Offset(center.x - radius * 0.46f, center.y - radius * 0.48f),
+                    radius = radius * 0.68f
                 ),
-                radius = radius * 0.62f,
-                center = Offset(center.x - radius * 0.48f, center.y - radius * 0.46f)
+                radius = radius * 0.68f,
+                center = Offset(center.x - radius * 0.46f, center.y - radius * 0.48f)
             )
 
-            // Extremely restrained glass edge.
+            // Strong but soft glass edge.
             drawCircle(
-                color = Color(0xFFFF4668).copy(alpha = 0.24f + voiceIntensity * 0.035f),
-                radius = radius - 0.35.dp.toPx(),
+                color = Color.White.copy(alpha = 0.26f + voiceIntensity * 0.04f),
+                radius = radius - 0.8.dp.toPx(),
                 center = center,
-                style = Stroke(width = 0.9.dp.toPx())
+                style = Stroke(width = 2.dp.toPx())
             )
 
-            // Small top-left glass reflection, intentionally dim.
             drawArc(
-                color = Color.White.copy(alpha = 0.16f),
+                color = Color.White.copy(alpha = 0.34f),
                 startAngle = 210f,
                 sweepAngle = 82f,
                 useCenter = false,
                 topLeft = Offset(center.x - radius + 2.dp.toPx(), center.y - radius + 2.dp.toPx()),
                 size = Size((radius - 2.dp.toPx()) * 2, (radius - 2.dp.toPx()) * 2),
-                style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round)
+                style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
             )
         }
 
-        // Exact reference microphone geometry from the supplied 24x24 SVG.
-        // Rendered much smaller than the previous custom microphone while preserving
-        // the original SVG proportions, stroke weight, and white color.
+        // Same microphone geometry, now rendered as filled crystal-glass geometry.
         Canvas(
             modifier = Modifier
                 .size(42.dp)
@@ -840,19 +836,28 @@ private fun CentralGlassOrb(
                 .testTag("sing_center_mic_orb")
         ) {
             val scale = size.minDimension / 24f
-            val micColor = Color.White
-            val stroke = 2f * scale
+            val glassBrush = Brush.linearGradient(
+                colors = listOf(
+                    Color.White,
+                    Color(0xFFFFFDFB),
+                    Color(0xFFFFB9A8),
+                    Color(0xFFFF6A58),
+                    Color.White
+                ),
+                start = Offset(2f * scale, 2f * scale),
+                end = Offset(22f * scale, 22f * scale)
+            )
+            val stroke = 1.75f * scale
 
-            // Microphone: <rect x="8" y="3" width="8" height="12" rx="4" ... />
+            // Slightly taller filled capsule; no hollow center.
             drawRoundRect(
-                color = micColor,
-                topLeft = Offset(8f * scale, 3f * scale),
-                size = Size(8f * scale, 12f * scale),
-                cornerRadius = CornerRadius(4f * scale, 4f * scale),
-                style = Stroke(width = stroke)
+                brush = glassBrush,
+                topLeft = Offset(8f * scale, 2.5f * scale),
+                size = Size(8f * scale, 13f * scale),
+                cornerRadius = CornerRadius(4f * scale, 4f * scale)
             )
 
-            // Outer microphone curve: exact SVG cubic path.
+            // Rounded U-support with fully rounded ends.
             val outer = Path().apply {
                 moveTo(5f * scale, 11f * scale)
                 lineTo(5f * scale, 12f * scale)
@@ -870,22 +875,22 @@ private fun CentralGlassOrb(
             }
             drawPath(
                 path = outer,
-                color = micColor,
+                brush = glassBrush,
                 style = Stroke(width = stroke, cap = StrokeCap.Round)
             )
 
-            // Stand: M12 19V22
+            // Rounded stem.
             drawLine(
-                color = micColor,
+                brush = glassBrush,
                 start = Offset(12f * scale, 19f * scale),
                 end = Offset(12f * scale, 22f * scale),
                 strokeWidth = stroke,
                 cap = StrokeCap.Round
             )
 
-            // Base: M9 22H15
+            // Rounded horizontal base.
             drawLine(
-                color = micColor,
+                brush = glassBrush,
                 start = Offset(9f * scale, 22f * scale),
                 end = Offset(15f * scale, 22f * scale),
                 strokeWidth = stroke,
@@ -894,7 +899,6 @@ private fun CentralGlassOrb(
         }
     }
 }
-
 /**
  * 3. Reactive Bottom Ambient Glow (Dynamic Lava/Smoke Mesh):
  * - Dynamic Lava/Smoke Motion: Animates the bottom radial/linear gradient mesh using animated offset coordinates.
