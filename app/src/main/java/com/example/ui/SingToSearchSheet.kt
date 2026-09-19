@@ -422,9 +422,7 @@ fun SingToSearchSheet(
                 if (matched != null) {
                     SeamlessMatchedResultView(
                         result = matched,
-                        playbackReady = playbackReady,
-                        playbackResolving = playbackResolving,
-                        playbackResolveError = playbackResolveError,
+                        playbackReady = matched.track?.contentUri?.isNotBlank() == true,
                         topPadding = topStatusBarInset + 16.dp,
                         bottomPadding = bottomNavBarInset + 20.dp,
                         onPlayInVelvet = {
