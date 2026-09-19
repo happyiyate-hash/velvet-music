@@ -5,6 +5,7 @@ interface Env {
   ACRCLOUD_ACCESS_SECRET: string
   SOUNDCLOUD_CLIENT_ID: string
   SOUNDCLOUD_CLIENT_SECRET: string
+  SOUNDCLOUD_KV: KVNamespace
 }
 
 type RecognitionSong = {
@@ -47,7 +48,9 @@ const SOUNDCLOUD_API_BASE = "https://api.soundcloud.com"
 const SOUNDCLOUD_TOKEN_URL = "https://secure.soundcloud.com/oauth/token"
 const SOUNDCLOUD_SEARCH_LIMIT = 10
 
-let soundCloudTokenCache: { accessToken: string; expiresAt: number } | null = null
+const SOUNDCLOUD_TOKEN_KEY = "access_token"
+const SOUNDCLOUD_TOKEN_TTL_SECONDS = 3300
+let soundCloudTokenInflight: Promise<string> | null = null
 
 type PlaybackResolveRequest = {
   artist?: string
@@ -187,7 +190,7 @@ async function resolvePlayback(body: PlaybackResolveRequest, env: Env, requestId
     headers: { Authorization: `OAuth ${accessToken}`, Accept: "application/json" },
   })
   if (searchResponse.status === 401) {
-    invalidateSoundCloudToken()
+    invalidateSoundCloudToken(env)
     const refreshedToken = await getSoundCloudAccessToken(env, requestId)
     searchResponse = await fetchWithTimeout(searchUrl, {
       headers: { Authorization: `OAuth ${refreshedToken}`, Accept: "application/json" },
@@ -244,35 +247,57 @@ async function getSoundCloudAccessToken(env: Env, requestId: string): Promise<st
   if (!env.SOUNDCLOUD_CLIENT_ID || !env.SOUNDCLOUD_CLIENT_SECRET) {
     throw new Error("SOUNDCLOUD_CLIENT_ID and SOUNDCLOUD_CLIENT_SECRET are required")
   }
-  if (soundCloudTokenCache && soundCloudTokenCache.expiresAt > Date.now() + 60_000) {
-    return soundCloudTokenCache.accessToken
+
+  const cachedToken = await env.SOUNDCLOUD_KV.get(SOUNDCLOUD_TOKEN_KEY)
+  if (cachedToken) {
+    log(requestId, "SOUNDCLOUD_TOKEN_CACHE_HIT")
+    return cachedToken
   }
 
-  const basic = btoa(`${env.SOUNDCLOUD_CLIENT_ID}:${env.SOUNDCLOUD_CLIENT_SECRET}`)
-  const body = new URLSearchParams({ grant_type: "client_credentials" })
-  const response = await fetchWithTimeout(SOUNDCLOUD_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "content-type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body,
-  })
-  const data = await readJsonSafely(response)
-  if (!response.ok || !data?.access_token) {
-    throw new Error(`SoundCloud authentication failed (HTTP ${response.status})`)
+  if (soundCloudTokenInflight) {
+    log(requestId, "SOUNDCLOUD_TOKEN_WAITING_FOR_REFRESH")
+    return soundCloudTokenInflight
   }
 
-  const expiresIn = Number(data.expires_in)
-  const expiresAt = Date.now() + (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn * 1000 : 3_600_000)
-  soundCloudTokenCache = { accessToken: String(data.access_token), expiresAt }
-  log(requestId, "SOUNDCLOUD_TOKEN_READY", { expiresInSeconds: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)) })
-  return soundCloudTokenCache.accessToken
+  soundCloudTokenInflight = (async () => {
+    const secondCheck = await env.SOUNDCLOUD_KV.get(SOUNDCLOUD_TOKEN_KEY)
+    if (secondCheck) return secondCheck
+
+    const basic = btoa(`${env.SOUNDCLOUD_CLIENT_ID}:${env.SOUNDCLOUD_CLIENT_SECRET}`)
+    const body = new URLSearchParams({ grant_type: "client_credentials" })
+    const response = await fetchWithTimeout(SOUNDCLOUD_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "content-type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body,
+    })
+
+    const data = await readJsonSafely(response)
+    if (!response.ok || !data?.access_token) {
+      throw new Error(`SoundCloud authentication failed (HTTP ${response.status})`)
+    }
+
+    const token = String(data.access_token)
+    await env.SOUNDCLOUD_KV.put(SOUNDCLOUD_TOKEN_KEY, token, {
+      expirationTtl: SOUNDCLOUD_TOKEN_TTL_SECONDS,
+    })
+    log(requestId, "SOUNDCLOUD_TOKEN_CACHED", { ttlSeconds: SOUNDCLOUD_TOKEN_TTL_SECONDS })
+    return token
+  })()
+
+  try {
+    return await soundCloudTokenInflight
+  } finally {
+    soundCloudTokenInflight = null
+  }
 }
 
-function invalidateSoundCloudToken() {
-  soundCloudTokenCache = null
+
+async function invalidateSoundCloudToken(env: Env) {
+  await env.SOUNDCLOUD_KV.delete(SOUNDCLOUD_TOKEN_KEY)
 }
 
 function selectSoundCloudTrack(
