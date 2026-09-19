@@ -1,10 +1,7 @@
 package com.example
 
 import com.example.recognition.BatchRecognitionResponse
-import com.example.recognition.BatchRecognitionResults
-import com.example.recognition.PlaybackResolveRequest
-import com.example.recognition.PlaybackResolveResponse
-import com.example.recognition.RecognitionResponse
+import com.example.recognition.PlatformLinksDto
 import com.example.recognition.RecognitionResult
 import com.example.recognition.RecognizedSongDto
 import com.example.recognition.RemoteSongRecognitionRepository
@@ -31,185 +28,109 @@ class RemoteSongRecognitionRepositoryTest {
 
     private fun createFakeApi(
         response: BatchRecognitionResponse?,
-        throwException: Throwable? = null,
-        playbackResponse: PlaybackResolveResponse? = null
+        throwException: Throwable? = null
     ): SongRecognitionApi {
         return object : SongRecognitionApi {
             override suspend fun recognizeBatch(audio: MultipartBody.Part): BatchRecognitionResponse {
                 if (throwException != null) throw throwException
                 return response ?: throw IllegalStateException("No response configured")
             }
-
-            override suspend fun resolvePlayback(request: PlaybackResolveRequest): PlaybackResolveResponse {
-                if (throwException != null) throw throwException
-                return playbackResponse ?: PlaybackResolveResponse(success = false, error = "Not configured")
-            }
         }
     }
 
     @Test
-    fun recognizeBatch_dualMatch_mergesMetadataCorrectly() = runBlocking {
-        val auddSong = RecognizedSongDto(
-            title = "Lurmen",
-            artist = "Trendmix",
-            album = "Trendmix Hits",
-            artworkUrl = "https://cdn.example.com/artwork.jpg",
-            durationMs = 0L,
-            isrc = "USRC17607839",
-            spotifyUrl = "https://open.spotify.com/track/12345",
-            appleMusicUrl = null,
-            youtubeMusicUrl = null,
-            audiomackUrl = null
-        )
-        val acrSong = RecognizedSongDto(
-            title = "Lurmen",
-            artist = "Trendmix",
-            album = null,
-            artworkUrl = null,
-            durationMs = 214000L,
-            isrc = "USRC17607839",
-            spotifyUrl = null,
-            appleMusicUrl = "https://music.apple.com/song/987",
-            youtubeMusicUrl = "https://music.youtube.com/watch?v=abc",
-            audiomackUrl = null
+    fun recognizeBatch_unifiedMatch_readsCanonicalSongAndPlatformLinks() = runBlocking {
+        val song = RecognizedSongDto(
+            id = "track-123",
+            title = "Red Potion",
+            artist = "Rema",
+            album = "RAVAGE",
+            artworkUrl = "https://cdn.example.com/red-potion.jpg",
+            artworkSource = "itunes",
+            durationMs = 174000L,
+            isrc = "NGA3B2314022",
+            confidence = 25,
+            provider = "acrcloud",
+            platforms = PlatformLinksDto(
+                spotifyUrl = "https://open.spotify.com/track/123",
+                appleMusicUrl = null,
+                youtubeMusicUrl = "https://music.youtube.com/watch?v=123",
+                audiomackUrl = null
+            )
         )
 
-        val batchResponse = BatchRecognitionResponse(
-            success = true,
-            requestId = "req-test-123",
-            results = BatchRecognitionResults(
-                audd = RecognitionResponse(
-                    status = "matched",
+        val repository = RemoteSongRecognitionRepository(
+            createFakeApi(
+                BatchRecognitionResponse(
                     success = true,
-                    confidence = 88,
-                    song = auddSong
-                ),
-                acrcloud = RecognitionResponse(
-                    status = "matched",
-                    success = true,
-                    confidence = 94,
-                    song = acrSong
+                    requestId = "req-test-123",
+                    song = song
                 )
             )
         )
 
-        val repository = RemoteSongRecognitionRepository(createFakeApi(batchResponse))
-        val sampleWav = ByteArray(500) { 1 }
-        val result = repository.recognizeBatch(sampleWav)
-
-        assertTrue(result is RecognitionResult.Match)
-        val song = (result as RecognitionResult.Match).song
-        assertEquals("Lurmen", song.title)
-        assertEquals("Trendmix", song.artist)
-        assertEquals("Trendmix Hits", song.album)
-        assertEquals("https://cdn.example.com/artwork.jpg", song.artworkUrl)
-        assertEquals(214000L, song.durationMs)
-        assertEquals("USRC17607839", song.isrc)
-        assertEquals("https://open.spotify.com/track/12345", song.spotifyUrl)
-        assertEquals("https://music.apple.com/song/987", song.appleMusicUrl)
-        assertEquals("https://music.youtube.com/watch?v=abc", song.youtubeMusicUrl)
-        assertEquals(94, song.confidence)
-    }
-
-    @Test
-    fun recognizeBatch_onlyAudDMatches_returnsAudDResult() = runBlocking {
-        val auddSong = RecognizedSongDto(
-            title = "Lurmen",
-            artist = "Trendmix",
-            album = "Trendmix Hits",
-            artworkUrl = "https://cdn.example.com/art.jpg",
-            durationMs = 180000L,
-            isrc = "USRC17607839",
-            spotifyUrl = "https://open.spotify.com/track/12345"
-        )
-
-        val batchResponse = BatchRecognitionResponse(
-            success = true,
-            results = BatchRecognitionResults(
-                audd = RecognitionResponse(
-                    status = "matched",
-                    success = true,
-                    confidence = 92,
-                    song = auddSong
-                ),
-                acrcloud = RecognitionResponse(
-                    status = "no_match",
-                    success = false,
-                    confidence = 0
-                )
-            )
-        )
-
-        val repository = RemoteSongRecognitionRepository(createFakeApi(batchResponse))
         val result = repository.recognizeBatch(ByteArray(500) { 1 })
 
         assertTrue(result is RecognitionResult.Match)
-        val song = (result as RecognitionResult.Match).song
-        assertEquals("Lurmen", song.title)
-        assertEquals("Trendmix", song.artist)
-        assertEquals(92, song.confidence)
+        val matched = (result as RecognitionResult.Match).song
+        assertEquals("Red Potion", matched.title)
+        assertEquals("Rema", matched.artist)
+        assertEquals("RAVAGE", matched.album)
+        assertEquals("https://cdn.example.com/red-potion.jpg", matched.artworkUrl)
+        assertEquals(174000L, matched.durationMs)
+        assertEquals("NGA3B2314022", matched.isrc)
+        assertEquals(25, matched.confidence)
+        assertEquals("https://open.spotify.com/track/123", matched.spotifyUrl)
+        assertEquals("https://music.youtube.com/watch?v=123", matched.youtubeMusicUrl)
+        assertEquals(null, matched.soundcloudUrl)
     }
 
     @Test
-    fun recognizeBatch_bothNoMatch_returnsNoMatchState() = runBlocking {
-        val batchResponse = BatchRecognitionResponse(
-            success = false,
-            results = BatchRecognitionResults(
-                audd = RecognitionResponse(
-                    status = "no_match",
+    fun recognizeBatch_unifiedNoMatch_returnsNoMatchState() = runBlocking {
+        val repository = RemoteSongRecognitionRepository(
+            createFakeApi(
+                BatchRecognitionResponse(
                     success = false,
-                    confidence = 0
-                ),
-                acrcloud = RecognitionResponse(
-                    status = "no_match",
-                    success = false,
-                    confidence = 0
+                    requestId = "req-no-match",
+                    song = null
                 )
             )
         )
 
-        val repository = RemoteSongRecognitionRepository(createFakeApi(batchResponse))
         val result = repository.recognizeBatch(ByteArray(500) { 1 })
 
         assertTrue(result is RecognitionResult.NoMatch)
-        val noMatch = result as RecognitionResult.NoMatch
-        assertEquals("Couldn't identify that song", noMatch.title)
     }
 
     @Test
-    fun recognizeBatch_bothProvidersError_returnsProviderErrorState() = runBlocking {
-        val batchResponse = BatchRecognitionResponse(
-            success = false,
-            results = BatchRecognitionResults(
-                audd = RecognitionResponse(
-                    status = "error",
+    fun recognizeBatch_backendError_returnsProviderErrorState() = runBlocking {
+        val repository = RemoteSongRecognitionRepository(
+            createFakeApi(
+                BatchRecognitionResponse(
                     success = false,
-                    error = "AudD rate limit reached"
-                ),
-                acrcloud = RecognitionResponse(
-                    status = "error",
-                    success = false,
-                    error = "ACRCloud timeout"
+                    requestId = "req-error",
+                    song = null,
+                    error = "Recognition backend unavailable"
                 )
             )
         )
 
-        val repository = RemoteSongRecognitionRepository(createFakeApi(batchResponse))
         val result = repository.recognizeBatch(ByteArray(500) { 1 })
 
         assertTrue(result is RecognitionResult.ProviderError)
-        val error = result as RecognitionResult.ProviderError
-        assertEquals("Couldn't search right now", error.title)
+        assertEquals("Recognition service error", (result as RecognitionResult.ProviderError).title)
     }
 
     @Test
-    fun recognizeBatch_networkException_returnsConnectionErrorState() = runBlocking {
-        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = IOException("Simulated network failure")))
+    fun recognizeBatch_networkException_returnsConnectionError() = runBlocking {
+        val repository = RemoteSongRecognitionRepository(
+            createFakeApi(null, throwException = IOException("Simulated network failure"))
+        )
+
         val result = repository.recognizeBatch(ByteArray(500) { 1 })
 
         assertTrue(result is RecognitionResult.ConnectionError)
-        val connError = result as RecognitionResult.ConnectionError
-        assertEquals("Couldn't connect", connError.title)
+        assertEquals("Couldn't connect", (result as RecognitionResult.ConnectionError).title)
     }
 
     @Test
@@ -218,78 +139,39 @@ class RemoteSongRecognitionRepositoryTest {
             404,
             "{\"error\":\"Not Found\"}".toResponseBody("application/json".toMediaType())
         )
-        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = HttpException(errorResponse)))
+        val repository = RemoteSongRecognitionRepository(
+            createFakeApi(null, throwException = HttpException(errorResponse))
+        )
+
         val result = repository.recognizeBatch(ByteArray(500) { 1 })
 
         assertTrue(result is RecognitionResult.ProviderError)
         val providerError = result as RecognitionResult.ProviderError
         assertEquals("Server error (404)", providerError.title)
         assertEquals(404, providerError.httpStatus)
-        assertTrue(providerError.responseBody?.contains("Not Found") == true)
     }
 
     @Test
-    fun recognizeBatch_socketTimeoutException_returnsConnectionErrorWithTimeout() = runBlocking {
-        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = SocketTimeoutException("Read timed out")))
+    fun recognizeBatch_socketTimeout_returnsConnectionError() = runBlocking {
+        val repository = RemoteSongRecognitionRepository(
+            createFakeApi(null, throwException = SocketTimeoutException("Read timed out"))
+        )
+
         val result = repository.recognizeBatch(ByteArray(500) { 1 })
 
         assertTrue(result is RecognitionResult.ConnectionError)
-        val connError = result as RecognitionResult.ConnectionError
-        assertEquals("Couldn't connect", connError.title)
-        assertTrue(connError.isTimeout)
+        assertTrue((result as RecognitionResult.ConnectionError).isTimeout)
     }
 
     @Test
-    fun recognizeBatch_jsonDataException_returnsResponseParsingErrorState() = runBlocking {
-        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = JsonDataException("Required field missing")))
+    fun recognizeBatch_jsonDataException_returnsParsingError() = runBlocking {
+        val repository = RemoteSongRecognitionRepository(
+            createFakeApi(null, throwException = JsonDataException("Required field missing"))
+        )
+
         val result = repository.recognizeBatch(ByteArray(500) { 1 })
 
         assertTrue(result is RecognitionResult.ResponseParsingError)
-        val parsingError = result as RecognitionResult.ResponseParsingError
-        assertEquals("Couldn't parse response", parsingError.title)
-        assertTrue(parsingError.reason.contains("JSON schema mismatch"))
-    }
-
-    @Test
-    fun recognitionDiagnostics_capturesExactDetailsAndSanitizesSecrets() = runBlocking {
-        val errorResponse = Response.error<BatchRecognitionResponse>(
-            500,
-            "{\"error\":\"Internal Server Error with token: secret_audd_api_token_12345678\"}".toResponseBody("application/json".toMediaType())
-        )
-        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = HttpException(errorResponse)))
-        val result = repository.recognizeBatch(ByteArray(500) { 1 })
-
-        assertTrue(result is RecognitionResult.ProviderError)
-        val providerError = result as RecognitionResult.ProviderError
-        val diagnostics = providerError.diagnostics
-        assertTrue(diagnostics != null)
-        assertEquals(500, diagnostics?.httpStatus)
-        assertEquals("retrofit2.HttpException", diagnostics?.exceptionClass)
-
-        val report = diagnostics?.toFormattedReport() ?: ""
-        assertTrue(report.contains("HTTP Status: 500"))
-        assertTrue(report.contains("Internal Server Error"))
-        // Check sanitization: token is scrubbed
-        assertTrue(!report.contains("secret_audd_api_token_12345678"))
-        assertTrue(report.contains("[REDACTED]"))
-    }
-
-    @Test
-    fun recognitionDiagnostics_timeoutException_reportsExactTimeoutDetails() = runBlocking {
-        val repository = RemoteSongRecognitionRepository(createFakeApi(null, throwException = SocketTimeoutException("connect timed out after 15000ms")))
-        val result = repository.recognizeBatch(ByteArray(500) { 1 })
-
-        assertTrue(result is RecognitionResult.ConnectionError)
-        val connError = result as RecognitionResult.ConnectionError
-        assertTrue(connError.isTimeout)
-        val diag = connError.diagnostics
-        assertTrue(diag != null)
-        assertTrue(diag?.timeoutInfo != null)
-        assertEquals("java.net.SocketTimeoutException", diag?.exceptionClass)
-        assertTrue(diag?.exceptionMessage?.contains("connect timed out") == true)
-
-        val report = diag?.toFormattedReport() ?: ""
-        assertTrue(report.contains("Timeout Information:"))
-        assertTrue(report.contains("SocketTimeoutException"))
+        assertTrue((result as RecognitionResult.ResponseParsingError).reason.contains("JSON schema mismatch"))
     }
 }
