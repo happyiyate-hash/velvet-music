@@ -963,46 +963,8 @@ private fun SmokyAtmosphericCardBackground(
         label = "bass_phase"
     )
 
-    val fieldImpulse1 = remember { Animatable(0f) }
-    val fieldImpulse2 = remember { Animatable(0f) }
-    val fieldImpulse3 = remember { Animatable(0f) }
-
-    val snapBeat = isPlaying && (
-        telemetry.kickDetected ||
-        telemetry.snareDetected ||
-        telemetry.transientSpike >= 0.84f
-    )
-
-    /*
-     * A beat is a spatial nudge, not a brightness event.
-     * Each field gets a different impulse size so the colors separate rather
-     * than moving as one synchronized layer.
-     */
-    LaunchedEffect(snapBeat) {
-        if (snapBeat) {
-            launch {
-                fieldImpulse1.snapTo(1f)
-                fieldImpulse1.animateTo(
-                    0f,
-                    tween(1250, easing = FastOutSlowInEasing)
-                )
-            }
-            launch {
-                fieldImpulse2.snapTo(0.82f)
-                fieldImpulse2.animateTo(
-                    0f,
-                    tween(1500, easing = FastOutSlowInEasing)
-                )
-            }
-            launch {
-                fieldImpulse3.snapTo(0.68f)
-                fieldImpulse3.animateTo(
-                    0f,
-                    tween(1750, easing = FastOutSlowInEasing)
-                )
-            }
-        }
-    }
+    // The atmosphere is intentionally continuous. Audio telemetry is not allowed to
+    // reposition the color fields, which prevents beat-by-beat flashing or jumping.
 
     val bassTarget = if (isPlaying) {
         ((telemetry.sustainedEnergy - 0.48f) / 0.52f).coerceIn(0f, 0.34f)
@@ -1037,23 +999,21 @@ private fun SmokyAtmosphericCardBackground(
         val x1 = w * (
             0.08f +
                 0.72f * ((sin(phase1) + 1f) * 0.5f) +
-                0.10f * i1 * cos(phase1 * 0.7f) +
-                0.055f * bassX
+                0.018f * bassX
         )
         val y1 = h * (
             0.08f +
                 0.58f * ((cos(phase1 * 0.73f) + 1f) * 0.5f) +
-                0.13f * i1 * sin(phase1 * 0.61f) +
-                0.045f * bassY
+                0.018f * bassY
         )
         val radius1 = maxOf(w, h) * 0.62f
 
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color1.copy(alpha = 0.38f),
-                    color1.copy(alpha = 0.22f),
-                    color1.copy(alpha = 0.08f),
+                    color1.copy(alpha = 0.62f),
+                    color1.copy(alpha = 0.36f),
+                    color1.copy(alpha = 0.14f),
                     Color.Transparent
                 ),
                 center = Offset(x1, y1),
@@ -1068,23 +1028,21 @@ private fun SmokyAtmosphericCardBackground(
         val x2 = w * (
             0.76f +
                 0.18f * cos(phase2 * 0.67f) -
-                0.12f * i2 * sin(phase2) +
-                0.045f * bassY
+                0.014f * bassY
         )
         val y2 = h * (
             0.18f +
                 0.62f * ((sin(phase2 * 0.81f) + 1f) * 0.5f) +
-                0.11f * i2 * cos(phase2 * 0.58f) -
-                0.05f * bassX
+                -0.014f * bassX
         )
         val radius2 = maxOf(w, h) * 0.58f
 
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color2.copy(alpha = 0.34f),
-                    color2.copy(alpha = 0.19f),
-                    color2.copy(alpha = 0.07f),
+                    color2.copy(alpha = 0.56f),
+                    color2.copy(alpha = 0.32f),
+                    color2.copy(alpha = 0.12f),
                     Color.Transparent
                 ),
                 center = Offset(x2, y2),
@@ -1099,23 +1057,21 @@ private fun SmokyAtmosphericCardBackground(
         val x3 = w * (
             0.50f +
                 0.40f * sin(phase3 * 0.59f) +
-                0.10f * i3 * cos(phase3 * 0.77f) -
-                0.04f * bassY
+                -0.012f * bassY
         )
         val y3 = h * (
             0.55f +
                 0.38f * cos(phase3 * 0.47f) +
-                0.09f * i3 * sin(phase3 * 0.68f) +
-                0.045f * bassX
+                0.012f * bassX
         )
         val radius3 = maxOf(w, h) * 0.48f
 
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color3.copy(alpha = 0.30f),
-                    color3.copy(alpha = 0.16f),
-                    color3.copy(alpha = 0.05f),
+                    color3.copy(alpha = 0.50f),
+                    color3.copy(alpha = 0.28f),
+                    color3.copy(alpha = 0.10f),
                     Color.Transparent
                 ),
                 center = Offset(x3, y3),
@@ -1125,38 +1081,14 @@ private fun SmokyAtmosphericCardBackground(
             radius = radius3
         )
 
-        // A broad moving ash field periodically reveals the neutral base between colors.
-        val ashX = w * (
-            0.50f +
-                0.42f * sin(ashPhase * 0.67f)
-        )
-        val ashY = h * (
-            0.42f +
-                0.42f * cos(ashPhase * 0.51f)
-        )
-        val ashRadius = maxOf(w, h) * 0.52f
-
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    ashGray.copy(alpha = 0.56f),
-                    ashGray.copy(alpha = 0.22f),
-                    Color.Transparent
-                ),
-                center = Offset(ashX, ashY),
-                radius = ashRadius
-            ),
-            center = Offset(ashX, ashY),
-            radius = ashRadius
-        )
-
-        // Keep the overall image dark and premium without synchronizing a pulse.
+        // No opaque ash veil: artwork colors remain visible and luminous.
+        // A very light edge vignette keeps text readable without crushing the palette.
         drawRect(
             brush = Brush.linearGradient(
                 colors = listOf(
-                    ashDeep.copy(alpha = 0.10f),
+                    ashDeep.copy(alpha = 0.02f),
                     Color.Transparent,
-                    ashDeep.copy(alpha = 0.16f)
+                    ashDeep.copy(alpha = 0.05f)
                 ),
                 start = Offset(0f, 0f),
                 end = Offset(w, h)
