@@ -82,13 +82,20 @@ jobs:
           else
             echo "No permanent release keystore configured; generating an ephemeral signing keystore for this build."
 
+            # Use one generated password for both the keystore and the upload key.
+            # This avoids key-decryption mismatches on the ephemeral fallback path.
             STORE_PASSWORD="$(openssl rand -hex 24)"
-            KEY_PASSWORD="$(openssl rand -hex 24)"
+            KEY_PASSWORD="${STORE_PASSWORD}"
 
             keytool -genkeypair               -keystore my-upload-key.jks               -storepass "${STORE_PASSWORD}"               -keypass "${KEY_PASSWORD}"               -alias upload               -keyalg RSA               -keysize 4096               -validity 10000               -dname "CN=Velvet Music, OU=Android, O=Velvet Music, L=Unknown, ST=Unknown, C=NG"
 
             chmod 600 my-upload-key.jks
-            echo "Ephemeral release keystore generated successfully."
+
+            # Validate the exact alias/password pair that Gradle will use.
+            keytool -list -v               -keystore my-upload-key.jks               -storepass "${STORE_PASSWORD}"               -alias upload               >/dev/null
+            keytool -exportcert               -keystore my-upload-key.jks               -storepass "${STORE_PASSWORD}"               -alias upload               >/dev/null
+
+            echo "Ephemeral release keystore generated and verified successfully."
           fi
 
           # Pass the selected/generated signing configuration to the Gradle step.
