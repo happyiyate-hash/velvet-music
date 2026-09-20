@@ -898,32 +898,56 @@ private fun SmokyAtmosphericCardBackground(
     telemetry: AudioTelemetry = AudioTelemetry(),
     modifier: Modifier = Modifier
 ) {
-    // Exact ashes gray that is in the app background
+    // Keep the app's exact ash-gray as the permanent foundation.
     val appAshesGray = Color(0xFF16181F)
     val appAshesDeep = Color(0xFF121319)
-
-    // The track's artwork color (dominant tone, e.g. red, burgundy, purple, etc.)
     val trackColor = themeColors.dominant
 
-    // Ultra-slow, seamless transition of the track color when the song changes (3 seconds)
+    // Only the color itself changes when the track changes; make that transition gentle.
     val animatedTrackColor by animateColorAsState(
         targetValue = trackColor,
-        animationSpec = tween(durationMillis = 3000, easing = LinearEasing),
+        animationSpec = tween(durationMillis = 7000, easing = LinearEasing),
         label = "anim_track_color"
     )
 
-    // Ultra-slow, smooth, continuous fluid drift (48 seconds cycle).
-    // NO jumping, NO splashing, NO sudden peaks or flashing.
-    // Both the artwork color and the ashes gray slowly glide and mix across different parts of the card.
-    val infiniteTransition = rememberInfiniteTransition(label = "fluid_drift")
-    val phase by infiniteTransition.animateFloat(
+    /*
+     * Very slow independent atmospheric motion.
+     *
+     * The previous version used several synchronized/high-contrast moving layers,
+     * which could read as flashing even though the cycle was long. Here each soft
+     * color field has its own much longer cycle and travels on a different path.
+     * The artwork color stays localized while ash-gray remains visible everywhere else.
+     */
+    val infiniteTransition = rememberInfiniteTransition(label = "slow_atmosphere")
+
+    val colorPhaseA by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 48000, easing = LinearEasing),
+            animation = tween(durationMillis = 110000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "drift_phase"
+        label = "color_phase_a"
+    )
+
+    val colorPhaseB by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 145000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "color_phase_b"
+    )
+
+    val ashPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 175000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ash_phase"
     )
 
     Canvas(modifier = modifier) {
@@ -931,127 +955,94 @@ private fun SmokyAtmosphericCardBackground(
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
-        // 1. Foundation: The exact ashes gray from the app
+        // 1. Permanent ash-gray base: this always occupies most of the surface.
         drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    appAshesGray,
-                    appAshesDeep,
-                    appAshesGray
-                ),
-                startY = 0f,
-                endY = h
-            )
+            color = appAshesGray
         )
 
-        // 2. Slow drifting gradient across the card: mixing the track color and ashes gray
-        // The angle and positions slowly migrate so different sides show red or ashes gray over time.
-        val gradStartX = w * (0.20f + 0.25f * sin(phase * 0.70f))
-        val gradStartY = h * (0.15f + 0.20f * cos(phase * 0.50f))
-        val gradEndX = w * (0.80f - 0.25f * cos(phase * 0.60f))
-        val gradEndY = h * (0.85f - 0.20f * sin(phase * 0.80f))
+        // Convert the very slow phases into gentle, independent positions.
+        // Each field travels in a different direction instead of pulsing in sync.
+        val a = colorPhaseA * (2f * Math.PI.toFloat())
+        val b = colorPhaseB * (2f * Math.PI.toFloat())
+        val c = ashPhase * (2f * Math.PI.toFloat())
 
+        // 2. First artwork-color field: slowly travels from upper-left toward lower-right.
+        val colorAX = w * (0.18f + 0.28f * ((sin(a) + 1f) * 0.5f))
+        val colorAY = h * (0.22f + 0.34f * ((cos(a * 0.72f) + 1f) * 0.5f))
+        val colorRadiusA = maxOf(w, h) * 0.72f
+
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    animatedTrackColor.copy(alpha = 0.24f),
+                    animatedTrackColor.copy(alpha = 0.13f),
+                    Color.Transparent
+                ),
+                center = Offset(colorAX, colorAY),
+                radius = colorRadiusA
+            ),
+            center = Offset(colorAX, colorAY),
+            radius = colorRadiusA
+        )
+
+        // 3. Second artwork-color field: independent, slower, and on the opposite side.
+        val colorBX = w * (0.76f - 0.30f * ((cos(b) + 1f) * 0.5f))
+        val colorBY = h * (0.70f - 0.26f * ((sin(b * 0.68f) + 1f) * 0.5f))
+        val colorRadiusB = maxOf(w, h) * 0.60f
+
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    animatedTrackColor.copy(alpha = 0.16f),
+                    animatedTrackColor.copy(alpha = 0.08f),
+                    Color.Transparent
+                ),
+                center = Offset(colorBX, colorBY),
+                radius = colorRadiusB
+            ),
+            center = Offset(colorBX, colorBY),
+            radius = colorRadiusB
+        )
+
+        // 4. A soft ash-gray field drifts independently through the colored fields.
+        // This keeps clear ash-gray regions visible instead of tinting the whole card.
+        val ashX = w * (0.78f - 0.34f * ((sin(c * 0.82f) + 1f) * 0.5f))
+        val ashY = h * (0.20f + 0.50f * ((cos(c * 0.61f) + 1f) * 0.5f))
+        val ashRadius = maxOf(w, h) * 0.68f
+
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    appAshesGray.copy(alpha = 0.78f),
+                    appAshesDeep.copy(alpha = 0.32f),
+                    Color.Transparent
+                ),
+                center = Offset(ashX, ashY),
+                radius = ashRadius
+            ),
+            center = Offset(ashX, ashY),
+            radius = ashRadius
+        )
+
+        // 5. Very subtle diagonal blending veil. No pulsing and no extra hue.
         drawRect(
             brush = Brush.linearGradient(
                 colors = listOf(
-                    animatedTrackColor.copy(alpha = 0.38f),
-                    appAshesGray.copy(alpha = 0.50f),
-                    animatedTrackColor.copy(alpha = 0.32f),
-                    appAshesGray.copy(alpha = 0.65f)
+                    appAshesGray.copy(alpha = 0.16f),
+                    Color.Transparent,
+                    appAshesDeep.copy(alpha = 0.22f)
                 ),
-                start = Offset(gradStartX, gradStartY),
-                end = Offset(gradEndX, gradEndY)
+                start = Offset(0f, h * 0.08f),
+                end = Offset(w, h * 0.92f)
             )
         )
 
-        val maxDimension = maxOf(w, h)
-
-        // 3. First Moving Cloud: Artwork color (e.g. red)
-        // Moves slowly around one part of the card, shifting gently between top, sides, and center
-        val c1x = w * (0.35f + 0.22f * sin(phase))
-        val c1y = h * (0.32f + 0.18f * cos(phase * 0.85f))
-        val r1 = maxDimension * 0.85f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    animatedTrackColor.copy(alpha = 0.44f),
-                    animatedTrackColor.copy(alpha = 0.18f),
-                    Color.Transparent
-                ),
-                center = Offset(c1x, c1y),
-                radius = r1
-            ),
-            center = Offset(c1x, c1y),
-            radius = r1
-        )
-
-        // 4. Second Moving Cloud: The exact Ashes Gray
-        // Moves through the other side of the card, naturally blending and ensuring that side shows ashes gray
-        val c2x = w * (0.70f - 0.22f * cos(phase * 0.90f))
-        val c2y = h * (0.65f - 0.18f * sin(phase * 0.75f))
-        val r2 = maxDimension * 0.90f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    appAshesGray.copy(alpha = 0.75f),
-                    appAshesDeep.copy(alpha = 0.45f),
-                    Color.Transparent
-                ),
-                center = Offset(c2x, c2y),
-                radius = r2
-            ),
-            center = Offset(c2x, c2y),
-            radius = r2
-        )
-
-        // 5. Third Moving Cloud: A balanced soft bloom of the track color drifting on the opposite diagonal
-        val c3x = w * (0.55f + 0.20f * sin(phase * 0.65f + 2.0f))
-        val c3y = h * (0.75f + 0.15f * cos(phase * 0.70f + 1.5f))
-        val r3 = maxDimension * 0.80f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    animatedTrackColor.copy(alpha = 0.35f),
-                    animatedTrackColor.copy(alpha = 0.12f),
-                    Color.Transparent
-                ),
-                center = Offset(c3x, c3y),
-                radius = r3
-            ),
-            center = Offset(c3x, c3y),
-            radius = r3
-        )
-
-        // 6. Fourth Moving Cloud: Soft ashes gray wash drifting along the top/corners
-        val c4x = w * (0.25f + 0.18f * cos(phase * 0.80f + 3.0f))
-        val c4y = h * (0.20f + 0.14f * sin(phase * 0.60f + 2.5f))
-        val r4 = maxDimension * 0.75f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    appAshesGray.copy(alpha = 0.60f),
-                    Color.Transparent
-                ),
-                center = Offset(c4x, c4y),
-                radius = r4
-            ),
-            center = Offset(c4x, c4y),
-            radius = r4
-        )
-
-        // 7. Soft vertical contrast veil at top and bottom to guarantee legible text and UI controls
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    appAshesGray.copy(alpha = 0.35f),
-                    Color.Transparent,
-                    Color.Transparent,
-                    appAshesDeep.copy(alpha = 0.55f)
-                ),
-                startY = 0f,
-                endY = h
-            )
-        )
+        // telemetry/isPlaying intentionally do not drive the background speed or brightness.
+        // The atmosphere should remain calm and independent from beat/FFT activity.
+        @Suppress("UNUSED_VARIABLE")
+        val _isPlaying = isPlaying
+        @Suppress("UNUSED_VARIABLE")
+        val _telemetry = telemetry
     }
 }
 
