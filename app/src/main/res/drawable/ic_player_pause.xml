@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <!-- Left bar: x=19, y=15, width=10, height=34, rx=5 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,15 C26.76,15 29,17.24 29,20 V44 C29,46.76 26.76,49 24,49 C21.24,49 19,46.76 19,44 V20 C19,17.24 21.24,15 24,15 Z" />
+    <!-- Right bar: x=35, y=15, width=10, height=34, rx=5 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,15 C42.76,15 45,17.24 45,20 V44 C45,46.76 42.76,49 40,49 C37.24,49 35,46.76 35,44 V20 C35,17.24 37.24,15 40,15 Z" />
+</vector>

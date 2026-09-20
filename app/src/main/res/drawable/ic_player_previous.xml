@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <!-- Triangle -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,18 C44,16.3 42,15.4 40.7,16.5 L23.5,30.5 C21.5,32.1 21.5,31.9 23.5,33.5 L40.7,47.5 C42,48.6 44,47.7 44,46 Z" />
+    <!-- Bar: x=13, y=16, width=6, height=32, rx=3 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M16,16 C17.66,16 19,17.34 19,19 V45 C19,46.66 17.66,48 16,48 C14.34,48 13,46.66 13,45 V19 C13,17.34 14.34,16 16,16 Z" />
+</vector>

@@ -277,20 +277,23 @@ fun AshGlassMiniPlayerBar(
                             .background(Color(0xFFE51B3E)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        if (isPlaying) {
+                            PlayerPauseIcon(
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
+                        } else {
+                            PlayerPlayIcon(
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
+                        }
                     }
                 }
                 IconButton(modifier = Modifier.size(34.dp).testTag("mini_player_skip_next"), onClick = onSkipNext) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Next Track",
-                        tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(20.dp)
+                    PlayerNextIcon(
+                        modifier = Modifier.size(18.dp),
+                        tint = Color.White
                     )
                 }
             }
