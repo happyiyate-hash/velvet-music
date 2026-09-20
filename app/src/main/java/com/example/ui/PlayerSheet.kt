@@ -898,123 +898,122 @@ private fun SmokyAtmosphericCardBackground(
     telemetry: AudioTelemetry = AudioTelemetry(),
     modifier: Modifier = Modifier
 ) {
-    // Permanent app ash-gray foundation.
-    val appAshesGray = Color(0xFF16181F)
-    val appAshesDeep = Color(0xFF121319)
-    val trackColor = themeColors.dominant
+    // Keep ash-gray as the foundation, but let the artwork contribute a real palette.
+    val ashGray = Color(0xFF17191F)
+    val ashDeep = Color(0xFF111319)
 
-    // Song-to-song color changes remain slow and calm.
-    val animatedTrackColor by animateColorAsState(
-        targetValue = trackColor,
-        animationSpec = tween(durationMillis = 7000, easing = LinearEasing),
-        label = "anim_track_color"
+    val palette1 = themeColors.ambient1
+    val palette2 = themeColors.ambient2
+    val palette3 = themeColors.ambient3
+
+    // Song-to-song palette changes are deliberately slow.
+    val color1 by animateColorAsState(
+        targetValue = palette1,
+        animationSpec = tween(6000, easing = LinearEasing),
+        label = "ambient_color_1"
+    )
+    val color2 by animateColorAsState(
+        targetValue = palette2,
+        animationSpec = tween(7200, easing = LinearEasing),
+        label = "ambient_color_2"
+    )
+    val color3 by animateColorAsState(
+        targetValue = palette3,
+        animationSpec = tween(8400, easing = LinearEasing),
+        label = "ambient_color_3"
     )
 
     /*
-     * The atmosphere has two layers of motion:
-     *
-     * 1. Base drift: extremely slow, independent color/ash fields.
-     * 2. Audio reactions: a detected transient/kick/snare gently turns each field
-     *    toward a new direction, while a strong sustained bass creates a subtle
-     *    physical-looking vibration.
-     *
-     * The audio reaction never changes the brightness abruptly, so beats feel like
-     * a push through the atmosphere rather than a flash.
+     * Shazam-style atmosphere:
+     * - Several actual colors sampled from the artwork.
+     * - Each color is its own soft moving field.
+     * - Fields continuously travel on different long paths and can pass/reveal
+     *   different parts of the screen.
+     * - Audio never changes opacity or flashes the whole background.
+     * - A beat only gives each field a small positional impulse.
+     * - Sustained bass gives the fields a soft physical wobble.
      */
-    val infiniteTransition = rememberInfiniteTransition(label = "slow_atmosphere")
+    val infiniteTransition = rememberInfiniteTransition(label = "palette_atmosphere")
 
-    val colorPhaseA by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 110000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "color_phase_a"
+    val phase1 by infiniteTransition.animateFloat(
+        0f, (2f * Math.PI).toFloat(),
+        infiniteRepeatable(tween(78000, easing = LinearEasing), RepeatMode.Restart),
+        label = "palette_phase_1"
     )
-
-    val colorPhaseB by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 145000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "color_phase_b"
+    val phase2 by infiniteTransition.animateFloat(
+        (Math.PI * 0.9).toFloat(), (Math.PI * 2.9).toFloat(),
+        infiniteRepeatable(tween(101000, easing = LinearEasing), RepeatMode.Restart),
+        label = "palette_phase_2"
     )
-
+    val phase3 by infiniteTransition.animateFloat(
+        (Math.PI * 1.7).toFloat(), (Math.PI * 3.7).toFloat(),
+        infiniteRepeatable(tween(127000, easing = LinearEasing), RepeatMode.Restart),
+        label = "palette_phase_3"
+    )
     val ashPhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 175000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
+        (Math.PI * 0.35).toFloat(), (Math.PI * 2.35).toFloat(),
+        infiniteRepeatable(tween(149000, easing = LinearEasing), RepeatMode.Restart),
         label = "ash_phase"
     )
 
-    // A separate, gentle vibration clock. It is only visible while sustained bass is strong.
-    val bassClock by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "bass_vibration_clock"
+    // A slower wobble clock for sustained bass. It never changes color brightness.
+    val bassPhase by infiniteTransition.animateFloat(
+        0f, (2f * Math.PI).toFloat(),
+        infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Restart),
+        label = "bass_phase"
     )
 
-    val beatPush = remember { Animatable(0f) }
-    val directionTurn = remember { Animatable(0f) }
+    val fieldImpulse1 = remember { Animatable(0f) }
+    val fieldImpulse2 = remember { Animatable(0f) }
+    val fieldImpulse3 = remember { Animatable(0f) }
 
-    // Only fire on the rising edge of an actual audio event. The engine already
-    // exposes real FFT-derived kick/snare/transient telemetry.
     val snapBeat = isPlaying && (
         telemetry.kickDetected ||
         telemetry.snareDetected ||
         telemetry.transientSpike >= 0.84f
     )
 
+    /*
+     * A beat is a spatial nudge, not a brightness event.
+     * Each field gets a different impulse size so the colors separate rather
+     * than moving as one synchronized layer.
+     */
     LaunchedEffect(snapBeat) {
         if (snapBeat) {
-            // Every beat rotates the travel direction by another quarter turn.
-            // Different fields use different fractions of this turn, so they never
-            // move as one synchronized blob.
-            val nextTurn = directionTurn.value + (Math.PI.toFloat() * 0.5f)
             launch {
-                directionTurn.animateTo(
-                    targetValue = nextTurn,
-                    animationSpec = tween(
-                        durationMillis = 1150,
-                        easing = FastOutSlowInEasing
-                    )
+                fieldImpulse1.snapTo(1f)
+                fieldImpulse1.animateTo(
+                    0f,
+                    tween(1250, easing = FastOutSlowInEasing)
                 )
             }
             launch {
-                beatPush.snapTo(1f)
-                beatPush.animateTo(
-                    targetValue = 0f,
-                    animationSpec = tween(
-                        durationMillis = 950,
-                        easing = FastOutSlowInEasing
-                    )
+                fieldImpulse2.snapTo(0.82f)
+                fieldImpulse2.animateTo(
+                    0f,
+                    tween(1500, easing = FastOutSlowInEasing)
+                )
+            }
+            launch {
+                fieldImpulse3.snapTo(0.68f)
+                fieldImpulse3.animateTo(
+                    0f,
+                    tween(1750, easing = FastOutSlowInEasing)
                 )
             }
         }
     }
 
-    // Sustained low-frequency energy controls the strength of the slow vibration.
-    // It ramps in/out over hundreds of milliseconds rather than blinking on/off.
-    val bassStrengthTarget = if (isPlaying) {
-        ((telemetry.sustainedEnergy - 0.52f) / 0.48f).coerceIn(0f, 0.42f)
+    val bassTarget = if (isPlaying) {
+        ((telemetry.sustainedEnergy - 0.48f) / 0.52f).coerceIn(0f, 0.34f)
     } else {
         0f
     }
 
     val bassStrength by animateFloatAsState(
-        targetValue = bassStrengthTarget,
-        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
-        label = "bass_vibration_strength"
+        targetValue = bassTarget,
+        animationSpec = tween(750, easing = FastOutSlowInEasing),
+        label = "bass_strength"
     )
 
     Canvas(modifier = modifier) {
@@ -1022,108 +1021,126 @@ private fun SmokyAtmosphericCardBackground(
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
-        // 1. Permanent ash-gray base.
-        drawRect(color = appAshesGray)
+        // Permanent neutral base. The artwork colors sit on top of it.
+        drawRect(color = ashGray)
 
-        val a = colorPhaseA * (2f * Math.PI.toFloat())
-        val b = colorPhaseB * (2f * Math.PI.toFloat())
-        val c = ashPhase * (2f * Math.PI.toFloat())
+        val bass = bassStrength
+        val bassX = sin(bassPhase) * bass
+        val bassY = cos(bassPhase * 0.83f) * bass
 
-        val turn = directionTurn.value
-        val push = beatPush.value
-        val vibration = sin(bassClock)
+        val i1 = fieldImpulse1.value
+        val i2 = fieldImpulse2.value
+        val i3 = fieldImpulse3.value
 
-        // Beat push vector. It rotates as each new beat changes the global direction state.
-        val pushX = cos(turn) * push
-        val pushY = sin(turn) * push
+        // FIELD 1 — warm/primary artwork color.
+        // Long diagonal path with a small beat-driven displacement.
+        val x1 = w * (
+            0.08f +
+                0.72f * ((sin(phase1) + 1f) * 0.5f) +
+                0.10f * i1 * cos(phase1 * 0.7f) +
+                0.055f * bassX
+        )
+        val y1 = h * (
+            0.08f +
+                0.58f * ((cos(phase1 * 0.73f) + 1f) * 0.5f) +
+                0.13f * i1 * sin(phase1 * 0.61f) +
+                0.045f * bassY
+        )
+        val radius1 = maxOf(w, h) * 0.62f
 
-        // Bass vibration vector. Each field receives a different phase/fraction,
-        // making the atmosphere feel like separate masses responding independently.
-        val bassAX = vibration * bassStrength
-        val bassAY = cos(bassClock * 0.82f) * bassStrength
-        val bassBX = cos(bassClock * 0.91f) * bassStrength
-        val bassBY = sin(bassClock * 1.08f) * bassStrength
-        val bassCX = sin(bassClock * 0.74f) * bassStrength
-        val bassCY = cos(bassClock * 0.67f) * bassStrength
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    color1.copy(alpha = 0.38f),
+                    color1.copy(alpha = 0.22f),
+                    color1.copy(alpha = 0.08f),
+                    Color.Transparent
+                ),
+                center = Offset(x1, y1),
+                radius = radius1
+            ),
+            center = Offset(x1, y1),
+            radius = radius1
+        )
 
-        // 2. Artwork-color field A: very slow drift + beat direction + bass vibration.
-        val colorAX = w * (
+        // FIELD 2 — secondary artwork color.
+        // Its path is intentionally unrelated to field 1.
+        val x2 = w * (
+            0.76f +
+                0.18f * cos(phase2 * 0.67f) -
+                0.12f * i2 * sin(phase2) +
+                0.045f * bassY
+        )
+        val y2 = h * (
             0.18f +
-                0.28f * ((sin(a + turn) + 1f) * 0.5f) +
-                pushX * 0.13f +
-                bassAX * 0.10f
+                0.62f * ((sin(phase2 * 0.81f) + 1f) * 0.5f) +
+                0.11f * i2 * cos(phase2 * 0.58f) -
+                0.05f * bassX
         )
-        val colorAY = h * (
-            0.22f +
-                0.34f * ((cos(a * 0.72f + turn * 0.72f) + 1f) * 0.5f) +
-                pushY * 0.12f +
-                bassAY * 0.08f
-        )
-        val colorRadiusA = maxOf(w, h) * 0.72f
+        val radius2 = maxOf(w, h) * 0.58f
 
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    animatedTrackColor.copy(alpha = 0.24f),
-                    animatedTrackColor.copy(alpha = 0.13f),
+                    color2.copy(alpha = 0.34f),
+                    color2.copy(alpha = 0.19f),
+                    color2.copy(alpha = 0.07f),
                     Color.Transparent
                 ),
-                center = Offset(colorAX, colorAY),
-                radius = colorRadiusA
+                center = Offset(x2, y2),
+                radius = radius2
             ),
-            center = Offset(colorAX, colorAY),
-            radius = colorRadiusA
+            center = Offset(x2, y2),
+            radius = radius2
         )
 
-        // 3. Artwork-color field B: moves independently in the opposite direction.
-        val colorBX = w * (
-            0.76f -
-                0.30f * ((cos(b - turn * 0.82f) + 1f) * 0.5f) -
-                pushY * 0.11f +
-                bassBX * 0.07f
+        // FIELD 3 — accent artwork color.
+        // Smaller, more mobile field that crosses into different regions over time.
+        val x3 = w * (
+            0.50f +
+                0.40f * sin(phase3 * 0.59f) +
+                0.10f * i3 * cos(phase3 * 0.77f) -
+                0.04f * bassY
         )
-        val colorBY = h * (
-            0.70f -
-                0.26f * ((sin(b * 0.68f - turn * 0.62f) + 1f) * 0.5f) +
-                pushX * 0.10f +
-                bassBY * 0.09f
+        val y3 = h * (
+            0.55f +
+                0.38f * cos(phase3 * 0.47f) +
+                0.09f * i3 * sin(phase3 * 0.68f) +
+                0.045f * bassX
         )
-        val colorRadiusB = maxOf(w, h) * 0.60f
+        val radius3 = maxOf(w, h) * 0.48f
 
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    animatedTrackColor.copy(alpha = 0.16f),
-                    animatedTrackColor.copy(alpha = 0.08f),
+                    color3.copy(alpha = 0.30f),
+                    color3.copy(alpha = 0.16f),
+                    color3.copy(alpha = 0.05f),
                     Color.Transparent
                 ),
-                center = Offset(colorBX, colorBY),
-                radius = colorRadiusB
+                center = Offset(x3, y3),
+                radius = radius3
             ),
-            center = Offset(colorBX, colorBY),
-            radius = colorRadiusB
+            center = Offset(x3, y3),
+            radius = radius3
         )
 
-        // 4. Ash-gray field: counter-rotates independently and remains clearly visible.
+        // A broad moving ash field periodically reveals the neutral base between colors.
         val ashX = w * (
-            0.78f -
-                0.34f * ((sin(c + turn * 1.15f) + 1f) * 0.5f) +
-                pushX * 0.08f +
-                bassCX * 0.06f
+            0.50f +
+                0.42f * sin(ashPhase * 0.67f)
         )
         val ashY = h * (
-            0.20f +
-                0.50f * ((cos(c * 0.61f + turn * 1.08f) + 1f) * 0.5f) +
-                pushY * 0.09f +
-                bassCY * 0.06f
+            0.42f +
+                0.42f * cos(ashPhase * 0.51f)
         )
-        val ashRadius = maxOf(w, h) * 0.68f
+        val ashRadius = maxOf(w, h) * 0.52f
 
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    appAshesGray.copy(alpha = 0.78f),
-                    appAshesDeep.copy(alpha = 0.32f),
+                    ashGray.copy(alpha = 0.56f),
+                    ashGray.copy(alpha = 0.22f),
                     Color.Transparent
                 ),
                 center = Offset(ashX, ashY),
@@ -1133,16 +1150,16 @@ private fun SmokyAtmosphericCardBackground(
             radius = ashRadius
         )
 
-        // 5. Static/subtle contrast veil. No flashing, no extra hue.
+        // Keep the overall image dark and premium without synchronizing a pulse.
         drawRect(
             brush = Brush.linearGradient(
                 colors = listOf(
-                    appAshesGray.copy(alpha = 0.16f),
+                    ashDeep.copy(alpha = 0.10f),
                     Color.Transparent,
-                    appAshesDeep.copy(alpha = 0.22f)
+                    ashDeep.copy(alpha = 0.16f)
                 ),
-                start = Offset(0f, h * 0.08f),
-                end = Offset(w, h * 0.92f)
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
             )
         )
     }
