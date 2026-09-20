@@ -990,10 +990,6 @@ private fun SmokyAtmosphericCardBackground(
         val bassX = sin(bassPhase) * bass
         val bassY = cos(bassPhase * 0.83f) * bass
 
-        val i1 = fieldImpulse1.value
-        val i2 = fieldImpulse2.value
-        val i3 = fieldImpulse3.value
-
         // FIELD 1 — warm/primary artwork color.
         // Long diagonal path with a small beat-driven displacement.
         val x1 = w * (
