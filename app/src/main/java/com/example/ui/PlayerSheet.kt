@@ -287,77 +287,94 @@ fun PlayerSheet(
         queueDragTargetIndex = -1
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF16181F)) // Ashes gray background matching user screenshot
-            .statusBarsPadding()
-            .navigationBarsPadding()
+            .background(Color(0xFF16181F)) // Solid ashes gray background covering entire screen
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { /* Absorb any taps on empty player sheet areas */ }
+            .pointerInput(Unit) {
+                detectTapGestures { /* Intercept all gestures across the player sheet */ }
+            }
             .testTag("full_player_sheet")
     ) {
-        val totalHeight = maxHeight
-
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .statusBarsPadding()
+                .navigationBarsPadding()
         ) {
-            // 1. TOP HEADER (Subtle collapse on left, empty center - NO "NOW PLAYING" text, three-dot options on right)
-            Row(
+            val totalHeight = maxHeight
+
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                IconButton(
-                    onClick = onDismiss,
+                // 1. TOP HEADER (Subtle collapse on left, empty center - NO "NOW PLAYING" text, three-dot options on right)
+                Row(
                     modifier = Modifier
-                        .size(40.dp)
-                        .testTag("player_collapse_button")
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Collapse Player",
-                        tint = Color.White.copy(alpha = 0.70f),
-                        modifier = Modifier.size(26.dp)
-                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("player_collapse_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Collapse Player",
+                            tint = Color.White.copy(alpha = 0.70f),
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+
+                    // Center is empty as shown in the screenshot (no "NOW PLAYING" pill)
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    IconButton(
+                        onClick = { showActionSheet = true },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("player_menu_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = "More Options",
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
 
-                // Center is empty as shown in the screenshot (no "NOW PLAYING" pill)
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                IconButton(
-                    onClick = { showActionSheet = true },
+                // 2. LARGE MAIN PLAYER GLASS CARD
+                // Smoothly mixing ashes gray with the track's color in an ultra-slow, continuous ambient drift
+                Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .testTag("player_menu_button")
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(32.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { /* Absorb clicks on empty space of main card */ }
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreHoriz,
-                        contentDescription = "More Options",
-                        tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(24.dp)
+                    SmokyAtmosphericCardBackground(
+                        themeColors = themeColors,
+                        isPlaying = isPlaying,
+                        telemetry = telemetry,
+                        modifier = Modifier.fillMaxSize()
                     )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // 2. LARGE MAIN PLAYER GLASS CARD
-            // Smoothly mixing ashes gray with the track's color in an ultra-slow, continuous ambient drift
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(32.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
-            ) {
-                SmokyAtmosphericCardBackground(
-                    themeColors = themeColors,
-                    modifier = Modifier.fillMaxSize()
-                )
 
                 Column(
                     modifier = Modifier
@@ -464,7 +481,11 @@ fun PlayerSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
-                    .padding(horizontal = 14.dp),
+                    .padding(horizontal = 14.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { /* Absorb clicks on controls row empty padding */ },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -592,6 +613,10 @@ fun PlayerSheet(
                         alpha = upNextP.coerceIn(0f, 1f)
                     }
                     .background(Color(0xFF14151C))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { /* Absorb clicks on empty space of up next queue */ }
             ) {
                 Column(
                     modifier = Modifier.fillMaxSize()
@@ -826,24 +851,57 @@ fun PlayerSheet(
         }
     }
 }
+}
 
 
 @Composable
 private fun SmokyAtmosphericCardBackground(
     themeColors: TrackThemeColors,
+    isPlaying: Boolean = false,
+    telemetry: AudioTelemetry = AudioTelemetry(),
     modifier: Modifier = Modifier
 ) {
-    // Ultra-slow, smooth ambient drift: 36 seconds cycle, continuous and calming
-    // Strictly NO blinking or flashing up and down!
-    val infiniteTransition = rememberInfiniteTransition(label = "smoke_drift")
-    val smokePhase by infiniteTransition.animateFloat(
+    // Ultra-slow, smooth color interpolation between tracks (2.4 seconds)
+    val animatedColor1 by animateColorAsState(
+        targetValue = themeColors.ambient1,
+        animationSpec = tween(durationMillis = 2400, easing = LinearEasing),
+        label = "amb_c1"
+    )
+    val animatedColor2 by animateColorAsState(
+        targetValue = themeColors.ambient2,
+        animationSpec = tween(durationMillis = 2400, easing = LinearEasing),
+        label = "amb_c2"
+    )
+    val animatedColor3 by animateColorAsState(
+        targetValue = themeColors.ambient3,
+        animationSpec = tween(durationMillis = 2400, easing = LinearEasing),
+        label = "amb_c3"
+    )
+
+    // Ultra-slow, continuous ambient breathing: 54 seconds cycle, extremely smooth and relaxing
+    // Strictly NO rapid pulsing or flashy transitions
+    val infiniteTransition = rememberInfiniteTransition(label = "ambient_drift")
+    val driftPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 36000, easing = LinearEasing),
+            animation = tween(durationMillis = 54000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "smoke_phase"
+        label = "ambient_drift_phase"
+    )
+
+    // Subtle audio-reactive energy for the card edges/corners
+    // Smoothed with a 1400ms tween so it flows like gentle liquid light rather than jumping with peaks
+    val rawEnergy = if (isPlaying) {
+        (telemetry.sustainedEnergy * 0.70f + telemetry.rmsLevel * 0.30f).coerceIn(0.08f, 1f)
+    } else {
+        0.04f
+    }
+    val smoothedEnergy by animateFloatAsState(
+        targetValue = rawEnergy,
+        animationSpec = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
+        label = "edge_smoothed_energy"
     )
 
     Canvas(modifier = modifier) {
@@ -851,84 +909,169 @@ private fun SmokyAtmosphericCardBackground(
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
-        // 1. Ashes gray dark base
+        // 1. Dark charcoal/black base foundation
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFF1E2028),
-                    Color(0xFF1A1C23),
-                    Color(0xFF16171E)
+                    Color(0xFF161820),
+                    Color(0xFF111218),
+                    Color(0xFF0C0D12)
                 ),
                 startY = 0f,
                 endY = h
             )
         )
 
-        // The dictated track color (crimson / burgundy wine / dominant hue)
-        val dictatedColor = themeColors.dominant
+        // 2. Full-Card Ambient Color Field (Distributed and blended across the entire card)
+        val diagStartX = w * (0.15f + 0.10f * sin(driftPhase * 0.7f))
+        val diagStartY = h * (0.10f + 0.08f * cos(driftPhase * 0.5f))
+        val diagEndX = w * (0.85f + 0.10f * cos(driftPhase * 0.6f))
+        val diagEndY = h * (0.90f + 0.08f * sin(driftPhase * 0.8f))
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    animatedColor1.copy(alpha = 0.22f),
+                    animatedColor2.copy(alpha = 0.18f),
+                    animatedColor3.copy(alpha = 0.16f),
+                    Color(0xFF111218).copy(alpha = 0.30f)
+                ),
+                start = Offset(diagStartX, diagStartY),
+                end = Offset(diagEndX, diagEndY)
+            )
+        )
 
-        // 2. Slow drifting color pool on left/center: Dictated color softly diffusing with ashes gray
-        val x1 = w * (0.30f + 0.12f * sin(smokePhase))
-        val y1 = h * (0.38f + 0.10f * cos(smokePhase * 0.75f))
-        val radius1 = w * 0.90f
+        // Vast, broadly diffused ambient color fields (radii 1.45x - 1.6x card dimension)
+        val maxDim = maxOf(w, h)
+
+        // Ambient Field 1 (Dominant artwork hue, e.g. pink/red/crimson): upper-left / center
+        val cx1 = w * (0.35f + 0.12f * sin(driftPhase))
+        val cy1 = h * (0.32f + 0.10f * cos(driftPhase * 0.75f))
+        val r1 = maxDim * 1.55f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    dictatedColor.copy(alpha = 0.54f),
-                    Color(0xFF282A34).copy(alpha = 0.32f),
+                    animatedColor1.copy(alpha = 0.24f),
+                    animatedColor1.copy(alpha = 0.10f),
                     Color.Transparent
                 ),
-                center = Offset(x1, y1),
-                radius = radius1
+                center = Offset(cx1, cy1),
+                radius = r1
             ),
-            center = Offset(x1, y1),
-            radius = radius1
+            center = Offset(cx1, cy1),
+            radius = r1
         )
 
-        // 3. Second slow drifting cloud: Ashes gray Slate + subtle secondary tone
-        val x2 = w * (0.68f + 0.10f * cos(smokePhase * 0.85f))
-        val y2 = h * (0.46f + 0.12f * sin(smokePhase * 0.70f))
-        val radius2 = w * 0.85f
+        // Ambient Field 2 (Secondary artwork hue, e.g. purple/indigo): center-right
+        val cx2 = w * (0.65f + 0.12f * cos(driftPhase * 0.85f))
+        val cy2 = h * (0.55f + 0.12f * sin(driftPhase * 0.70f))
+        val r2 = maxDim * 1.50f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF2E313E).copy(alpha = 0.48f),
-                    themeColors.secondary.copy(alpha = 0.26f),
+                    animatedColor2.copy(alpha = 0.20f),
+                    animatedColor2.copy(alpha = 0.08f),
                     Color.Transparent
                 ),
-                center = Offset(x2, y2),
-                radius = radius2
+                center = Offset(cx2, cy2),
+                radius = r2
             ),
-            center = Offset(x2, y2),
-            radius = radius2
+            center = Offset(cx2, cy2),
+            radius = r2
         )
 
-        // 4. Third slow drifting pool: Dictated color bloom on lower-left / center
-        val x3 = w * (0.42f + 0.09f * sin(smokePhase * 0.60f + 1.2f))
-        val y3 = h * (0.64f + 0.08f * cos(smokePhase * 0.55f))
-        val radius3 = w * 0.75f
+        // Ambient Field 3 (Tertiary artwork hue, e.g. dark blue/deep tone): lower-left / center
+        val cx3 = w * (0.45f + 0.10f * sin(driftPhase * 0.60f + 1.2f))
+        val cy3 = h * (0.75f + 0.09f * cos(driftPhase * 0.65f))
+        val r3 = maxDim * 1.45f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    themeColors.atmosphericBloom.copy(alpha = 0.42f),
-                    Color(0xFF20222B).copy(alpha = 0.25f),
+                    animatedColor3.copy(alpha = 0.18f),
+                    animatedColor3.copy(alpha = 0.07f),
                     Color.Transparent
                 ),
-                center = Offset(x3, y3),
-                radius = radius3
+                center = Offset(cx3, cy3),
+                radius = r3
             ),
-            center = Offset(x3, y3),
-            radius = radius3
+            center = Offset(cx3, cy3),
+            radius = r3
         )
 
-        // 5. Soft contrast shading at top and bottom to ensure text and waveform clarity
+        // 3. Subtle Audio-Reactive Color Movement Around Card Edges/Corners
+        // Soft, blurred colored light/energy shape near empty edge/corner areas of the card.
+        // Height & intensity expand upward as music gets energetic, and smoothly contract when quiet.
+        val edgeAlpha = (0.10f + smoothedEnergy * 0.22f).coerceIn(0.08f, 0.32f)
+
+        // Left Edge & Lower-Left Corner
+        val leftEnergyHeight = h * (0.26f + smoothedEnergy * 0.46f)
+        val leftCenterY = h * (0.88f - smoothedEnergy * 0.26f)
+        val leftRadius = w * (0.32f + smoothedEnergy * 0.18f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    animatedColor2.copy(alpha = edgeAlpha),
+                    animatedColor1.copy(alpha = edgeAlpha * 0.45f),
+                    Color.Transparent
+                ),
+                center = Offset(0f, leftCenterY),
+                radius = leftRadius
+            ),
+            center = Offset(0f, leftCenterY),
+            radius = leftRadius
+        )
+        val leftAuraWidth = w * (0.12f + smoothedEnergy * 0.08f)
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    animatedColor2.copy(alpha = edgeAlpha * 0.65f),
+                    Color.Transparent
+                ),
+                startX = 0f,
+                endX = leftAuraWidth
+            ),
+            topLeft = Offset(0f, (h * 0.90f - leftEnergyHeight).coerceAtLeast(0f)),
+            size = Size(leftAuraWidth, leftEnergyHeight)
+        )
+
+        // Right Edge & Lower-Right Corner
+        val rightEnergyHeight = h * (0.28f + smoothedEnergy * 0.46f)
+        val rightCenterY = h * (0.86f - smoothedEnergy * 0.25f)
+        val rightRadius = w * (0.32f + smoothedEnergy * 0.18f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    animatedColor1.copy(alpha = edgeAlpha),
+                    animatedColor3.copy(alpha = edgeAlpha * 0.45f),
+                    Color.Transparent
+                ),
+                center = Offset(w, rightCenterY),
+                radius = rightRadius
+            ),
+            center = Offset(w, rightCenterY),
+            radius = rightRadius
+        )
+        val rightAuraWidth = w * (0.12f + smoothedEnergy * 0.08f)
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    animatedColor1.copy(alpha = edgeAlpha * 0.65f)
+                ),
+                startX = w - rightAuraWidth,
+                endX = w
+            ),
+            topLeft = Offset(w - rightAuraWidth, (h * 0.90f - rightEnergyHeight).coerceAtLeast(0f)),
+            size = Size(rightAuraWidth, rightEnergyHeight)
+        )
+
+        // 4. Soft contrast shading at top and bottom to ensure text and waveform clarity
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFF14151C).copy(alpha = 0.45f),
+                    Color(0xFF101117).copy(alpha = 0.40f),
                     Color.Transparent,
                     Color.Transparent,
-                    Color(0xFF121319).copy(alpha = 0.65f)
+                    Color(0xFF0C0D12).copy(alpha = 0.58f)
                 ),
                 startY = 0f,
                 endY = h

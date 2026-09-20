@@ -80,4 +80,23 @@ class ArtworkColorExtractorTest {
         assertTrue("Theme colors should have positive alpha", colors.dominant.alpha > 0f)
         assertTrue("Dark background should be valid", colors.darkBackground.alpha > 0f)
     }
+
+    @Test
+    fun `ambient multi-palette fields are valid for diverse artwork`() {
+        val pixels = IntArray(100 * 100) { i ->
+            when {
+                i < 3000 -> android.graphics.Color.rgb(220, 20, 100) // magenta/crimson
+                i < 6500 -> android.graphics.Color.rgb(100, 30, 220) // purple
+                else -> android.graphics.Color.rgb(20, 60, 180)     // dark blue
+            }
+        }
+        val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, 100, 0, 0, 100, 100)
+
+        val colors = ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+        assertTrue("Ambient1 should be valid", colors.ambient1.alpha > 0f)
+        assertTrue("Ambient2 should be valid", colors.ambient2.alpha > 0f)
+        assertTrue("Ambient3 should be valid", colors.ambient3.alpha > 0f)
+        assertTrue("AmbientCharcoal should be valid", colors.ambientCharcoal.alpha > 0f)
+    }
 }

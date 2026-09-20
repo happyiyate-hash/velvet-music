@@ -91,7 +91,7 @@ class VelvetAudioEngine(
     @Volatile private var liveKick = false
     @Volatile private var liveSnare = false
     private val liveFftBars = FloatArray(64) { 0f }
-    private var isPlayerPrepared = false
+    @Volatile private var isPlayerPrepared = false
 
     private var playbackJob: Job? = null
     private var colorExtractionJob: Job? = null
@@ -279,6 +279,7 @@ class VelvetAudioEngine(
                             mediaPlayer = player
                         } else {
                             try {
+                                try { player.stop() } catch (_: Exception) {}
                                 player.reset()
                             } catch (_: Exception) {
                                 try { player.release() } catch (_: Exception) {}
@@ -592,7 +593,7 @@ class VelvetAudioEngine(
     fun pause() {
         synchronized(playerLock) {
             try {
-                if (isPlayerPrepared && mediaPlayer?.isPlaying == true) {
+                if (isPlayerPrepared) {
                     mediaPlayer?.pause()
                 }
             } catch (_: Exception) {}
@@ -744,7 +745,7 @@ class VelvetAudioEngine(
                 delay(200L)
                 val currentPos = synchronized(playerLock) {
                     try {
-                        if (isPlayerPrepared && mediaPlayer?.isPlaying == true) {
+                        if (isPlayerPrepared && _isPlaying.value) {
                             mediaPlayer?.currentPosition?.toLong()
                         } else null
                     } catch (_: Exception) {

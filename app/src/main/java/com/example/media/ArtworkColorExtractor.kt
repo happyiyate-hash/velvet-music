@@ -27,7 +27,11 @@ data class TrackThemeColors(
     val bgMidLower: Color = Color(0xFF1C070D),
     val bgBottom: Color = Color(0xFF130509),
     val playPauseGradTop: Color = Color(0xFF5E1B2C),
-    val playPauseGradBottom: Color = Color(0xFF2E0C15)
+    val playPauseGradBottom: Color = Color(0xFF2E0C15),
+    val ambient1: Color = dominant,
+    val ambient2: Color = secondary,
+    val ambient3: Color = accent,
+    val ambientCharcoal: Color = Color(0xFF101117)
 )
 
 object ArtworkColorExtractor {
@@ -43,7 +47,19 @@ object ArtworkColorExtractor {
     fun extractColorsFromBitmap(bitmap: Bitmap?): TrackThemeColors {
         if (bitmap != null) {
             val sampled = sampleDominantColor(bitmap)
-            if (sampled != null) return generateThemePalette(sampled)
+            if (sampled != null) {
+                val baseTheme = generateThemePalette(sampled)
+                val distinctPalette = extractDistinctPalette(bitmap, sampled)
+                val amb1 = distinctPalette.getOrNull(0) ?: baseTheme.dominant
+                val amb2 = distinctPalette.getOrNull(1) ?: baseTheme.secondary
+                val amb3 = distinctPalette.getOrNull(2) ?: baseTheme.accent
+                return baseTheme.copy(
+                    ambient1 = amb1,
+                    ambient2 = amb2,
+                    ambient3 = amb3,
+                    ambientCharcoal = Color(0xFF101117)
+                )
+            }
         }
         return generateThemePalette(Color(0xFF880E2F))
     }
@@ -190,6 +206,11 @@ object ArtworkColorExtractor {
         val playPauseCircle = playPauseGradTop
         val playPauseBorder = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.40f)
 
+        val amb1 = dominant
+        val amb2 = Color.hsv((hue + 36f) % 360f, (sat * 0.85f).coerceIn(0.40f, 0.90f), 0.70f)
+        val amb3 = Color.hsv((hue + 160f) % 360f, (sat * 0.75f).coerceIn(0.35f, 0.85f), 0.65f)
+        val ambientCharcoal = Color(0xFF101117)
+
         return TrackThemeColors(
             dominant = dominant,
             secondary = secondary,
@@ -204,7 +225,96 @@ object ArtworkColorExtractor {
             bgMidLower = bgMidLower,
             bgBottom = bgBottom,
             playPauseGradTop = playPauseGradTop,
-            playPauseGradBottom = playPauseGradBottom
+            playPauseGradBottom = playPauseGradBottom,
+            ambient1 = amb1,
+            ambient2 = amb2,
+            ambient3 = amb3,
+            ambientCharcoal = ambientCharcoal
         )
+    }
+
+    private fun extractDistinctPalette(bitmap: Bitmap, primaryColor: Color): List<Color> {
+        return try {
+            val width = bitmap.width
+            val height = bitmap.height
+            if (width <= 0 || height <= 0) return emptyList()
+
+            val distinct = mutableListOf(primaryColor)
+            val primaryHsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(primaryColor.toArgb(), primaryHsv)
+
+            class HueBucket(var count: Int = 0, var totalR: Long = 0, var totalG: Long = 0, var totalB: Long = 0, var maxSat: Float = 0f)
+            val buckets = Array(12) { HueBucket() }
+            val tempHsv = FloatArray(3)
+
+            val stepX = max(1, width / 16)
+            val stepY = max(1, height / 16)
+            for (x in 0 until width step stepX) {
+                for (y in 0 until height step stepY) {
+                    val pixel = bitmap.getPixel(x, y)
+                    val a = (pixel ushr 24) and 0xFF
+                    if (a < 128) continue
+                    val r = (pixel ushr 16) and 0xFF
+                    val g = (pixel ushr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    val brightness = r * 0.299f + g * 0.587f + b * 0.114f
+                    if (brightness in 25.0..235.0) {
+                        android.graphics.Color.RGBToHSV(r, g, b, tempHsv)
+                        val sat = tempHsv[1]
+                        val hue = tempHsv[0]
+                        if (sat > 0.18f) {
+                            val bucketIndex = ((hue / 30f).toInt()).coerceIn(0, 11)
+                            buckets[bucketIndex].count++
+                            buckets[bucketIndex].totalR += r
+                            buckets[bucketIndex].totalG += g
+                            buckets[bucketIndex].totalB += b
+                            if (sat > buckets[bucketIndex].maxSat) {
+                                buckets[bucketIndex].maxSat = sat
+                            }
+                        }
+                    }
+                }
+            }
+
+            val rankedBuckets = buckets.indices
+                .filter { buckets[it].count > 0 }
+                .sortedByDescending { buckets[it].count * (1f + buckets[it].maxSat * 1.5f) }
+
+            for (bIdx in rankedBuckets) {
+                val b = buckets[bIdx]
+                val avgR = (b.totalR / b.count).toInt().coerceIn(0, 255)
+                val avgG = (b.totalG / b.count).toInt().coerceIn(0, 255)
+                val avgB = (b.totalB / b.count).toInt().coerceIn(0, 255)
+                val candidate = Color(avgR, avgG, avgB)
+                android.graphics.Color.RGBToHSV(avgR, avgG, avgB, tempHsv)
+
+                val isDistinct = distinct.none { existing ->
+                    val exHsv = FloatArray(3)
+                    android.graphics.Color.colorToHSV(existing.toArgb(), exHsv)
+                    val diff = abs(tempHsv[0] - exHsv[0])
+                    val hueDist = min(diff, 360f - diff)
+                    hueDist < 30f
+                }
+                if (isDistinct) {
+                    distinct.add(candidate)
+                    if (distinct.size >= 3) break
+                }
+            }
+
+            if (distinct.size < 2) {
+                val secHue = (primaryHsv[0] + 36f) % 360f
+                val secSat = (primaryHsv[1] * 0.85f).coerceIn(0.40f, 0.90f)
+                distinct.add(Color.hsv(secHue, secSat, 0.70f))
+            }
+            if (distinct.size < 3) {
+                val tertHue = (primaryHsv[0] + 160f) % 360f
+                val tertSat = (primaryHsv[1] * 0.75f).coerceIn(0.35f, 0.85f)
+                distinct.add(Color.hsv(tertHue, tertSat, 0.65f))
+            }
+
+            distinct
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 }

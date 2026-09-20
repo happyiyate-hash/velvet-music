@@ -66,6 +66,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
@@ -200,7 +202,22 @@ fun VelvetApp() {
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { paddingValues ->
             Box(
-                modifier = Modifier.fillMaxSize().padding(paddingValues).statusBarsPadding()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .statusBarsPadding()
+                    .then(
+                        if (isPlayerExpanded) {
+                            Modifier.pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                }
+                            }
+                        } else Modifier
+                    )
             ) {
                 when (selectedTab) {
                     0 -> HomeFeedScreen(
@@ -272,10 +289,33 @@ fun VelvetApp() {
             }
         }
 
+        if (isPlayerExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(5f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { /* Absorb any touches on backdrop behind PlayerSheet */ }
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+            )
+        }
+
         AnimatedVisibility(
             visible = isPlayerExpanded,
             enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it })
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(10f)
         ) {
             PlayerSheet(
                 track = currentTrack,
