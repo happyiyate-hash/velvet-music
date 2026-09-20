@@ -9,7 +9,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -86,10 +90,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -123,10 +129,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.audio.AudioTelemetry
 import com.example.media.ArtworkColorExtractor
+import com.example.media.TrackThemeColors
 import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.cos
@@ -210,27 +218,10 @@ fun PlayerSheet(
         }
     }
 
-    // Interactive continuous drag transition state:
-    // 0f = Full Baseline Now Playing
-    // 1f = Expanded Artwork State (First Snap Point)
-    // 2f = Compact Artwork + Full Up Next Queue (Second Snap Point)
-    val dragProgress = remember { Animatable(0f) }
-    val p = dragProgress.value
+    val upNextExpanded = remember { Animatable(0f) }
+    val upNextP = upNextExpanded.value
     val haptic = LocalHapticFeedback.current
     val queueDragDensity = LocalDensity.current
-    var hasLatchedStage1 by remember { mutableStateOf(false) }
-
-    // Haptic feedback trigger on reaching the first snap point
-    LaunchedEffect(p) {
-        if (p in 0.95f..1.05f) {
-            if (!hasLatchedStage1) {
-                hasLatchedStage1 = true
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            }
-        } else if (abs(p - 1.0f) > 0.18f) {
-            hasLatchedStage1 = false
-        }
-    }
 
     // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
     // YouTube Music Hierarchy: Index 0 is currently playing track, Index 1 is Up Next, etc.
@@ -298,807 +289,577 @@ fun PlayerSheet(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(themeColors.darkBackground)
+            .background(Color(0xFF0C0B0E))
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .testTag("full_player_sheet")
     ) {
-        // Reference background rendering restored from commit 80b5ec8.
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val canvasWidth = size.width
-            val canvasHeight = size.height
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        themeColors.darkBackground,
-                        themeColors.darkBackground,
-                        themeColors.darkBackground,
-                        themeColors.darkBackground
-                    ),
-                    startY = 0f,
-                    endY = canvasHeight
-                )
-            )
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        Color.Transparent,
-                        Color.Transparent
-                    ),
-                    center = Offset(canvasWidth * 0.5f, canvasHeight * 0.28f),
-                    radius = canvasWidth * 0.85f
-                )
-            )
-        }
         val totalHeight = maxHeight
-        val totalWidth = maxWidth
-        val density = LocalDensity.current
 
-        // Artwork framing is based on the actual drawable dimensions. Square artwork keeps
-        // the normal player geometry; portrait/tall artwork is allowed to use its natural
-        // height instead of being forced into a 1:1 box. Intrinsic dimensions are available
-        // immediately for bundled artwork, so this does not delay the first render.
-        // v10 retrigger: painterResource must be invoked directly from composition.
-        // Reading its intrinsic size is immediate and does not block the first render.
-        val safeFallbackRes = if (track.coverResId != 0) track.coverResId else R.drawable.art_luminous_echoes
-        val artworkPainter = painterResource(safeFallbackRes)
-        val bmp = resolvedArtworkBitmap
-        val artworkAspectRatio = if (bmp != null && bmp.width > 0 && bmp.height > 0) {
-            bmp.width.toFloat() / bmp.height.toFloat()
-        } else {
-            val artworkIntrinsicSize = artworkPainter.intrinsicSize
-            if (artworkIntrinsicSize.width > 0f && artworkIntrinsicSize.height > 0f) {
-                artworkIntrinsicSize.width / artworkIntrinsicSize.height
-            } else 1f
-        }
-        val isTallArtwork = artworkAspectRatio < 0.94f
-
-        // Safe insets
-        val insetsTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        val insetsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-
-        // Stage geometry: the first snap is a true edge-to-edge artwork takeover.
-        // 0f = normal player, 1f = expanded artwork, 2f = compact player + queue.
-        val topBarY = insetsTop + 4.dp
-        val topBarHeight = 44.dp
-        val baseUpNextY = totalHeight - insetsBottom - 46.dp
-        val availableHeight = (baseUpNextY - (topBarY + topBarHeight)).coerceAtLeast(400.dp)
-        val baseArtWidth = (totalWidth - 48.dp).coerceAtLeast(180.dp)
-        val naturalBaseArtHeight = baseArtWidth / artworkAspectRatio
-        val baseArtHeight = naturalBaseArtHeight.coerceAtMost(availableHeight * 0.52f)
-        val baseArtX = (totalWidth - baseArtWidth) / 2
-        val baseArtY = topBarY + topBarHeight + 18.dp
-        val baseArtCorner = 14.dp
-        val baseTitleX = 24.dp
-        val baseTitleY = baseArtY + baseArtHeight + 16.dp
-        val baseWaveformY = baseTitleY + 66.dp + 14.dp
-        val baseControlsY = baseWaveformY + 52.dp + 44.dp
-        val baseShuffleY = baseControlsY + 76.dp + 22.dp
-
-        // First snap: artwork reaches the very top and becomes truly edge-to-edge.
-        // Do not force portrait artwork into the square height. Its natural aspect ratio
-        // determines the expanded image height, capped to a sensible player region.
-        val expArtY = 0.dp
-        val expArtWidth = totalWidth
-        val naturalExpandedHeight = totalWidth / artworkAspectRatio
-        val expArtHeight = naturalExpandedHeight.coerceAtMost(totalHeight * 0.78f)
-        val expArtX = 0.dp
-        val expArtCorner = 0.dp
-        val expTitleX = 20.dp
-        val expTitleY = expArtY + expArtHeight - 82.dp
-        val expTitleWidth = totalWidth - 40.dp
-        val expProgressY = expArtY + expArtHeight - 3.dp
-        val expControlsY = expArtY + expArtHeight + 42.dp
-        val expUpNextY = expControlsY + 78.dp
-
-        val compArtSize = 44.dp
-        val compArtX = 16.dp
-        val compArtY = insetsTop + 10.dp
-        val compArtCorner = 8.dp
-        val compTitleX = compArtX + compArtSize + 12.dp
-        val compTitleY = compArtY + 2.dp
-        val compUpNextY = compArtY + compArtSize + 14.dp
-
-        val artWidth: androidx.compose.ui.unit.Dp
-        val artHeight: androidx.compose.ui.unit.Dp
-        val artX: androidx.compose.ui.unit.Dp
-        val artY: androidx.compose.ui.unit.Dp
-        val artCorner: androidx.compose.ui.unit.Dp
-        if (p <= 1f) {
-            val t = p.coerceIn(0f, 1f)
-            artWidth = lerp(baseArtWidth, expArtWidth, t)
-            artHeight = lerp(baseArtHeight, expArtHeight, t)
-            artX = lerp(baseArtX, expArtX, t)
-            artY = lerp(baseArtY, expArtY, t)
-            artCorner = lerp(baseArtCorner, expArtCorner, t)
-        } else {
-            val t = (p - 1f).coerceIn(0f, 1f)
-            artWidth = lerp(expArtWidth, compArtSize, t)
-            artHeight = lerp(expArtHeight, compArtSize, t)
-            artX = lerp(expArtX, compArtX, t)
-            artY = lerp(expArtY, compArtY, t)
-            artCorner = lerp(expArtCorner, compArtCorner, t)
-        }
-
-        val titleX: androidx.compose.ui.unit.Dp
-        val titleY: androidx.compose.ui.unit.Dp
-        val titleWidth: androidx.compose.ui.unit.Dp
-        val titleSizeSp: Float
-        val artistSizeSp: Float
-        if (p <= 1f) {
-            val t = p.coerceIn(0f, 1f)
-            titleX = lerp(baseTitleX, expTitleX, t)
-            titleY = lerp(baseTitleY, expTitleY, t)
-            titleWidth = lerp(totalWidth - (baseTitleX * 2), expTitleWidth, t)
-            titleSizeSp = 21f - (2f * t)
-            artistSizeSp = 15f - (1f * t)
-        } else {
-            val t = (p - 1f).coerceIn(0f, 1f)
-            titleX = lerp(expTitleX, compTitleX, t)
-            titleY = lerp(expTitleY, compTitleY, t)
-            titleWidth = lerp(expTitleWidth, totalWidth - compTitleX - 92.dp, t)
-            titleSizeSp = 19f - (5f * t)
-            artistSizeSp = 14f - (1f * t)
-        }
-
-        val upNextY: androidx.compose.ui.unit.Dp = if (p <= 1f) {
-            lerp(baseUpNextY, expUpNextY, p.coerceIn(0f, 1f))
-        } else {
-            lerp(expUpNextY, compUpNextY, (p - 1f).coerceIn(0f, 1f))
-        }
-
-        val topBarAlpha = (1f - (p * 2.2f)).coerceIn(0f, 1f)
-        val sourceAlpha = (1f - (p * 2f)).coerceIn(0f, 1f)
-        val waveformAlpha = (1f - (p / 0.55f)).coerceIn(0f, 1f)
-        val compactControlsAlpha = ((p - 1.05f) / 0.65f).coerceIn(0f, 1f)
-
-        val stage1DistancePx = with(density) { (baseUpNextY - expUpNextY).toPx().coerceAtLeast(300f) }
-        val stage2DistancePx = with(density) { (expUpNextY - compUpNextY).toPx().coerceAtLeast(220f) }
-
-        val onDragDelta: (Float) -> Unit = { dragAmountPx ->
-            coroutineScope.launch {
-                dragProgress.stop()
-                val currentP = dragProgress.value
-                val delta = if (currentP < 1f) -dragAmountPx / stage1DistancePx else -dragAmountPx / stage2DistancePx
-                dragProgress.snapTo((currentP + delta).coerceIn(0f, 2f))
-            }
-        }
-
-        val onDragFinish: () -> Unit = {
-            coroutineScope.launch {
-                val currentP = dragProgress.value
-                val target = when {
-                    currentP < 0.35f -> 0f
-                    currentP < 1.55f -> 1f
-                    else -> 2f
-                }
-                dragProgress.animateTo(target, tween(300, easing = FastOutSlowInEasing))
-            }
-        }
-
-
-        // 1. TOP BAR: Collapse Chevron, Centered Pill, 3-dots Menu Button (fades away as artwork expands)
-        if (topBarAlpha > 0f) {
+        // Now Playing Screen Vertical Composition:
+        // TOP: Now Playing header
+        //  ↓
+        // Large main player card (with subtle color smoke, centered artwork, progress & dark waveform)
+        //  ↓
+        // Separate control card directly underneath
+        //  ↓
+        // Up Next section at bottom
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // 1. TOP HEADER BAR
             Row(
                 modifier = Modifier
-                    .offset(x = 16.dp, y = topBarY)
-                    .width(totalWidth - 32.dp)
-                    .height(44.dp)
-                    .graphicsLayer { alpha = topBarAlpha },
+                    .fillMaxWidth()
+                    .height(46.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .testTag("player_collapse_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Collapse Now Playing",
-                        tint = Color.White.copy(alpha = 0.90f),
-                        modifier = Modifier.size(26.dp)
+                        contentDescription = "Collapse Player",
+                        tint = Color.White.copy(alpha = 0.88f),
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(percent = 50))
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.07f))
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = "NOW PLAYING",
-                        fontSize = 11.sp,
-                        letterSpacing = 2.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White.copy(alpha = 0.72f)
+                        letterSpacing = 1.6.sp,
+                        color = Color.White.copy(alpha = 0.70f)
                     )
                 }
 
                 IconButton(
                     onClick = { showActionSheet = true },
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .testTag("player_menu_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Song Actions Menu",
-                        tint = Color.White.copy(alpha = 0.90f),
+                        contentDescription = "More Options",
+                        tint = Color.White.copy(alpha = 0.88f),
                         modifier = Modifier.size(22.dp)
                     )
                 }
             }
-        }
 
-        // 2. SINGLE PHYSICAL ARTWORK INSTANCE.
-        // The artwork keeps its normal height. Only its bottom is dissolved into the same
-        // dynamic page surface, beginning around the lower 60% rather than at the hard edge.
-        Box(
-            modifier = Modifier
-                .offset(x = artX, y = artY)
-                .width(artWidth)
-                .height(artHeight)
+            Spacer(modifier = Modifier.height(6.dp))
 
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        coroutineScope.launch {
-                            dragProgress.animateTo(
-                                if (p > 1.2f) 1f else if (p > 0.2f) 0f else 1f,
-                                tween(320, easing = FastOutSlowInEasing)
-                            )
+            // 2. LARGE MAIN PLAYER CARD
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(28.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(28.dp))
+            ) {
+                // Subtle fluid color smoke connecting to extracted album-art colors
+                SmokyAtmosphericCardBackground(
+                    themeColors = themeColors,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Track Title & Artist (Centered at top of card)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = track.title,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("player_track_title")
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = track.artist.uppercase(),
+                            fontSize = 12.sp,
+                            letterSpacing = 1.4.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color.White.copy(alpha = 0.65f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("player_track_artist")
+                        )
+                    }
+
+                    // Centered Album Artwork with breathing room
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            val artSize = minOf(maxWidth - 32.dp, maxHeight * 0.86f).coerceIn(140.dp, 215.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(artSize)
+                                    .shadow(
+                                        elevation = 18.dp,
+                                        shape = RoundedCornerShape(22.dp),
+                                        spotColor = Color.Black.copy(alpha = 0.75f),
+                                        ambientColor = Color.Black
+                                    )
+                                    .clip(RoundedCornerShape(22.dp))
+                                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(22.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                TrackArtworkImage(
+                                    track = track,
+                                    contentDescription = track.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         }
                     }
-                )
-                .then(
-                    if (p < 1.65f) Modifier.pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onDragEnd = { onDragFinish() },
-                            onDragCancel = { onDragFinish() },
-                            onVerticalDrag = { change, dragAmount ->
-                                change.consume()
-                                onDragDelta(dragAmount)
-                            }
-                        )
-                    } else Modifier
-                )
-        ) {
-            // The picture is clipped only to its own natural rectangle/corners.
-            // The fade is deliberately OUTSIDE that picture so the background can cover it.
-            Box(
-                modifier = Modifier
-                    .width(artWidth)
-                    .height(artHeight)
-                    .clip(RoundedCornerShape(artCorner))
-            ) {
-                key(track.id) {
-                    TrackArtworkImage(
-                        track = track,
-                        contentDescription = track.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+
+                    // Progress Bar & Timestamps
+                    NowPlayingProgressBar(
+                        positionMs = playbackPositionMs,
+                        durationMs = track.durationMs,
+                        onSeekTo = onSeekTo,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Waveform / Audio Visualizer (Restrained neutral/charcoal tone - NOT album colors)
+                    DarkSilhouetteWaveform(
+                        isPlaying = isPlaying,
+                        telemetry = telemetry,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .padding(horizontal = 4.dp)
                     )
                 }
             }
 
-        // Fixed expanded-state dissolve. It is deliberately OUTSIDE the moving artwork
-        // box, so during collapse the picture leaves this area while the fade remains stable.
-        // Resting/mini states have no fade. In expanded mode, the final ~24% dissolves
-        // strongly into the player background without changing image height.
-        val artworkFadeAlpha = when {
-            p < 0.30f -> 0f
-            p < 0.72f -> ((p - 0.30f) / 0.42f).coerceIn(0f, 1f)
-            else -> 1f
-        }
+            Spacer(modifier = Modifier.height(10.dp))
 
-        // During the second snap, the expanded artwork brush must gently disappear as
-        // the Up Next queue approaches its maximum height. This keeps the compact 44dp
-        // artwork at the top-left completely clear instead of covering it with the brush.
-        // The fade follows the drag continuously and also remains smooth during snap animation.
-        val compactBrushFadeAlpha = when {
-            p <= 1.05f -> 1f
-            p >= 1.90f -> 0f
-            else -> {
-                val t = ((p - 1.05f) / 0.85f).coerceIn(0f, 1f)
-                1f - (t * t * (3f - 2f * t))
-            }
-        }
-
-
-
-
-
-
-
-
-
-
-
-        if (artworkFadeAlpha > 0f) {
+            // 3. SEPARATE CONTROL CARD UNDERNEATH (Dark charcoal, rounded, restrained)
             Box(
                 modifier = Modifier
-                    .offset(x = expArtX, y = expArtY)
-                    .width(expArtWidth)
-                    .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.00f to themeColors.darkBackground,
-                                0.16f to themeColors.darkBackground.copy(alpha = 0.86f),
-                                0.34f to themeColors.darkBackground.copy(alpha = 0.62f),
-                                0.52f to themeColors.darkBackground.copy(alpha = 0.34f),
-                                0.72f to themeColors.darkBackground.copy(alpha = 0.12f),
-                                1.00f to Color.Transparent
-                            )
-                        )
-                    )
-                    .zIndex(1f)
-            )
-        }
-
-        if (artworkFadeAlpha > 0f) {
-            Box(
-                modifier = Modifier
-                    .offset(x = expArtX, y = expArtY + (expArtHeight * 0.76f))
-                    .width(expArtWidth)
-                    .height(expArtHeight * 0.24f)
-                    .graphicsLayer { alpha = artworkFadeAlpha * compactBrushFadeAlpha }
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.00f to Color.Transparent,
-                                0.16f to themeColors.darkBackground.copy(alpha = 0.12f),
-                                0.34f to themeColors.darkBackground.copy(alpha = 0.34f),
-                                0.52f to themeColors.darkBackground.copy(alpha = 0.62f),
-                                0.72f to themeColors.darkBackground.copy(alpha = 0.86f),
-                                1.00f to themeColors.darkBackground
-                            )
-                        )
-                    )
-                    .zIndex(1f)
-            )
-        }
-        }
-
-        // 3. SONG TITLE & ARTIST. The first phase keeps the long title directly over the artwork.
-        Column(
-            modifier = Modifier
-                .offset(x = titleX, y = titleY)
-                .width(titleWidth)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { if (p > 1.2f) coroutineScope.launch { dragProgress.animateTo(1f, tween(320, easing = FastOutSlowInEasing)) } }
-                )
-        ) {
-            Text(track.title, fontSize = titleSizeSp.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(track.artist, fontSize = artistSizeSp.sp, color = Color.White.copy(alpha = 0.76f), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-            if (sourceAlpha > 0f) {
-                Spacer(modifier = Modifier.height(2.dp))
-                val src = if (track.catalogSource.contains("Device", ignoreCase = true) || track.contentUri != null) "Device Audio" else if (track.catalogSource.isNotBlank()) track.catalogSource else "Device Audio"
-                Text(src, fontSize = 13.sp, color = Color.White.copy(alpha = 0.45f * sourceAlpha), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-            }
-        }
-
-        // 4. COMPACT CONTROLS IN STAGE 2 (Play/Pause & Collapse chevron next to compact header)
-        if (compactControlsAlpha > 0f) {
-            Row(
-                modifier = Modifier
-                    .offset(x = totalWidth - 92.dp, y = compArtY)
-                    .graphicsLayer { alpha = compactControlsAlpha },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                IconButton(
-                    onClick = onTogglePlayPause,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            dragProgress.animateTo(1f, tween(280, easing = FastOutSlowInEasing))
-                        }
-                    },
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Expand Current Track",
-                        tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            val progressFraction = if (track.durationMs > 0) {
-                (playbackPositionMs.toFloat() / track.durationMs.toFloat()).coerceIn(0f, 1f)
-            } else 0f
-
-            LinearProgressIndicator(
-                progress = { progressFraction },
-                modifier = Modifier
-                    .offset(x = 0.dp, y = compArtY + compArtSize + 8.dp)
                     .fillMaxWidth()
-                    .height(1.5.dp)
-                    .graphicsLayer { alpha = compactControlsAlpha },
-                color = themeColors.accent,
-                trackColor = Color.White.copy(alpha = 0.10f)
-            )
-        }
-
-        // 5. ONE REAL WAVEFORM + PROGRESS COMPONENT.
-        // The component physically travels upward with the drag. Its waveform bars
-        // and timestamps fade, but the SAME progress line stays visible and lands
-        // over the lower part of the artwork instead of creating a second slider.
-        val progressHostY = lerp(
-            baseWaveformY,
-            expArtY + expArtHeight - 34.dp,
-            p.coerceIn(0f, 1f)
-        )
-        val movingWaveformAlpha = if (p <= 1f) 1f else (1f - ((p - 1f) / 0.60f)).coerceIn(0f, 1f)
-        val movingTimestampAlpha = if (p <= 1f) 1f else (1f - ((p - 1f) / 0.60f)).coerceIn(0f, 1f)
-
-        val progressComponentAlpha = if (p <= 1f) {
-            1f
-        } else {
-            (1f - ((p - 1f) / 0.60f)).coerceIn(0f, 1f)
-        }
-        if (progressComponentAlpha > 0f) {
-            ExactAudioWaveformProgress(
-                audioUri = track.contentUri,
-                positionMs = playbackPositionMs,
-                durationMs = track.durationMs,
-                isPlaying = isPlaying,
-                telemetry = telemetry,
-                activeColor = themeColors.accent,
-                onSeekTo = onSeekTo,
-                modifier = Modifier
-                    .offset(x = 16.dp, y = progressHostY)
-                    .width(totalWidth - 32.dp)
-                    .graphicsLayer { alpha = progressComponentAlpha }
-                    .zIndex(2f)
-            )
-        }
-
-        // YouTube-style physical control transition v4.
-        // There is ONE set of five controls. At rest: shuffle/repeat sit below the
-        // previous/play/next row. As the user drags Up Next upward, those same two
-        // controls physically travel to the left/right sides of the primary row.
-        // No duplicate rail and no fade-out/fade-in replacement is used.
-        val controlT = p.coerceIn(0f, 1f)
-        val controlY = lerp(baseControlsY, expControlsY, controlT)
-        val centerX = totalWidth / 2
-
-        val playCenterX = centerX
-        val sideButtonCenterSpacing = 96.dp
-
-        // These are LEFT offsets for equal-sized 60dp buttons, calculated from the same
-        // center axis. The three primary controls therefore cannot drift horizontally.
-        val playLeft = playCenterX - 38.dp
-        val prevLeft = playCenterX - sideButtonCenterSpacing - 30.dp
-        val nextLeft = playCenterX + sideButtonCenterSpacing - 30.dp
-
-        val basePlayX = playLeft
-        val basePrevX = prevLeft
-        val baseNextX = nextLeft
-        val expandedPlayX = playLeft
-        val expandedPrevX = prevLeft
-        val expandedNextX = nextLeft
-        val expandedShuffleX = 12.dp
-        val expandedRepeatX = totalWidth - 64.dp
-
-        val prevX = lerp(basePrevX, expandedPrevX, controlT)
-        val playX = lerp(basePlayX, expandedPlayX, controlT)
-        val nextX = lerp(baseNextX, expandedNextX, controlT)
-        val shuffleX = lerp(24.dp, expandedShuffleX, controlT)
-        val repeatX = lerp(totalWidth - 72.dp, expandedRepeatX, controlT)
-
-        // At rest the secondary controls are clearly below the primary row.
-        // During the upward gesture they rise into the same row.
-        val primaryOffsetY = 0.dp
-        val secondaryOffsetY = lerp(76.dp + 28.dp, 6.dp, controlT)
-        val expandedControlsFade = (1f - ((p - 1f) / 0.45f)).coerceIn(0f, 1f)
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(170.dp)
-                .offset(y = controlY - 8.dp)
-                .graphicsLayer { alpha = expandedControlsFade }
-        ) {
-            AnimatedShuffleIcon(
-                isShuffle = isShuffle,
-                activeColor = themeColors.accent,
-                onClick = onToggleShuffle,
-                modifier = Modifier
-                    .offset(x = shuffleX, y = secondaryOffsetY)
-                    .testTag("player_shuffle_button"),
-                touchSize = 52.dp,
-                iconSize = 28.dp
-            )
-
-            IconButton(
-                onClick = onSkipPrevious,
-                modifier = Modifier
-                    .offset(x = prevX, y = primaryOffsetY)
-                    .size(60.dp)
-                    .testTag("player_previous_button")
+                    .height(72.dp)
+                    .shadow(6.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.5f))
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xFF18161D))
+                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.SkipPrevious,
-                    contentDescription = "Previous Track",
-                    tint = Color.White.copy(alpha = 0.95f),
-                    modifier = Modifier.size(42.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Shuffle
+                    AnimatedShuffleIcon(
+                        isShuffle = isShuffle,
+                        activeColor = themeColors.accent,
+                        onClick = onToggleShuffle,
+                        modifier = Modifier.testTag("player_shuffle_button"),
+                        touchSize = 46.dp,
+                        iconSize = 24.dp
+                    )
+
+                    // Previous
+                    IconButton(
+                        onClick = onSkipPrevious,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .testTag("player_previous_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Previous Track",
+                            tint = Color.White.copy(alpha = 0.92f),
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+
+                    // Play / Pause Focal Point
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.6f))
+                            .clip(CircleShape)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF2E2B35),
+                                        Color(0xFF201D26)
+                                    )
+                                )
+                            )
+                            .border(1.2.dp, Color.White.copy(alpha = 0.16f), CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onTogglePlayPause
+                            )
+                            .testTag("player_play_pause_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    // Next
+                    IconButton(
+                        onClick = onSkipNext,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .testTag("player_next_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next Track",
+                            tint = Color.White.copy(alpha = 0.92f),
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+
+                    // Repeat
+                    AnimatedRepeatIcon(
+                        isRepeat = isRepeat,
+                        activeColor = themeColors.accent,
+                        onClick = onToggleRepeat,
+                        modifier = Modifier.testTag("player_repeat_button"),
+                        touchSize = 46.dp,
+                        iconSize = 24.dp
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 4. UP NEXT RESTING SECTION (At bottom of screen, fits without covering)
+            val currentTrackIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
+            val nextTrack = orderedQueueItems.getOrNull(if (currentTrackIndex >= 0) currentTrackIndex + 1 else 1)
+                ?: orderedQueueItems.firstOrNull { it.id != track.id }
+                ?: track
 
             Box(
                 modifier = Modifier
-                    .offset(x = playX, y = -4.dp)
-                    .size(78.dp)
-                    .shadow(
-                        elevation = 12.dp,
-                        shape = CircleShape,
-                        spotColor = themeColors.accent.copy(alpha = 0.40f),
-                        ambientColor = themeColors.darkBackground
-                    )
-                    .clip(CircleShape)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                themeColors.playPauseGradTop,
-                                themeColors.playPauseGradBottom
-                            )
-                        )
-                    )
-                    .border(
-                        width = 1.5.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.45f),
-                                themeColors.accent.copy(alpha = 0.32f),
-                                Color.White.copy(alpha = 0.12f)
-                            )
-                        ),
-                        shape = CircleShape
-                    )
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color(0xFF15141A))
+                    .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(22.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = onTogglePlayPause
-                    )
-                    .testTag("player_play_pause_button"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = Color.White,
-                    modifier = Modifier.size(40.dp)
-                )
-            }
-
-            IconButton(
-                onClick = onSkipNext,
-                modifier = Modifier
-                    .offset(x = nextX, y = primaryOffsetY)
-                    .size(60.dp)
-                    .testTag("player_next_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SkipNext,
-                    contentDescription = "Next Track",
-                    tint = Color.White.copy(alpha = 0.95f),
-                    modifier = Modifier.size(42.dp)
-                )
-            }
-
-            AnimatedRepeatIcon(
-                isRepeat = isRepeat,
-                activeColor = themeColors.accent,
-                onClick = onToggleRepeat,
-                modifier = Modifier
-                    .offset(x = repeatX, y = secondaryOffsetY)
-                    .testTag("player_repeat_button"),
-                touchSize = 52.dp,
-                iconSize = 28.dp
-            )
-        }
-
-        // 8. UP NEXT HANDLE & CONTENT (Lives within the SAME surface, continuously positioned at upNextY)
-        val upNextHeight = totalHeight - upNextY - insetsBottom
-        Column(
-            modifier = Modifier
-                .offset(x = 0.dp, y = upNextY)
-                .fillMaxWidth()
-                .height(upNextHeight.coerceAtLeast(54.dp))
-                .background(Color.Transparent)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = { onDragFinish() },
-                        onDragCancel = { onDragFinish() },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            onDragDelta(dragAmount)
+                        onClick = {
+                            coroutineScope.launch {
+                                upNextExpanded.animateTo(1f)
+                            }
                         }
                     )
-                }
-        ) {
-            // Subtle Gesture Handle
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp, bottom = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures { _, dragAmount ->
+                            if (dragAmount < -15f) {
+                                coroutineScope.launch {
+                                    upNextExpanded.animateTo(1f)
+                                }
+                            }
+                        }
+                    }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                if (p < 0.35f) {
-                    Text(
-                        text = "Up Next",
-                        fontSize = 11.sp,
-                        letterSpacing = 1.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White.copy(alpha = 0.55f)
-                    )
-                    Spacer(modifier = Modifier.height(3.5.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(36.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(Color.White.copy(alpha = 0.35f))
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .width(36.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(Color.White.copy(alpha = 0.35f))
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "Playing from",
-                                fontSize = 9.5.sp,
-                                letterSpacing = 0.7.sp,
-                                color = Color.White.copy(alpha = 0.50f),
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = if (track.catalogSource.isNotBlank()) track.catalogSource else "Queue",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                        Box(
+                            modifier = Modifier
+                                .width(32.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .background(Color.White.copy(alpha = 0.35f))
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.White.copy(alpha = 0.08f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            TrackArtworkImage(
+                                track = nextTrack,
+                                contentDescription = nextTrack.title,
+                                modifier = Modifier.fillMaxSize(),
+                                thumbnailSizePx = 96,
+                                crossfade = false
                             )
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                                .border(0.8.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
-                                .clickable {
-                                    Toast.makeText(context, "Queue saved to playlist", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column(
+                            modifier = Modifier.weight(1f)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.QueueMusic,
-                                    contentDescription = "Save Queue",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(14.dp)
+                                Text(
+                                    text = "UP NEXT",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = themeColors.accent
                                 )
                                 Text(
-                                    text = "Save",
-                                    fontSize = 11.5.sp,
+                                    text = "•",
+                                    fontSize = 10.sp,
+                                    color = Color.White.copy(alpha = 0.40f)
+                                )
+                                Text(
+                                    text = nextTrack.title,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
+                            Text(
+                                text = nextTrack.artist,
+                                fontSize = 11.5.sp,
+                                color = Color.White.copy(alpha = 0.60f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
+
+                        Icon(
+                            imageVector = Icons.Default.QueueMusic,
+                            contentDescription = "Open Queue",
+                            tint = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
 
-            // Scrollable Queue List inside the SAME surface (interactive when reached stage 1)
-            if (p > 0.40f) {
-                val listAlpha = ((p - 0.40f) / 0.40f).coerceIn(0f, 1f)
+            Spacer(modifier = Modifier.height(4.dp))
+        }
 
-                LazyColumn(
-                    state = queueListState,
-                    userScrollEnabled = p >= 0.95f,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = listAlpha },
-                    contentPadding = PaddingValues(bottom = insetsBottom + 24.dp)
+        // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed when user drags or taps Up Next)
+        if (upNextP > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = (1f - upNextP) * totalHeight.toPx()
+                        alpha = upNextP.coerceIn(0f, 1f)
+                    }
+                    .background(Color(0xFF0F0E13))
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    itemsIndexed(
-                        items = orderedQueueItems,
-                        key = { _, it -> it.id },
-                        contentType = { _, _ -> "track_row" }
-                    ) { queueIndex, queueTrack ->
-                        val isCurrent = queueTrack.id == track.id
-                        val isDragging = activeQueueDragId == queueTrack.id
-                        UpNextTrackRow(
-                            track = queueTrack,
-                            isCurrent = isCurrent,
-                            isPlaying = isPlaying && isCurrent,
-                            accentColor = themeColors.accent,
-                            surfaceColor = themeColors.darkBackground,
-                            onClick = { onSelectQueueTrack(queueTrack) },
-                            onPlayNext = {
-                                onPlayNextTrack(queueTrack)
-                                val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
-                                val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
-                                if (currentIndex >= 0 && playingIndex >= 0 && currentIndex != playingIndex + 1) {
-                                    val destination = if (currentIndex < playingIndex) playingIndex else playingIndex + 1
-                                    val updated = orderedQueueItems.toMutableList().apply {
-                                        val moved = removeAt(currentIndex)
-                                        add(destination.coerceAtMost(size), moved)
-                                    }
-                                    orderedQueueItems = updated
-                                    onUpdateQueue?.invoke(updated)
-                                    coroutineScope.launch {
-                                        queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
+                    // Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    upNextExpanded.animateTo(0f)
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Collapse Queue",
+                                tint = Color.White
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Playing from Queue",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "${orderedQueueItems.size} tracks",
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = 0.60f)
+                            )
+                        }
+
+                        TextButton(
+                            onClick = {
+                                Toast.makeText(context, "Queue saved to playlist", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Text(
+                                text = "Save",
+                                color = themeColors.accent,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+
+                    // Pull-down handle to collapse back to player
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(20.dp)
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures { _, dragAmount ->
+                                    if (dragAmount > 15f) {
+                                        coroutineScope.launch {
+                                            upNextExpanded.animateTo(0f)
+                                        }
                                     }
                                 }
                             },
-                            onDelete = {
-                                if (!isCurrent && activeQueueDragId == null) {
-                                    val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
-                                    orderedQueueItems = updated
-                                    onUpdateQueue?.invoke(updated)
-                                }
-                            },
-                            onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
-                            onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
-                            onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
-                            isDragging = isDragging,
-                            dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
-                            virtualDisplacementY = run {
-                                val dragId = activeQueueDragId ?: return@run 0f
-                                if (isDragging) return@run 0f
-                                val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
-                                if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
-                                val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
-                                when {
-                                    dragStartIndex < queueDragTargetIndex -> {
-                                        // Dragged downward: items between start and target shift UP
-                                        if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
-                                    }
-                                    dragStartIndex > queueDragTargetIndex -> {
-                                        // Dragged upward: items between target and start shift DOWN
-                                        if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
-                                    }
-                                    else -> 0f
-                                }
-                            },
-                            isDropTarget = false
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = 0.30f))
                         )
+                    }
+
+                    // Full interactive reorderable/swipeable queue
+                    LazyColumn(
+                        state = queueListState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        itemsIndexed(
+                            items = orderedQueueItems,
+                            key = { _, item -> item.id }
+                        ) { queueIndex, queueTrack ->
+                            val isCurrent = queueTrack.id == track.id
+                            val isDragging = queueTrack.id == activeQueueDragId
+
+                            UpNextTrackRow(
+                                track = queueTrack,
+                                isCurrent = isCurrent,
+                                isPlaying = isPlaying,
+                                accentColor = themeColors.accent,
+                                surfaceColor = Color(0xFF16151B),
+                                onClick = { onSelectQueueTrack(queueTrack) },
+                                onPlayNext = {
+                                    val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
+                                    val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
+                                    if (currentIndex >= 0) {
+                                        val destination = if (playingIndex >= 0) playingIndex + 1 else 0
+                                        val updated = orderedQueueItems.toMutableList().apply {
+                                            val moved = removeAt(currentIndex)
+                                            add(destination.coerceAtMost(size), moved)
+                                        }
+                                        orderedQueueItems = updated
+                                        onUpdateQueue?.invoke(updated)
+                                        coroutineScope.launch {
+                                            queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
+                                        }
+                                    }
+                                },
+                                onDelete = {
+                                    if (!isCurrent && activeQueueDragId == null) {
+                                        val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
+                                        orderedQueueItems = updated
+                                        onUpdateQueue?.invoke(updated)
+                                    }
+                                },
+                                onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
+                                onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
+                                onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
+                                isDragging = isDragging,
+                                dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
+                                virtualDisplacementY = run {
+                                    val dragId = activeQueueDragId ?: return@run 0f
+                                    if (isDragging) return@run 0f
+                                    val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
+                                    if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
+                                    val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
+                                    when {
+                                        dragStartIndex < queueDragTargetIndex -> {
+                                            if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
+                                        }
+                                        dragStartIndex > queueDragTargetIndex -> {
+                                            if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
+                                        }
+                                        else -> 0f
+                                    }
+                                },
+                                isDropTarget = false
+                            )
+                        }
                     }
                 }
             }
@@ -1179,6 +940,319 @@ fun PlayerSheet(
                 accentColor = themeColors.accent,
                 onSeekTo = onSeekTo,
                 onDismiss = { showLyricsSheet = false }
+            )
+        }
+    }
+}
+
+
+@Composable
+private fun SmokyAtmosphericCardBackground(
+    themeColors: TrackThemeColors,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "smoke_drift")
+    val smokePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 24000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "smoke_phase"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        if (w <= 0f || h <= 0f) return@Canvas
+
+        // 1. Deep charcoal/near-black base with subtle tint of the extracted dark background
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF141217),
+                    themeColors.darkBackground.copy(alpha = 0.85f),
+                    Color(0xFF0E0D12)
+                ),
+                startY = 0f,
+                endY = h
+            )
+        )
+
+        // 2. First drifting smoke pool: Atmospheric Bloom (e.g. burgundy/crimson)
+        val x1 = w * (0.34f + 0.14f * sin(smokePhase))
+        val y1 = h * (0.36f + 0.10f * cos(smokePhase * 0.75f))
+        val radius1 = w * 0.82f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    themeColors.atmosphericBloom.copy(alpha = 0.50f),
+                    themeColors.bgTop.copy(alpha = 0.30f),
+                    Color.Transparent
+                ),
+                center = Offset(x1, y1),
+                radius = radius1
+            ),
+            center = Offset(x1, y1),
+            radius = radius1
+        )
+
+        // 3. Second drifting smoke pool: Dominant color swirl
+        val x2 = w * (0.66f + 0.13f * cos(smokePhase * 0.85f))
+        val y2 = h * (0.50f + 0.13f * sin(smokePhase * 0.90f))
+        val radius2 = w * 0.76f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    themeColors.dominant.copy(alpha = 0.34f),
+                    themeColors.bgMidUpper.copy(alpha = 0.22f),
+                    Color.Transparent
+                ),
+                center = Offset(x2, y2),
+                radius = radius2
+            ),
+            center = Offset(x2, y2),
+            radius = radius2
+        )
+
+        // 4. Third drifting smoke pool: Secondary muted tone
+        val x3 = w * (0.48f + 0.11f * sin(smokePhase * 0.60f + 1.4f))
+        val y3 = h * (0.66f + 0.09f * cos(smokePhase * 0.50f))
+        val radius3 = w * 0.70f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    themeColors.secondary.copy(alpha = 0.38f),
+                    Color.Transparent
+                ),
+                center = Offset(x3, y3),
+                radius = radius3
+            ),
+            center = Offset(x3, y3),
+            radius = radius3
+        )
+
+        // 5. Top and bottom dark vignettes:
+        // Ensures crisp contrast for the song title at the top,
+        // and provides a deep, dark base for the waveform at the bottom.
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF100E14).copy(alpha = 0.55f),
+                    Color.Transparent,
+                    Color.Transparent,
+                    Color(0xFF0B0A0E).copy(alpha = 0.72f)
+                ),
+                startY = 0f,
+                endY = h
+            )
+        )
+    }
+}
+
+@Composable
+private fun NowPlayingProgressBar(
+    positionMs: Long,
+    durationMs: Long,
+    onSeekTo: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val progressFraction = if (durationMs > 0L) {
+        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    var isDragging by remember { mutableStateOf(false) }
+    var dragFraction by remember { mutableFloatStateOf(0f) }
+    val displayFraction = if (isDragging) dragFraction else progressFraction
+
+    Column(
+        modifier = modifier
+    ) {
+        // Timestamps Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = formatMs(if (isDragging) (dragFraction * durationMs).toLong() else positionMs),
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color.White.copy(alpha = 0.70f)
+            )
+            Text(
+                text = formatMs(durationMs),
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color.White.copy(alpha = 0.70f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Draggable Progress Line
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(20.dp)
+                .pointerInput(durationMs) {
+                    detectTapGestures { offset ->
+                        if (durationMs > 0L && size.width > 0f) {
+                            val newFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            onSeekTo((newFraction * durationMs).toLong())
+                        }
+                    }
+                }
+                .pointerInput(durationMs) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { offset ->
+                            isDragging = true
+                            dragFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        },
+                        onDragEnd = {
+                            isDragging = false
+                            onSeekTo((dragFraction * durationMs).toLong())
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            dragFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+            ) {
+                val totalWidth = size.width
+                val centerY = size.height / 2f
+                val lineThickness = 2.5.dp.toPx()
+                val progressWidth = (totalWidth * displayFraction).coerceIn(0f, totalWidth)
+
+                // Unplayed track
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.20f),
+                    topLeft = Offset(0f, centerY - lineThickness / 2f),
+                    size = Size(totalWidth, lineThickness),
+                    cornerRadius = CornerRadius(lineThickness / 2f, lineThickness / 2f)
+                )
+
+                // Played track - clean solid milk-white
+                if (progressWidth > 0f) {
+                    drawRoundRect(
+                        color = Color.White,
+                        topLeft = Offset(0f, centerY - lineThickness / 2f),
+                        size = Size(progressWidth, lineThickness),
+                        cornerRadius = CornerRadius(lineThickness / 2f, lineThickness / 2f)
+                    )
+                }
+
+                // Thumb bead
+                val beadRadius = (if (isDragging) 4.5.dp else 3.5.dp).toPx()
+                val beadX = progressWidth.coerceIn(beadRadius, totalWidth - beadRadius)
+                drawCircle(
+                    color = Color.White,
+                    radius = beadRadius,
+                    center = Offset(beadX, centerY)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DarkSilhouetteWaveform(
+    isPlaying: Boolean,
+    telemetry: AudioTelemetry,
+    modifier: Modifier = Modifier
+) {
+    val barCount = 64
+    val restingProfile = remember(barCount) {
+        FloatArray(barCount) { i ->
+            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+            val wave1 = abs(sin(norm * 3.14159f * 1.5f + 0.35f)) * 0.16f
+            val wave2 = abs(sin(norm * 3.14159f * 3.8f)) * 0.10f
+            val wave3 = abs(cos(norm * 3.14159f * 7.2f)) * 0.06f
+            (0.14f + wave1 + wave2 + wave3).coerceIn(0.14f, 0.34f)
+        }
+    }
+    val liveAmplitudes = remember(barCount) {
+        FloatArray(barCount) { i -> restingProfile[i] }
+    }
+
+    val frameTicker = remember { mutableLongStateOf(0L) }
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isActive) {
+                withFrameNanos { timeNanos ->
+                    frameTicker.longValue = timeNanos
+                }
+            }
+        }
+    }
+
+    Canvas(modifier = modifier) {
+        @Suppress("UNUSED_VARIABLE")
+        val ticker = frameTicker.longValue
+        val rawFft = telemetry.fftBars
+        val subBassEnergy = if (rawFft.size >= 4) {
+            (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f
+        } else 0f
+
+        val targetHeights = calculateCompressedWaveform(rawFft, barCount, subBassEnergy)
+
+        val totalWidth = size.width
+        val barWidth = 2.4.dp.toPx()
+        val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceAtLeast(1f)
+
+        val minBarHeight = 3.dp.toPx()
+        val maxBarHeight = size.height * 0.94f
+        val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
+
+        val attackRate = 0.50f
+        val decayRate = 0.18f
+
+        for (i in 0 until barCount) {
+            if (isPlaying) {
+                val target = targetHeights[i].coerceIn(0f, 1f)
+                val current = liveAmplitudes[i]
+                val updated = if (target > current) {
+                    current + (target - current) * attackRate
+                } else {
+                    current - (current - target) * decayRate
+                }
+                liveAmplitudes[i] = updated.coerceIn(0f, 1f)
+            }
+
+            val clampedFraction = liveAmplitudes[i].coerceIn(0f, 1f)
+            val barHeight = (minBarHeight + usableRange * clampedFraction).coerceIn(minBarHeight, maxBarHeight)
+            val barTop = size.height - barHeight
+            val barX = i * (barWidth + barGap)
+
+            // CRITICAL: Waveform uses very dark, muted, neutral/charcoal tone with restrained contrast edge
+            // Strictly NOT album artwork colors!
+            val isPeak = clampedFraction > 0.78f
+            val tipColor = if (isPeak) Color(0xFF383442).copy(alpha = 0.92f) else Color(0xFF26232D)
+            val baseColor = Color(0xFF131116)
+
+            val barBrush = Brush.verticalGradient(
+                colors = listOf(tipColor, baseColor),
+                startY = barTop,
+                endY = size.height
+            )
+
+            drawRoundRect(
+                brush = barBrush,
+                topLeft = Offset(barX, barTop),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
             )
         }
     }
