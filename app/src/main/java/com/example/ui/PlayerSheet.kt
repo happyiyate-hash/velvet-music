@@ -63,6 +63,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -289,90 +290,70 @@ fun PlayerSheet(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0C0B0E))
+            .background(Color(0xFF16181F)) // Ashes gray background matching user screenshot
             .statusBarsPadding()
             .navigationBarsPadding()
             .testTag("full_player_sheet")
     ) {
         val totalHeight = maxHeight
 
-        // Now Playing Screen Vertical Composition:
-        // TOP: Now Playing header
-        //  ↓
-        // Large main player card (with subtle color smoke, centered artwork, progress & dark waveform)
-        //  ↓
-        // Separate control card directly underneath
-        //  ↓
-        // Up Next section at bottom
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 1. TOP HEADER BAR
+            // 1. TOP HEADER (Subtle collapse on left, empty center - NO "NOW PLAYING" text, three-dot options on right)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(46.dp),
+                    .height(44.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(40.dp)
                         .testTag("player_collapse_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
                         contentDescription = "Collapse Player",
-                        tint = Color.White.copy(alpha = 0.88f),
-                        modifier = Modifier.size(28.dp)
+                        tint = Color.White.copy(alpha = 0.70f),
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.07f))
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "NOW PLAYING",
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 1.6.sp,
-                        color = Color.White.copy(alpha = 0.70f)
-                    )
-                }
+                // Center is empty as shown in the screenshot (no "NOW PLAYING" pill)
+                Spacer(modifier = Modifier.weight(1f))
 
                 IconButton(
                     onClick = { showActionSheet = true },
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(40.dp)
                         .testTag("player_menu_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.MoreVert,
+                        imageVector = Icons.Default.MoreHoriz,
                         contentDescription = "More Options",
-                        tint = Color.White.copy(alpha = 0.88f),
-                        modifier = Modifier.size(22.dp)
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            // 2. LARGE MAIN PLAYER CARD
+            // 2. LARGE MAIN PLAYER GLASS CARD
+            // Smoothly mixing ashes gray with the track's color in an ultra-slow, continuous ambient drift
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .clip(RoundedCornerShape(28.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(28.dp))
+                    .clip(RoundedCornerShape(32.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
             ) {
-                // Subtle fluid color smoke connecting to extracted album-art colors
                 SmokyAtmosphericCardBackground(
                     themeColors = themeColors,
                     modifier = Modifier.fillMaxSize()
@@ -381,17 +362,19 @@ fun PlayerSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .padding(top = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Track Title & Artist (Centered at top of card)
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = track.title,
-                            fontSize = 19.sp,
+                            fontSize = 21.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White,
                             textAlign = TextAlign.Center,
@@ -404,10 +387,10 @@ fun PlayerSheet(
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
                             text = track.artist.uppercase(),
-                            fontSize = 12.sp,
-                            letterSpacing = 1.4.sp,
+                            fontSize = 12.5.sp,
+                            letterSpacing = 1.6.sp,
                             fontWeight = FontWeight.Normal,
-                            color = Color.White.copy(alpha = 0.65f),
+                            color = Color.White.copy(alpha = 0.58f),
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -417,22 +400,23 @@ fun PlayerSheet(
                         )
                     }
 
-                    // Centered Album Artwork with breathing room
+                    // Centered Album Artwork floating in middle
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxWidth(),
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            val artSize = minOf(maxWidth - 32.dp, maxHeight * 0.86f).coerceIn(140.dp, 215.dp)
+                            val artSize = minOf(maxWidth - 36.dp, maxHeight * 0.88f).coerceIn(150.dp, 230.dp)
                             Box(
                                 modifier = Modifier
                                     .size(artSize)
                                     .shadow(
                                         elevation = 18.dp,
                                         shape = RoundedCornerShape(22.dp),
-                                        spotColor = Color.Black.copy(alpha = 0.75f),
+                                        spotColor = Color.Black.copy(alpha = 0.70f),
                                         ambientColor = Color.Black
                                     )
                                     .clip(RoundedCornerShape(22.dp))
@@ -456,140 +440,116 @@ fun PlayerSheet(
                         onSeekTo = onSeekTo,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 4.dp)
+                            .padding(horizontal = 20.dp)
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Waveform / Audio Visualizer (Restrained neutral/charcoal tone - NOT album colors)
+                    // Waveform Visualizer (Hugging the bottom of the card as a dark silhouette)
                     DarkSilhouetteWaveform(
                         isPlaying = isPlaying,
                         telemetry = telemetry,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(36.dp)
-                            .padding(horizontal = 4.dp)
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // 3. SEPARATE CONTROL CARD UNDERNEATH (Dark charcoal, rounded, restrained)
-            Box(
+            // 3. CONTROLS ROW (Directly underneath the card on the ash background)
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(72.dp)
-                    .shadow(6.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.5f))
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFF18161D))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                    .height(64.dp)
                     .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.Center
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Shuffle
+                AnimatedShuffleIcon(
+                    isShuffle = isShuffle,
+                    activeColor = themeColors.accent,
+                    onClick = onToggleShuffle,
+                    modifier = Modifier.testTag("player_shuffle_button"),
+                    touchSize = 46.dp,
+                    iconSize = 24.dp
+                )
+
+                // Previous
+                IconButton(
+                    onClick = onSkipPrevious,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .testTag("player_previous_button")
                 ) {
-                    // Shuffle
-                    AnimatedShuffleIcon(
-                        isShuffle = isShuffle,
-                        activeColor = themeColors.accent,
-                        onClick = onToggleShuffle,
-                        modifier = Modifier.testTag("player_shuffle_button"),
-                        touchSize = 46.dp,
-                        iconSize = 24.dp
-                    )
-
-                    // Previous
-                    IconButton(
-                        onClick = onSkipPrevious,
-                        modifier = Modifier
-                            .size(46.dp)
-                            .testTag("player_previous_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous Track",
-                            tint = Color.White.copy(alpha = 0.92f),
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
-
-                    // Play / Pause Focal Point
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.6f))
-                            .clip(CircleShape)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color(0xFF2E2B35),
-                                        Color(0xFF201D26)
-                                    )
-                                )
-                            )
-                            .border(1.2.dp, Color.White.copy(alpha = 0.16f), CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onTogglePlayPause
-                            )
-                            .testTag("player_play_pause_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    // Next
-                    IconButton(
-                        onClick = onSkipNext,
-                        modifier = Modifier
-                            .size(46.dp)
-                            .testTag("player_next_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next Track",
-                            tint = Color.White.copy(alpha = 0.92f),
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
-
-                    // Repeat
-                    AnimatedRepeatIcon(
-                        isRepeat = isRepeat,
-                        activeColor = themeColors.accent,
-                        onClick = onToggleRepeat,
-                        modifier = Modifier.testTag("player_repeat_button"),
-                        touchSize = 46.dp,
-                        iconSize = 24.dp
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Previous Track",
+                        tint = Color.White.copy(alpha = 0.90f),
+                        modifier = Modifier.size(30.dp)
                     )
                 }
+
+                // Circular Glass Play / Pause Button
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.50f))
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.11f))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onTogglePlayPause
+                        )
+                        .testTag("player_play_pause_button"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                // Next
+                IconButton(
+                    onClick = onSkipNext,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .testTag("player_next_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next Track",
+                        tint = Color.White.copy(alpha = 0.90f),
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+
+                // Repeat
+                AnimatedRepeatIcon(
+                    isRepeat = isRepeat,
+                    activeColor = themeColors.accent,
+                    onClick = onToggleRepeat,
+                    modifier = Modifier.testTag("player_repeat_button"),
+                    touchSize = 46.dp,
+                    iconSize = 24.dp
+                )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // 4. UP NEXT RESTING SECTION (At bottom of screen, fits without covering)
-            val currentTrackIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
-            val nextTrack = orderedQueueItems.getOrNull(if (currentTrackIndex >= 0) currentTrackIndex + 1 else 1)
-                ?: orderedQueueItems.firstOrNull { it.id != track.id }
-                ?: track
-
+            // 4. DISCREET UP NEXT SWIPE-UP HANDLE (Keeps screen clean while leaving Up Next easily accessible)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(72.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(Color(0xFF15141A))
-                    .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(22.dp))
+                    .height(34.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -601,106 +561,28 @@ fun PlayerSheet(
                     )
                     .pointerInput(Unit) {
                         detectVerticalDragGestures { _, dragAmount ->
-                            if (dragAmount < -15f) {
+                            if (dragAmount < -12f) {
                                 coroutineScope.launch {
                                     upNextExpanded.animateTo(1f)
                                 }
                             }
                         }
-                    }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(32.dp)
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(Color.White.copy(alpha = 0.35f))
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color.White.copy(alpha = 0.08f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            TrackArtworkImage(
-                                track = nextTrack,
-                                contentDescription = nextTrack.title,
-                                modifier = Modifier.fillMaxSize(),
-                                thumbnailSizePx = 96,
-                                crossfade = false
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = "UP NEXT",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                    color = themeColors.accent
-                                )
-                                Text(
-                                    text = "•",
-                                    fontSize = 10.sp,
-                                    color = Color.White.copy(alpha = 0.40f)
-                                )
-                                Text(
-                                    text = nextTrack.title,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Text(
-                                text = nextTrack.artist,
-                                fontSize = 11.5.sp,
-                                color = Color.White.copy(alpha = 0.60f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Icon(
-                            imageVector = Icons.Default.QueueMusic,
-                            contentDescription = "Open Queue",
-                            tint = Color.White.copy(alpha = 0.55f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.22f))
+                )
             }
 
             Spacer(modifier = Modifier.height(4.dp))
         }
 
-        // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed when user drags or taps Up Next)
+        // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed on swipe-up or handle tap)
         if (upNextP > 0.001f) {
             Box(
                 modifier = Modifier
@@ -709,7 +591,7 @@ fun PlayerSheet(
                         translationY = (1f - upNextP) * totalHeight.toPx()
                         alpha = upNextP.coerceIn(0f, 1f)
                     }
-                    .background(Color(0xFF0F0E13))
+                    .background(Color(0xFF14151C))
             ) {
                 Column(
                     modifier = Modifier.fillMaxSize()
@@ -811,7 +693,7 @@ fun PlayerSheet(
                                 isCurrent = isCurrent,
                                 isPlaying = isPlaying,
                                 accentColor = themeColors.accent,
-                                surfaceColor = Color(0xFF16151B),
+                                surfaceColor = Color(0xFF1E2028),
                                 onClick = { onSelectQueueTrack(queueTrack) },
                                 onPlayNext = {
                                     val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
@@ -951,12 +833,14 @@ private fun SmokyAtmosphericCardBackground(
     themeColors: TrackThemeColors,
     modifier: Modifier = Modifier
 ) {
+    // Ultra-slow, smooth ambient drift: 36 seconds cycle, continuous and calming
+    // Strictly NO blinking or flashing up and down!
     val infiniteTransition = rememberInfiniteTransition(label = "smoke_drift")
     val smokePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 24000, easing = LinearEasing),
+            animation = tween(durationMillis = 36000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "smoke_phase"
@@ -967,28 +851,31 @@ private fun SmokyAtmosphericCardBackground(
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
-        // 1. Deep charcoal/near-black base with subtle tint of the extracted dark background
+        // 1. Ashes gray dark base
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFF141217),
-                    themeColors.darkBackground.copy(alpha = 0.85f),
-                    Color(0xFF0E0D12)
+                    Color(0xFF1E2028),
+                    Color(0xFF1A1C23),
+                    Color(0xFF16171E)
                 ),
                 startY = 0f,
                 endY = h
             )
         )
 
-        // 2. First drifting smoke pool: Atmospheric Bloom (e.g. burgundy/crimson)
-        val x1 = w * (0.34f + 0.14f * sin(smokePhase))
-        val y1 = h * (0.36f + 0.10f * cos(smokePhase * 0.75f))
-        val radius1 = w * 0.82f
+        // The dictated track color (crimson / burgundy wine / dominant hue)
+        val dictatedColor = themeColors.dominant
+
+        // 2. Slow drifting color pool on left/center: Dictated color softly diffusing with ashes gray
+        val x1 = w * (0.30f + 0.12f * sin(smokePhase))
+        val y1 = h * (0.38f + 0.10f * cos(smokePhase * 0.75f))
+        val radius1 = w * 0.90f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    themeColors.atmosphericBloom.copy(alpha = 0.50f),
-                    themeColors.bgTop.copy(alpha = 0.30f),
+                    dictatedColor.copy(alpha = 0.54f),
+                    Color(0xFF282A34).copy(alpha = 0.32f),
                     Color.Transparent
                 ),
                 center = Offset(x1, y1),
@@ -998,15 +885,15 @@ private fun SmokyAtmosphericCardBackground(
             radius = radius1
         )
 
-        // 3. Second drifting smoke pool: Dominant color swirl
-        val x2 = w * (0.66f + 0.13f * cos(smokePhase * 0.85f))
-        val y2 = h * (0.50f + 0.13f * sin(smokePhase * 0.90f))
-        val radius2 = w * 0.76f
+        // 3. Second slow drifting cloud: Ashes gray Slate + subtle secondary tone
+        val x2 = w * (0.68f + 0.10f * cos(smokePhase * 0.85f))
+        val y2 = h * (0.46f + 0.12f * sin(smokePhase * 0.70f))
+        val radius2 = w * 0.85f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    themeColors.dominant.copy(alpha = 0.34f),
-                    themeColors.bgMidUpper.copy(alpha = 0.22f),
+                    Color(0xFF2E313E).copy(alpha = 0.48f),
+                    themeColors.secondary.copy(alpha = 0.26f),
                     Color.Transparent
                 ),
                 center = Offset(x2, y2),
@@ -1016,14 +903,15 @@ private fun SmokyAtmosphericCardBackground(
             radius = radius2
         )
 
-        // 4. Third drifting smoke pool: Secondary muted tone
-        val x3 = w * (0.48f + 0.11f * sin(smokePhase * 0.60f + 1.4f))
-        val y3 = h * (0.66f + 0.09f * cos(smokePhase * 0.50f))
-        val radius3 = w * 0.70f
+        // 4. Third slow drifting pool: Dictated color bloom on lower-left / center
+        val x3 = w * (0.42f + 0.09f * sin(smokePhase * 0.60f + 1.2f))
+        val y3 = h * (0.64f + 0.08f * cos(smokePhase * 0.55f))
+        val radius3 = w * 0.75f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    themeColors.secondary.copy(alpha = 0.38f),
+                    themeColors.atmosphericBloom.copy(alpha = 0.42f),
+                    Color(0xFF20222B).copy(alpha = 0.25f),
                     Color.Transparent
                 ),
                 center = Offset(x3, y3),
@@ -1033,16 +921,14 @@ private fun SmokyAtmosphericCardBackground(
             radius = radius3
         )
 
-        // 5. Top and bottom dark vignettes:
-        // Ensures crisp contrast for the song title at the top,
-        // and provides a deep, dark base for the waveform at the bottom.
+        // 5. Soft contrast shading at top and bottom to ensure text and waveform clarity
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color(0xFF100E14).copy(alpha = 0.55f),
+                    Color(0xFF14151C).copy(alpha = 0.45f),
                     Color.Transparent,
                     Color.Transparent,
-                    Color(0xFF0B0A0E).copy(alpha = 0.72f)
+                    Color(0xFF121319).copy(alpha = 0.65f)
                 ),
                 startY = 0f,
                 endY = h
@@ -1069,34 +955,11 @@ private fun NowPlayingProgressBar(
     Column(
         modifier = modifier
     ) {
-        // Timestamps Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = formatMs(if (isDragging) (dragFraction * durationMs).toLong() else positionMs),
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Normal,
-                color = Color.White.copy(alpha = 0.70f)
-            )
-            Text(
-                text = formatMs(durationMs),
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Normal,
-                color = Color.White.copy(alpha = 0.70f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
         // Draggable Progress Line
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(20.dp)
+                .height(18.dp)
                 .pointerInput(durationMs) {
                     detectTapGestures { offset ->
                         if (durationMs > 0L && size.width > 0f) {
@@ -1129,16 +992,16 @@ private fun NowPlayingProgressBar(
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(10.dp)
+                    .height(8.dp)
             ) {
                 val totalWidth = size.width
                 val centerY = size.height / 2f
                 val lineThickness = 2.5.dp.toPx()
                 val progressWidth = (totalWidth * displayFraction).coerceIn(0f, totalWidth)
 
-                // Unplayed track
+                // Unplayed track - subtle translucent ash white
                 drawRoundRect(
-                    color = Color.White.copy(alpha = 0.20f),
+                    color = Color.White.copy(alpha = 0.18f),
                     topLeft = Offset(0f, centerY - lineThickness / 2f),
                     size = Size(totalWidth, lineThickness),
                     cornerRadius = CornerRadius(lineThickness / 2f, lineThickness / 2f)
@@ -1153,16 +1016,30 @@ private fun NowPlayingProgressBar(
                         cornerRadius = CornerRadius(lineThickness / 2f, lineThickness / 2f)
                     )
                 }
-
-                // Thumb bead
-                val beadRadius = (if (isDragging) 4.5.dp else 3.5.dp).toPx()
-                val beadX = progressWidth.coerceIn(beadRadius, totalWidth - beadRadius)
-                drawCircle(
-                    color = Color.White,
-                    radius = beadRadius,
-                    center = Offset(beadX, centerY)
-                )
             }
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        // Timestamps Row directly underneath the line (1:34 on left, 3:45 on right)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = formatMs(if (isDragging) (dragFraction * durationMs).toLong() else positionMs),
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color.White.copy(alpha = 0.65f)
+            )
+            Text(
+                text = formatMs(durationMs),
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color.White.copy(alpha = 0.65f)
+            )
         }
     }
 }
@@ -1173,14 +1050,16 @@ private fun DarkSilhouetteWaveform(
     telemetry: AudioTelemetry,
     modifier: Modifier = Modifier
 ) {
-    val barCount = 64
+    // 56 dense vertical bars forming the dark wave silhouette at the bottom of the card
+    val barCount = 56
     val restingProfile = remember(barCount) {
         FloatArray(barCount) { i ->
             val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
-            val wave1 = abs(sin(norm * 3.14159f * 1.5f + 0.35f)) * 0.16f
-            val wave2 = abs(sin(norm * 3.14159f * 3.8f)) * 0.10f
-            val wave3 = abs(cos(norm * 3.14159f * 7.2f)) * 0.06f
-            (0.14f + wave1 + wave2 + wave3).coerceIn(0.14f, 0.34f)
+            // Multi-harmonic natural undulating wave silhouette
+            val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.35f
+            val wave2 = abs(sin(norm * 3.14159f * 3.6f)) * 0.20f
+            val wave3 = abs(cos(norm * 3.14159f * 6.5f)) * 0.12f
+            (0.18f + wave1 + wave2 + wave3).coerceIn(0.15f, 0.70f)
         }
     }
     val liveAmplitudes = remember(barCount) {
@@ -1209,15 +1088,15 @@ private fun DarkSilhouetteWaveform(
         val targetHeights = calculateCompressedWaveform(rawFft, barCount, subBassEnergy)
 
         val totalWidth = size.width
-        val barWidth = 2.4.dp.toPx()
+        val barWidth = 2.6.dp.toPx()
         val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceAtLeast(1f)
 
-        val minBarHeight = 3.dp.toPx()
-        val maxBarHeight = size.height * 0.94f
+        val minBarHeight = 4.dp.toPx()
+        val maxBarHeight = size.height * 0.95f
         val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
 
-        val attackRate = 0.50f
-        val decayRate = 0.18f
+        val attackRate = 0.45f
+        val decayRate = 0.16f
 
         for (i in 0 until barCount) {
             if (isPlaying) {
@@ -1236,11 +1115,9 @@ private fun DarkSilhouetteWaveform(
             val barTop = size.height - barHeight
             val barX = i * (barWidth + barGap)
 
-            // CRITICAL: Waveform uses very dark, muted, neutral/charcoal tone with restrained contrast edge
-            // Strictly NOT album artwork colors!
-            val isPeak = clampedFraction > 0.78f
-            val tipColor = if (isPeak) Color(0xFF383442).copy(alpha = 0.92f) else Color(0xFF26232D)
-            val baseColor = Color(0xFF131116)
+            // Dark charcoal silhouette tone with restrained contrast edge nestled at bottom of card
+            val tipColor = Color(0xFF2B2D38)
+            val baseColor = Color(0xFF14151B)
 
             val barBrush = Brush.verticalGradient(
                 colors = listOf(tipColor, baseColor),
