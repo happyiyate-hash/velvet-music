@@ -358,8 +358,6 @@ fun PlayerSheet(
                 ) {
                     SmokyAtmosphericCardBackground(
                         themeColors = themeColors,
-                        isPlaying = isPlaying,
-                        telemetry = telemetry,
                         modifier = Modifier.fillMaxSize()
                     )
 
@@ -894,11 +892,22 @@ fun PlayerSheet(
 @Composable
 private fun SmokyAtmosphericCardBackground(
     themeColors: TrackThemeColors,
-    isPlaying: Boolean = false,
-    telemetry: AudioTelemetry = AudioTelemetry(),
     modifier: Modifier = Modifier
 ) {
-    // Keep ash-gray as the foundation, but let the artwork contribute a real palette.
+    /*
+     * The player atmosphere is intentionally independent from playback.
+     *
+     * IMPORTANT:
+     * - No AudioTelemetry.
+     * - No isPlaying.
+     * - No beat detection.
+     * - No RMS/bass response.
+     * - Pausing the song does not pause, reset, reverse, or otherwise affect this animation.
+     *
+     * The artwork palette changes only when the track changes. The three color fields then
+     * travel continuously on long, one-way paths. They move off-screen before each cycle
+     * restarts, so the cycle reset is invisible instead of looking like a flash or reversal.
+     */
     val ashGray = Color(0xFF17191F)
     val ashDeep = Color(0xFF111319)
 
@@ -906,7 +915,7 @@ private fun SmokyAtmosphericCardBackground(
     val palette2 = themeColors.ambient2
     val palette3 = themeColors.ambient3
 
-    // Song-to-song palette changes are deliberately slow.
+    // Track changes are blended slowly; playback state never touches these colors.
     val color1 by animateColorAsState(
         targetValue = palette1,
         animationSpec = tween(6000, easing = LinearEasing),
@@ -923,59 +932,36 @@ private fun SmokyAtmosphericCardBackground(
         label = "ambient_color_3"
     )
 
-    /*
-     * Shazam-style atmosphere:
-     * - Several actual colors sampled from the artwork.
-     * - Each color is its own soft moving field.
-     * - Fields continuously travel on different long paths and can pass/reveal
-     *   different parts of the screen.
-     * - Audio never changes opacity or flashes the whole background.
-     * - A beat only gives each field a small positional impulse.
-     * - Sustained bass gives the fields a soft physical wobble.
-     */
-    val infiniteTransition = rememberInfiniteTransition(label = "palette_atmosphere")
+    val infiniteTransition = rememberInfiniteTransition(label = "independent_palette_atmosphere")
 
-    val phase1 by infiniteTransition.animateFloat(
-        0f, (2f * Math.PI).toFloat(),
-        infiniteRepeatable(tween(78000, easing = LinearEasing), RepeatMode.Restart),
-        label = "palette_phase_1"
+    // Each field moves in one direction. Repeat happens only after the field is fully
+    // outside the canvas, so there is no visible snap-back.
+    val travel1 by infiniteTransition.animateFloat(
+        0f,
+        1f,
+        infiniteRepeatable(
+            animation = tween(42000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "palette_travel_1"
     )
-    val phase2 by infiniteTransition.animateFloat(
-        (Math.PI * 0.9).toFloat(), (Math.PI * 2.9).toFloat(),
-        infiniteRepeatable(tween(101000, easing = LinearEasing), RepeatMode.Restart),
-        label = "palette_phase_2"
+    val travel2 by infiniteTransition.animateFloat(
+        0f,
+        1f,
+        infiniteRepeatable(
+            animation = tween(54000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "palette_travel_2"
     )
-    val phase3 by infiniteTransition.animateFloat(
-        (Math.PI * 1.7).toFloat(), (Math.PI * 3.7).toFloat(),
-        infiniteRepeatable(tween(127000, easing = LinearEasing), RepeatMode.Restart),
-        label = "palette_phase_3"
-    )
-    val ashPhase by infiniteTransition.animateFloat(
-        (Math.PI * 0.35).toFloat(), (Math.PI * 2.35).toFloat(),
-        infiniteRepeatable(tween(149000, easing = LinearEasing), RepeatMode.Restart),
-        label = "ash_phase"
-    )
-
-    // A slower wobble clock for sustained bass. It never changes color brightness.
-    val bassPhase by infiniteTransition.animateFloat(
-        0f, (2f * Math.PI).toFloat(),
-        infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Restart),
-        label = "bass_phase"
-    )
-
-    // The atmosphere is intentionally continuous. Audio telemetry is not allowed to
-    // reposition the color fields, which prevents beat-by-beat flashing or jumping.
-
-    val bassTarget = if (isPlaying) {
-        ((telemetry.sustainedEnergy - 0.48f) / 0.52f).coerceIn(0f, 0.34f)
-    } else {
-        0f
-    }
-
-    val bassStrength by animateFloatAsState(
-        targetValue = bassTarget,
-        animationSpec = tween(750, easing = FastOutSlowInEasing),
-        label = "bass_strength"
+    val travel3 by infiniteTransition.animateFloat(
+        0f,
+        1f,
+        infiniteRepeatable(
+            animation = tween(68000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "palette_travel_3"
     )
 
     Canvas(modifier = modifier) {
@@ -983,26 +969,14 @@ private fun SmokyAtmosphericCardBackground(
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
-        // Permanent neutral base. The artwork colors sit on top of it.
         drawRect(color = ashGray)
 
-        val bass = bassStrength
-        val bassX = sin(bassPhase) * bass
-        val bassY = cos(bassPhase * 0.83f) * bass
+        val maxDimension = maxOf(w, h)
 
-        // FIELD 1 — warm/primary artwork color.
-        // Long diagonal path with a small beat-driven displacement.
-        val x1 = w * (
-            0.08f +
-                0.72f * ((sin(phase1) + 1f) * 0.5f) +
-                0.018f * bassX
-        )
-        val y1 = h * (
-            0.08f +
-                0.58f * ((cos(phase1 * 0.73f) + 1f) * 0.5f) +
-                0.018f * bassY
-        )
-        val radius1 = maxOf(w, h) * 0.62f
+        // FIELD 1: slow diagonal sweep from upper-left to lower-right.
+        val radius1 = maxDimension * 0.62f
+        val x1 = -radius1 * 1.35f + (w + radius1 * 2.70f) * travel1
+        val y1 = -radius1 * 1.35f + (h + radius1 * 2.70f) * travel1
 
         drawCircle(
             brush = Brush.radialGradient(
@@ -1019,19 +993,10 @@ private fun SmokyAtmosphericCardBackground(
             radius = radius1
         )
 
-        // FIELD 2 — secondary artwork color.
-        // Its path is intentionally unrelated to field 1.
-        val x2 = w * (
-            0.76f +
-                0.18f * cos(phase2 * 0.67f) -
-                0.014f * bassY
-        )
-        val y2 = h * (
-            0.18f +
-                0.62f * ((sin(phase2 * 0.81f) + 1f) * 0.5f) +
-                -0.014f * bassX
-        )
-        val radius2 = maxOf(w, h) * 0.58f
+        // FIELD 2: slower opposing diagonal sweep.
+        val radius2 = maxDimension * 0.58f
+        val x2 = w + radius2 * 1.35f - (w + radius2 * 2.70f) * travel2
+        val y2 = h * 0.18f + h * 0.72f * travel2
 
         drawCircle(
             brush = Brush.radialGradient(
@@ -1048,19 +1013,11 @@ private fun SmokyAtmosphericCardBackground(
             radius = radius2
         )
 
-        // FIELD 3 — accent artwork color.
-        // Smaller, more mobile field that crosses into different regions over time.
-        val x3 = w * (
-            0.50f +
-                0.40f * sin(phase3 * 0.59f) +
-                -0.012f * bassY
-        )
-        val y3 = h * (
-            0.55f +
-                0.38f * cos(phase3 * 0.47f) +
-                0.012f * bassX
-        )
-        val radius3 = maxOf(w, h) * 0.48f
+        // FIELD 3: very slow horizontal sweep, adding another moving region
+        // without any audio-driven movement.
+        val radius3 = maxDimension * 0.48f
+        val x3 = -radius3 * 1.45f + (w + radius3 * 2.90f) * travel3
+        val y3 = h * 0.72f - h * 0.22f * travel3
 
         drawCircle(
             brush = Brush.radialGradient(
@@ -1077,8 +1034,7 @@ private fun SmokyAtmosphericCardBackground(
             radius = radius3
         )
 
-        // No opaque ash veil: artwork colors remain visible and luminous.
-        // A very light edge vignette keeps text readable without crushing the palette.
+        // Only a tiny static readability vignette. It never animates.
         drawRect(
             brush = Brush.linearGradient(
                 colors = listOf(
