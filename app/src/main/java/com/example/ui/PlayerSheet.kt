@@ -1063,7 +1063,7 @@ private fun SmokyAtmosphericCardBackground(
             )
 
             drawCircle(
-                Brush.radialGradient(
+                brush = Brush.radialGradient(
                     listOf(
                         color1.copy(alpha = 0.38f),
                         color1.copy(alpha = 0.16f),
@@ -1072,11 +1072,11 @@ private fun SmokyAtmosphericCardBackground(
                     center = c1,
                     radius = radius
                 ),
-                c1,
-                radius
+                center = c1,
+                radius = radius
             )
             drawCircle(
-                Brush.radialGradient(
+                brush = Brush.radialGradient(
                     listOf(
                         color2.copy(alpha = 0.32f),
                         color2.copy(alpha = 0.13f),
@@ -1085,11 +1085,11 @@ private fun SmokyAtmosphericCardBackground(
                     center = c2,
                     radius = radius
                 ),
-                c2,
-                radius
+                center = c2,
+                radius = radius
             )
             drawCircle(
-                Brush.radialGradient(
+                brush = Brush.radialGradient(
                     listOf(
                         color3.copy(alpha = 0.25f),
                         Color.Transparent
@@ -1097,8 +1097,8 @@ private fun SmokyAtmosphericCardBackground(
                     center = Offset(w * 0.50f, h * 0.50f),
                     radius = radius * 0.80f
                 ),
-                Offset(w * 0.50f, h * 0.50f),
-                radius * 0.80f
+                center = Offset(w * 0.50f, h * 0.50f),
+                radius = radius * 0.80f
             )
 
             drawRect(Color(0xFF0D0F14).copy(alpha = 0.10f))
