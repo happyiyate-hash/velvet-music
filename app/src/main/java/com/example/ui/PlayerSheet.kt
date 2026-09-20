@@ -303,71 +303,27 @@ fun PlayerSheet(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
             val totalHeight = maxHeight
+            val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. TOP HEADER (Subtle collapse on left, empty center - NO "NOW PLAYING" text, three-dot options on right)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("player_collapse_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Collapse Player",
-                            tint = Color.White.copy(alpha = 0.70f),
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-
-                    // Center is empty as shown in the screenshot (no "NOW PLAYING" pill)
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    IconButton(
-                        onClick = { showActionSheet = true },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("player_menu_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = "More Options",
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // 2. LARGE MAIN PLAYER GLASS CARD
-                // Smoothly mixing ashes gray with the track's color in an ultra-slow, continuous ambient drift
+                // 1. FULL-WIDTH IMMERSIVE UPPER PLAYER SURFACE
+                // Stretches from the absolute top of the screen (behind status bar) to the bottom endpoint above controls
+                // Edge-to-edge: No left/right margins, no visible side or top borders
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .clip(RoundedCornerShape(32.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
+                        .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) { /* Absorb clicks on empty space of main card */ }
+                        ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
                     SmokyAtmosphericCardBackground(
                         themeColors = themeColors,
@@ -376,112 +332,152 @@ fun PlayerSheet(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // Track Title & Artist (Centered at top of card)
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp),
+                            .fillMaxSize()
+                            .padding(top = statusBarTop + 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(
-                            text = track.title,
-                            fontSize = 21.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        // Top Header (Collapse on left, More options on right)
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("player_track_title")
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = track.artist.uppercase(),
-                            fontSize = 12.5.sp,
-                            letterSpacing = 1.6.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color.White.copy(alpha = 0.58f),
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("player_track_artist")
-                        )
-                    }
-
-                    // Centered Album Artwork floating in middle
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            val artSize = minOf(maxWidth - 36.dp, maxHeight * 0.88f).coerceIn(150.dp, 230.dp)
-                            Box(
+                                .height(44.dp)
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = onDismiss,
                                 modifier = Modifier
-                                    .size(artSize)
-                                    .shadow(
-                                        elevation = 18.dp,
-                                        shape = RoundedCornerShape(22.dp),
-                                        spotColor = Color.Black.copy(alpha = 0.70f),
-                                        ambientColor = Color.Black
-                                    )
-                                    .clip(RoundedCornerShape(22.dp))
-                                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(22.dp)),
-                                contentAlignment = Alignment.Center
+                                    .size(40.dp)
+                                    .testTag("player_collapse_button")
                             ) {
-                                TrackArtworkImage(
-                                    track = track,
-                                    contentDescription = track.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Collapse Player",
+                                    tint = Color.White.copy(alpha = 0.75f),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            IconButton(
+                                onClick = { showActionSheet = true },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_menu_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreHoriz,
+                                    contentDescription = "More Options",
+                                    tint = Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
+
+                        // Track Title & Artist (Centered at top)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = track.title,
+                                fontSize = 21.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("player_track_title")
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = track.artist.uppercase(),
+                                fontSize = 12.5.sp,
+                                letterSpacing = 1.6.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color.White.copy(alpha = 0.58f),
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("player_track_artist")
+                            )
+                        }
+
+                        // Centered Album Artwork floating in middle (10-15% larger, inset with rounded corners)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                val artSize = minOf(maxWidth - 48.dp, maxHeight * 0.92f).coerceIn(165.dp, 265.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .size(artSize)
+                                        .shadow(
+                                            elevation = 20.dp,
+                                            shape = RoundedCornerShape(24.dp),
+                                            spotColor = Color.Black.copy(alpha = 0.70f),
+                                            ambientColor = Color.Black
+                                        )
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    TrackArtworkImage(
+                                        track = track,
+                                        contentDescription = track.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                        }
+
+                        // Progress Bar & Timestamps
+                        NowPlayingProgressBar(
+                            positionMs = playbackPositionMs,
+                            durationMs = track.durationMs,
+                            onSeekTo = onSeekTo,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Waveform Visualizer (Hugging the bottom of the immersive surface)
+                        DarkSilhouetteWaveform(
+                            isPlaying = isPlaying,
+                            telemetry = telemetry,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+                        )
                     }
-
-                    // Progress Bar & Timestamps
-                    NowPlayingProgressBar(
-                        positionMs = playbackPositionMs,
-                        durationMs = track.durationMs,
-                        onSeekTo = onSeekTo,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // Waveform Visualizer (Hugging the bottom of the card as a dark silhouette)
-                    DarkSilhouetteWaveform(
-                        isPlaying = isPlaying,
-                        telemetry = telemetry,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-                    )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-            // 3. CONTROLS ROW (Directly underneath the card on the ash background)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .padding(horizontal = 14.dp)
+                // 2. CONTROLS ROW (Directly underneath the upper surface)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp)
+                        .padding(horizontal = 16.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
