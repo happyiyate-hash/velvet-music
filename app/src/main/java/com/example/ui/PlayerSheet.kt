@@ -528,11 +528,11 @@ fun PlayerSheet(
                 // Shuffle
                 AnimatedShuffleIcon(
                     isShuffle = isShuffle,
-                    activeColor = themeColors.accent,
+                    activeColor = Color.White,
                     onClick = onToggleShuffle,
                     modifier = Modifier.testTag("player_shuffle_button"),
                     touchSize = 46.dp,
-                    iconSize = 24.dp
+                    iconSize = 27.dp
                 )
 
                 // Previous
@@ -543,7 +543,7 @@ fun PlayerSheet(
                         .testTag("player_previous_button")
                 ) {
                     PlayerPreviousIcon(
-                        modifier = Modifier.size(30.dp),
+                        modifier = Modifier.size(34.dp),
                         tint = Color.White
                     )
                 }
@@ -551,7 +551,7 @@ fun PlayerSheet(
                 // Circular Glass Play / Pause Button
                 Box(
                     modifier = Modifier
-                        .size(58.dp)
+                        .size(62.dp)
                         .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.50f))
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.11f))
@@ -566,12 +566,12 @@ fun PlayerSheet(
                 ) {
                     if (isPlaying) {
                         PlayerPauseIcon(
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(31.dp),
                             tint = Color.White
                         )
                     } else {
                         PlayerPlayIcon(
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(31.dp),
                             tint = Color.White
                         )
                     }
@@ -585,7 +585,7 @@ fun PlayerSheet(
                         .testTag("player_next_button")
                 ) {
                     PlayerNextIcon(
-                        modifier = Modifier.size(30.dp),
+                        modifier = Modifier.size(34.dp),
                         tint = Color.White
                     )
                 }
@@ -593,11 +593,11 @@ fun PlayerSheet(
                 // Repeat
                 AnimatedRepeatIcon(
                     isRepeat = isRepeat,
-                    activeColor = themeColors.accent,
+                    activeColor = Color.White,
                     onClick = onToggleRepeat,
                     modifier = Modifier.testTag("player_repeat_button"),
                     touchSize = 46.dp,
-                    iconSize = 24.dp
+                    iconSize = 27.dp
                 )
             }
 
