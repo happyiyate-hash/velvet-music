@@ -52,15 +52,11 @@ jobs:
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
           chmod +x gradlew
-
-          if [ -z "${KEYSTORE_BASE64}" ]; then
-            echo "::error::KEYSTORE_BASE64 repository secret is not configured."
-            echo "Add the permanent Velvet Music signing keystore as the KEYSTORE_BASE64 GitHub Actions secret."
-            exit 1
-          fi
 
           if [ ! -f ".env" ]; then
             if [ -f ".env.example" ]; then
@@ -70,20 +66,43 @@ jobs:
             fi
           fi
 
-          echo "${KEYSTORE_BASE64}" | base64 --decode > my-upload-key.jks
-          chmod 600 my-upload-key.jks
+          # Use the permanent signing keystore when it has been configured.
+          # Otherwise generate an ephemeral release keystore automatically so
+          # the APK build can proceed without requiring a GitHub secret.
+          if [ -n "${KEYSTORE_BASE64}" ]; then
+            echo "${KEYSTORE_BASE64}" | base64 --decode > my-upload-key.jks
+            chmod 600 my-upload-key.jks
 
-          echo "Permanent release keystore restored."
+            if [ -z "${STORE_PASSWORD:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+              echo "::error::KEYSTORE_BASE64 is configured, but KEYSTORE_PASSWORD and KEY_PASSWORD are missing."
+              exit 1
+            fi
+
+            echo "Permanent release keystore restored."
+          else
+            echo "No permanent release keystore configured; generating an ephemeral signing keystore for this build."
+
+            STORE_PASSWORD="$(openssl rand -hex 24)"
+            KEY_PASSWORD="$(openssl rand -hex 24)"
+
+            keytool -genkeypair               -keystore my-upload-key.jks               -storepass "${STORE_PASSWORD}"               -keypass "${KEY_PASSWORD}"               -alias upload               -keyalg RSA               -keysize 4096               -validity 10000               -dname "CN=Velvet Music, OU=Android, O=Velvet Music, L=Unknown, ST=Unknown, C=NG"
+
+            chmod 600 my-upload-key.jks
+            echo "Ephemeral release keystore generated successfully."
+          fi
+
+          # Pass the selected/generated signing configuration to the Gradle step.
+          {
+            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks"
+            echo "STORE_PASSWORD=${STORE_PASSWORD}"
+            echo "KEY_PASSWORD=${KEY_PASSWORD}"
+          } >> "${GITHUB_ENV}"
 
       - name: Apply Latest Release Compile Fixes
         shell: bash
         run: python3 scripts/fix_latest_release_compile_errors.py
 
       - name: Build Optimized Release APK
-        env:
-          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
-          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew clean :app:assembleRelease --stacktrace
 
       - name: Prepare Signed Release APK
