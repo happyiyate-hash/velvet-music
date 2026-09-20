@@ -895,73 +895,73 @@ private fun SmokyAtmosphericCardBackground(
     modifier: Modifier = Modifier
 ) {
     /*
-     * The player atmosphere is intentionally independent from playback.
+     * PURE AMBIENT ATMOSPHERE
      *
-     * IMPORTANT:
-     * - No AudioTelemetry.
-     * - No isPlaying.
-     * - No beat detection.
-     * - No RMS/bass response.
-     * - Pausing the song does not pause, reset, reverse, or otherwise affect this animation.
+     * This layer has exactly one job: continuously move the artwork colors around
+     * inside the card. It is deliberately disconnected from:
+     * - playback state
+     * - pause/play
+     * - AudioTelemetry
+     * - RMS / bass / beat detection
+     * - progress position
+     * - waveform animation
      *
-     * The artwork palette changes only when the track changes. The three color fields then
-     * travel continuously on long, one-way paths. They move off-screen before each cycle
-     * restarts, so the cycle reset is invisible instead of looking like a flash or reversal.
+     * The important visual rule is FLOW, not PULSING:
+     * several broad, soft color fields travel in different directions at very
+     * different speeds. They are blended into a permanent ash-gray base, so the
+     * card never flashes between "color" and "gray".
+     *
+     * Each field begins and ends completely outside the canvas. The restart
+     * therefore happens while that field is invisible, preventing a visible
+     * snap-back/reversal.
      */
-    val ashGray = Color(0xFF17191F)
-    val ashDeep = Color(0xFF111319)
+    val ashBase = Color(0xFF17191F)
 
-    val palette1 = themeColors.ambient1
-    val palette2 = themeColors.ambient2
-    val palette3 = themeColors.ambient3
-
-    // Track changes are blended slowly; playback state never touches these colors.
     val color1 by animateColorAsState(
-        targetValue = palette1,
-        animationSpec = tween(6000, easing = LinearEasing),
+        targetValue = themeColors.ambient1,
+        animationSpec = tween(7000, easing = LinearEasing),
         label = "ambient_color_1"
     )
     val color2 by animateColorAsState(
-        targetValue = palette2,
-        animationSpec = tween(7200, easing = LinearEasing),
+        targetValue = themeColors.ambient2,
+        animationSpec = tween(8200, easing = LinearEasing),
         label = "ambient_color_2"
     )
     val color3 by animateColorAsState(
-        targetValue = palette3,
-        animationSpec = tween(8400, easing = LinearEasing),
+        targetValue = themeColors.ambient3,
+        animationSpec = tween(9600, easing = LinearEasing),
         label = "ambient_color_3"
     )
 
-    val infiniteTransition = rememberInfiniteTransition(label = "independent_palette_atmosphere")
+    val transition = rememberInfiniteTransition(label = "free_flow_atmosphere")
 
-    // Each field moves in one direction. Repeat happens only after the field is fully
-    // outside the canvas, so there is no visible snap-back.
-    val travel1 by infiniteTransition.animateFloat(
-        0f,
-        1f,
-        infiniteRepeatable(
-            animation = tween(42000, easing = LinearEasing),
+    // Three independent, one-way motions. No RepeatMode.Reverse anywhere.
+    val flowA by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(78000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "palette_travel_1"
+        label = "flow_a"
     )
-    val travel2 by infiniteTransition.animateFloat(
-        0f,
-        1f,
-        infiniteRepeatable(
-            animation = tween(54000, easing = LinearEasing),
+    val flowB by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(101000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "palette_travel_2"
+        label = "flow_b"
     )
-    val travel3 by infiniteTransition.animateFloat(
-        0f,
-        1f,
-        infiniteRepeatable(
-            animation = tween(68000, easing = LinearEasing),
+    val flowC by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(127000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "palette_travel_3"
+        label = "flow_c"
     )
 
     Canvas(modifier = modifier) {
@@ -969,81 +969,92 @@ private fun SmokyAtmosphericCardBackground(
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
-        drawRect(color = ashGray)
+        drawRect(color = ashBase)
 
-        val maxDimension = maxOf(w, h)
+        /*
+         * The fields are intentionally enormous and soft. Their centers travel
+         * far beyond the card, so the visible edge of a field never creates a
+         * hard "blob enters -> blob leaves -> jump" effect.
+         */
+        val diagonal = kotlin.math.hypot(w, h)
+        val radius = diagonal * 1.18f
 
-        // FIELD 1: slow diagonal sweep from upper-left to lower-right.
-        val radius1 = maxDimension * 0.62f
-        val x1 = -radius1 * 1.35f + (w + radius1 * 2.70f) * travel1
-        val y1 = -radius1 * 1.35f + (h + radius1 * 2.70f) * travel1
-
+        // FLOW A: upper-left -> lower-right
+        val aStart = Offset(-radius * 2.45f, -radius * 1.80f)
+        val aEnd = Offset(w + radius * 2.45f, h + radius * 1.80f)
+        val aCenter = Offset(
+            x = aStart.x + (aEnd.x - aStart.x) * flowA,
+            y = aStart.y + (aEnd.y - aStart.y) * flowA
+        )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color1.copy(alpha = 0.62f),
-                    color1.copy(alpha = 0.36f),
-                    color1.copy(alpha = 0.14f),
+                    color1.copy(alpha = 0.40f),
+                    color1.copy(alpha = 0.27f),
+                    color1.copy(alpha = 0.12f),
                     Color.Transparent
                 ),
-                center = Offset(x1, y1),
-                radius = radius1
+                center = aCenter,
+                radius = radius
             ),
-            center = Offset(x1, y1),
-            radius = radius1
+            center = aCenter,
+            radius = radius
         )
 
-        // FIELD 2: slower opposing diagonal sweep.
-        val radius2 = maxDimension * 0.58f
-        val x2 = w + radius2 * 1.35f - (w + radius2 * 2.70f) * travel2
-        val y2 = h * 0.18f + h * 0.72f * travel2
-
+        // FLOW B: right -> left, with a slight downward drift.
+        val bStart = Offset(w + radius * 2.70f, h * 0.10f - radius)
+        val bEnd = Offset(-radius * 2.70f, h * 0.90f + radius)
+        val bCenter = Offset(
+            x = bStart.x + (bEnd.x - bStart.x) * flowB,
+            y = bStart.y + (bEnd.y - bStart.y) * flowB
+        )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color2.copy(alpha = 0.56f),
-                    color2.copy(alpha = 0.32f),
-                    color2.copy(alpha = 0.12f),
+                    color2.copy(alpha = 0.34f),
+                    color2.copy(alpha = 0.22f),
+                    color2.copy(alpha = 0.10f),
                     Color.Transparent
                 ),
-                center = Offset(x2, y2),
-                radius = radius2
+                center = bCenter,
+                radius = radius * 0.94f
             ),
-            center = Offset(x2, y2),
-            radius = radius2
+            center = bCenter,
+            radius = radius * 0.94f
         )
 
-        // FIELD 3: very slow horizontal sweep, adding another moving region
-        // without any audio-driven movement.
-        val radius3 = maxDimension * 0.48f
-        val x3 = -radius3 * 1.45f + (w + radius3 * 2.90f) * travel3
-        val y3 = h * 0.72f - h * 0.22f * travel3
-
+        // FLOW C: lower-left -> upper-right. This crosses the other two fields,
+        // giving the colors the "moving through each other" appearance.
+        val cStart = Offset(-radius * 2.80f, h + radius * 1.25f)
+        val cEnd = Offset(w + radius * 2.80f, -radius * 1.25f)
+        val cCenter = Offset(
+            x = cStart.x + (cEnd.x - cStart.x) * flowC,
+            y = cStart.y + (cEnd.y - cStart.y) * flowC
+        )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color3.copy(alpha = 0.50f),
-                    color3.copy(alpha = 0.28f),
-                    color3.copy(alpha = 0.10f),
+                    color3.copy(alpha = 0.30f),
+                    color3.copy(alpha = 0.19f),
+                    color3.copy(alpha = 0.08f),
                     Color.Transparent
                 ),
-                center = Offset(x3, y3),
-                radius = radius3
+                center = cCenter,
+                radius = radius * 0.88f
             ),
-            center = Offset(x3, y3),
-            radius = radius3
+            center = cCenter,
+            radius = radius * 0.88f
         )
 
-        // Only a tiny static readability vignette. It never animates.
+        // Keep the gray/ash atmosphere present underneath the artwork colors.
+        // This is static, so it can never pulse with the moving fields.
         drawRect(
-            brush = Brush.linearGradient(
+            brush = Brush.verticalGradient(
                 colors = listOf(
-                    ashDeep.copy(alpha = 0.02f),
+                    Color(0xFF101217).copy(alpha = 0.16f),
                     Color.Transparent,
-                    ashDeep.copy(alpha = 0.05f)
-                ),
-                start = Offset(0f, 0f),
-                end = Offset(w, h)
+                    Color(0xFF0D0F14).copy(alpha = 0.12f)
+                )
             )
         )
     }
