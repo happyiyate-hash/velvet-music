@@ -11,9 +11,12 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -224,6 +227,34 @@ fun PlayerSheet(
     val haptic = LocalHapticFeedback.current
     val queueDragDensity = LocalDensity.current
 
+    // Dynamic Bouncing Artwork Animation:
+    // When playing, the artwork enlarges by ~30% with a spring bounce (overshooting and settling).
+    // When paused, it shrinks back down to its rest state with an elastic bounce.
+    val artworkScale by animateFloatAsState(
+        targetValue = if (isPlaying) 1.0f else 0.77f, // 1.00 / 0.77 ≈ 1.30 (30% larger when playing)
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = 340f
+        ),
+        label = "artwork_scale"
+    )
+    val artworkElevation by animateDpAsState(
+        targetValue = if (isPlaying) 24.dp else 10.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = 340f
+        ),
+        label = "artwork_elevation"
+    )
+    val artworkCornerRadius by animateDpAsState(
+        targetValue = if (isPlaying) 26.dp else 20.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = 340f
+        ),
+        label = "artwork_corner_radius"
+    )
+
     // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
     // YouTube Music Hierarchy: Index 0 is currently playing track, Index 1 is Up Next, etc.
     // Preserve the queue's physical order. Selecting a track must not move it to the top.
@@ -413,7 +444,8 @@ fun PlayerSheet(
                             )
                         }
 
-                        // Centered Album Artwork floating in middle (10-15% larger, inset with rounded corners)
+                        // Centered Album Artwork floating in middle
+                        // Automatically bounces and enlarges by 30% when playing, and bounces back down when paused
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -422,18 +454,26 @@ fun PlayerSheet(
                             contentAlignment = Alignment.Center
                         ) {
                             BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                val artSize = minOf(maxWidth - 48.dp, maxHeight * 0.92f).coerceIn(165.dp, 265.dp)
+                                val artSize = minOf(maxWidth - 44.dp, maxHeight * 0.94f).coerceIn(170.dp, 275.dp)
                                 Box(
                                     modifier = Modifier
                                         .size(artSize)
+                                        .graphicsLayer {
+                                            scaleX = artworkScale
+                                            scaleY = artworkScale
+                                        }
                                         .shadow(
-                                            elevation = 20.dp,
-                                            shape = RoundedCornerShape(24.dp),
-                                            spotColor = Color.Black.copy(alpha = 0.70f),
+                                            elevation = artworkElevation,
+                                            shape = RoundedCornerShape(artworkCornerRadius),
+                                            spotColor = Color.Black.copy(alpha = if (isPlaying) 0.75f else 0.42f),
                                             ambientColor = Color.Black
                                         )
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp)),
+                                        .clip(RoundedCornerShape(artworkCornerRadius))
+                                        .border(
+                                            1.dp,
+                                            Color.White.copy(alpha = if (isPlaying) 0.16f else 0.09f),
+                                            RoundedCornerShape(artworkCornerRadius)
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     TrackArtworkImage(
