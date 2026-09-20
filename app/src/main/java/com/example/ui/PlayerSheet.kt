@@ -112,6 +112,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -129,6 +130,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import android.graphics.Bitmap
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
+import android.os.Build
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
@@ -895,168 +899,210 @@ private fun SmokyAtmosphericCardBackground(
     modifier: Modifier = Modifier
 ) {
     /*
-     * PURE AMBIENT ATMOSPHERE
+     * LIQUID ARTWORK ATMOSPHERE
      *
-     * This layer has exactly one job: continuously move the artwork colors around
-     * inside the card. It is deliberately disconnected from:
-     * - playback state
-     * - pause/play
-     * - AudioTelemetry
-     * - RMS / bass / beat detection
-     * - progress position
-     * - waveform animation
+     * This background is deliberately independent from playback. It does not
+     * read isPlaying, AudioTelemetry, RMS, bass, beat detection, or progress.
      *
-     * The important visual rule is FLOW, not PULSING:
-     * several broad, soft color fields travel in different directions at very
-     * different speeds. They are blended into a permanent ash-gray base, so the
-     * card never flashes between "color" and "gray".
+     * On Android 13+ the color field is rendered by an AGSL RuntimeShader.
+     * The shader keeps the extracted artwork colors fixed and continuously
+     * moves the coordinate field with several slow sine layers. Nothing is
+     * repeatedly replaced by a new color and there is no reverse animation.
      *
-     * Each field begins and ends completely outside the canvas. The restart
-     * therefore happens while that field is invisible, preventing a visible
-     * snap-back/reversal.
+     * The result is a soft mesh/fluid appearance: magenta, red, purple, etc.
+     * drift through the permanent ash-gray base and blend into one another.
      */
-    val ashBase = Color(0xFF17191F)
+    val color1 = themeColors.ambient1
+    val color2 = themeColors.ambient2
+    val color3 = themeColors.ambient3
 
-    val color1 by animateColorAsState(
-        targetValue = themeColors.ambient1,
-        animationSpec = tween(7000, easing = LinearEasing),
-        label = "ambient_color_1"
-    )
-    val color2 by animateColorAsState(
-        targetValue = themeColors.ambient2,
-        animationSpec = tween(8200, easing = LinearEasing),
-        label = "ambient_color_2"
-    )
-    val color3 by animateColorAsState(
-        targetValue = themeColors.ambient3,
-        animationSpec = tween(9600, easing = LinearEasing),
-        label = "ambient_color_3"
-    )
-
-    val transition = rememberInfiniteTransition(label = "free_flow_atmosphere")
-
-    // Three independent, one-way motions. No RepeatMode.Reverse anywhere.
-    val flowA by transition.animateFloat(
+    val transition = rememberInfiniteTransition(label = "liquid_ambient_time")
+    val time by transition.animateFloat(
         initialValue = 0f,
-        targetValue = 1f,
+        targetValue = 1000f,
         animationSpec = infiniteRepeatable(
-            animation = tween(78000, easing = LinearEasing),
+            animation = tween(300000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "flow_a"
-    )
-    val flowB by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(101000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "flow_b"
-    )
-    val flowC by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(127000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "flow_c"
+        label = "liquid_ambient_time_value"
     )
 
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        if (w <= 0f || h <= 0f) return@Canvas
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val shader = remember {
+            RuntimeShader(
+                """
+                uniform float2 iResolution;
+                uniform float iTime;
+                uniform float4 uColor1;
+                uniform float4 uColor2;
+                uniform float4 uColor3;
 
-        drawRect(color = ashBase)
+                float field(float2 p, float2 center, float radius) {
+                    float d = length(p - center) / radius;
+                    return 1.0 - smoothstep(0.0, 1.35, d);
+                }
 
-        /*
-         * The fields are intentionally enormous and soft. Their centers travel
-         * far beyond the card, so the visible edge of a field never creates a
-         * hard "blob enters -> blob leaves -> jump" effect.
-         */
-        val diagonal = kotlin.math.hypot(w, h)
-        val radius = diagonal * 1.18f
+                half4 main(float2 fragCoord) {
+                    float2 uv = fragCoord / iResolution;
+                    float aspect = iResolution.x / max(iResolution.y, 1.0);
+                    uv.x *= aspect;
 
-        // FLOW A: upper-left -> lower-right
-        val aStart = Offset(-radius * 2.45f, -radius * 1.80f)
-        val aEnd = Offset(w + radius * 2.45f, h + radius * 1.80f)
-        val aCenter = Offset(
-            x = aStart.x + (aEnd.x - aStart.x) * flowA,
-            y = aStart.y + (aEnd.y - aStart.y) * flowA
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    color1.copy(alpha = 0.40f),
-                    color1.copy(alpha = 0.27f),
-                    color1.copy(alpha = 0.12f),
-                    Color.Transparent
-                ),
-                center = aCenter,
-                radius = radius
-            ),
-            center = aCenter,
-            radius = radius
-        )
+                    float t = iTime * 0.055;
 
-        // FLOW B: right -> left, with a slight downward drift.
-        val bStart = Offset(w + radius * 2.70f, h * 0.10f - radius)
-        val bEnd = Offset(-radius * 2.70f, h * 0.90f + radius)
-        val bCenter = Offset(
-            x = bStart.x + (bEnd.x - bStart.x) * flowB,
-            y = bStart.y + (bEnd.y - bStart.y) * flowB
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    color2.copy(alpha = 0.34f),
-                    color2.copy(alpha = 0.22f),
-                    color2.copy(alpha = 0.10f),
-                    Color.Transparent
-                ),
-                center = bCenter,
-                radius = radius * 0.94f
-            ),
-            center = bCenter,
-            radius = radius * 0.94f
-        )
+                    // Several slow, non-repeating-looking paths. The positions
+                    // continuously bend instead of travelling as rigid blobs.
+                    float2 p1 = float2(
+                        aspect * (0.18 + 0.16 * sin(t * 0.73) + 0.08 * cos(t * 0.31)),
+                        0.35 + 0.20 * cos(t * 0.61) + 0.07 * sin(t * 0.27)
+                    );
 
-        // FLOW C: lower-left -> upper-right. This crosses the other two fields,
-        // giving the colors the "moving through each other" appearance.
-        val cStart = Offset(-radius * 2.80f, h + radius * 1.25f)
-        val cEnd = Offset(w + radius * 2.80f, -radius * 1.25f)
-        val cCenter = Offset(
-            x = cStart.x + (cEnd.x - cStart.x) * flowC,
-            y = cStart.y + (cEnd.y - cStart.y) * flowC
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    color3.copy(alpha = 0.30f),
-                    color3.copy(alpha = 0.19f),
-                    color3.copy(alpha = 0.08f),
-                    Color.Transparent
-                ),
-                center = cCenter,
-                radius = radius * 0.88f
-            ),
-            center = cCenter,
-            radius = radius * 0.88f
-        )
+                    float2 p2 = float2(
+                        aspect * (0.82 + 0.18 * cos(t * 0.47) - 0.06 * sin(t * 0.23)),
+                        0.66 + 0.22 * sin(t * 0.53) + 0.06 * cos(t * 0.19)
+                    );
 
-        // Keep the gray/ash atmosphere present underneath the artwork colors.
-        // This is static, so it can never pulse with the moving fields.
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color(0xFF101217).copy(alpha = 0.16f),
-                    Color.Transparent,
-                    Color(0xFF0D0F14).copy(alpha = 0.12f)
-                )
+                    float2 p3 = float2(
+                        aspect * (0.48 + 0.25 * sin(t * 0.37 + 1.7)),
+                        0.48 + 0.25 * cos(t * 0.43 + 0.8)
+                    );
+
+                    float r1 = field(uv, p1, aspect * 0.82);
+                    float r2 = field(uv, p2, aspect * 0.78);
+                    float r3 = field(uv, p3, aspect * 0.72);
+
+                    // Add very low-frequency warping so the boundaries behave
+                    // like a liquid field rather than circles moving around.
+                    float wave =
+                        0.035 * sin(uv.x * 5.0 + t * 0.43) +
+                        0.030 * cos(uv.y * 4.0 - t * 0.37) +
+                        0.020 * sin((uv.x + uv.y) * 6.0 + t * 0.29);
+
+                    r1 = clamp(r1 + wave, 0.0, 1.0);
+                    r2 = clamp(r2 - wave * 0.75, 0.0, 1.0);
+                    r3 = clamp(r3 + wave * 0.55, 0.0, 1.0);
+
+                    half3 ash = half3(0.055, 0.065, 0.080);
+
+                    // Fixed artwork hues, spatially blended over ash.
+                    half3 rgb = ash;
+                    rgb = mix(rgb, uColor1.rgb, half(r1 * 0.42));
+                    rgb = mix(rgb, uColor2.rgb, half(r2 * 0.34));
+                    rgb = mix(rgb, uColor3.rgb, half(r3 * 0.30));
+
+                    // Gentle glassy darkening at the extreme edges, static in
+                    // relation to the card and never tied to playback.
+                    float edge = smoothstep(0.0, 0.22, uv.x)
+                               * smoothstep(0.0, 0.22, 1.0 - uv.x)
+                               * smoothstep(0.0, 0.20, uv.y)
+                               * smoothstep(0.0, 0.20, 1.0 - uv.y);
+                    rgb *= half(0.90 + 0.10 * edge);
+
+                    return half4(rgb, 1.0);
+                }
+                """.trimIndent()
             )
+        }
+
+        Box(
+            modifier = modifier.graphicsLayer {
+                shader.setFloatUniform("iResolution", size.width, size.height)
+                shader.setFloatUniform("iTime", time)
+                shader.setFloatUniform(
+                    "uColor1",
+                    color1.red, color1.green, color1.blue, color1.alpha
+                )
+                shader.setFloatUniform(
+                    "uColor2",
+                    color2.red, color2.green, color2.blue, color2.alpha
+                )
+                shader.setFloatUniform(
+                    "uColor3",
+                    color3.red, color3.green, color3.blue, color3.alpha
+                )
+                renderEffect = RenderEffect
+                    .createRuntimeShaderEffect(shader, "composable")
+                    .asComposeRenderEffect()
+            }
         )
+    } else {
+        // Older Android fallback. It uses the same concept—large soft fields
+        // with one-way continuous motion—but remains independent of playback.
+        val flow1 by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(90000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "fallback_flow_1"
+        )
+        val flow2 by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(117000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "fallback_flow_2"
+        )
+
+        Canvas(modifier = modifier) {
+            val w = size.width
+            val h = size.height
+            val radius = kotlin.math.hypot(w, h) * 1.05f
+
+            drawRect(Color(0xFF17191F))
+
+            val c1 = Offset(
+                -radius + (w + radius * 2f) * flow1,
+                h * 0.30f + kotlin.math.sin(flow1 * 6.28318f) * h * 0.18f
+            )
+            val c2 = Offset(
+                w + radius - (w + radius * 2f) * flow2,
+                h * 0.70f + kotlin.math.cos(flow2 * 6.28318f) * h * 0.16f
+            )
+
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(
+                        color1.copy(alpha = 0.38f),
+                        color1.copy(alpha = 0.16f),
+                        Color.Transparent
+                    ),
+                    center = c1,
+                    radius = radius
+                ),
+                c1,
+                radius
+            )
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(
+                        color2.copy(alpha = 0.32f),
+                        color2.copy(alpha = 0.13f),
+                        Color.Transparent
+                    ),
+                    center = c2,
+                    radius = radius
+                ),
+                c2,
+                radius
+            )
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(
+                        color3.copy(alpha = 0.25f),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.50f, h * 0.50f),
+                    radius = radius * 0.80f
+                ),
+                Offset(w * 0.50f, h * 0.50f),
+                radius * 0.80f
+            )
+
+            drawRect(Color(0xFF0D0F14).copy(alpha = 0.10f))
+        }
     }
 }
 
