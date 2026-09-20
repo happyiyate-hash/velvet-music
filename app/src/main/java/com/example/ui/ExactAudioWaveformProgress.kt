@@ -142,7 +142,7 @@ fun ExactAudioWaveformProgress(
     val displayFraction = if (isDragging) dragFraction else progressFraction
 
     // 80 bars provides high spectral detail and perfect spacing across standard phone screens
-    val barCount = 80
+    val barCount = 100
 
     // Calibrated baseline resting profile when paused or between beats
     val restingProfile = remember(barCount) {
@@ -206,7 +206,7 @@ fun ExactAudioWaveformProgress(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp)
+                .height(20.dp)
         ) {
             if (size.width <= 0f || size.height <= 0f) return@Canvas
 
@@ -215,7 +215,7 @@ fun ExactAudioWaveformProgress(
             val timeSeconds = (frameTime / 1_000_000L) * 0.003f
 
             val totalWidth = size.width
-            val barWidth = 1.3.dp.toPx()
+            val barWidth = 2.dp.toPx()
             val totalBarWidth = barWidth * barCount
             val barGap = if (barCount > 1) (totalWidth - totalBarWidth) / (barCount - 1) else 0f
 
@@ -342,7 +342,7 @@ fun ExactAudioWaveformProgress(
         ) {
             val totalWidth = size.width
             val centerY = size.height / 2f
-            val lineThickness = 2.dp.toPx()
+            val lineThickness = 4.5.dp.toPx()
             val progressWidth = (totalWidth * displayFraction).coerceIn(0f, totalWidth)
 
             // Unplayed track.
