@@ -178,55 +178,22 @@ fun SingToSearchSheet(
         else -> null
     } ?: lastSavedDiagnostics
 
-    // Smooth ambient breathing visualizer pulse during Searching ("Identifying…")
-    val pulseTransition = rememberInfiniteTransition(label = "identifying_pulse")
-    val searchingPulse by pulseTransition.animateFloat(
-        initialValue = 0.22f,
-        targetValue = 0.58f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "searching_amp"
-    )
+    // The native recognizer owns the live listening lifecycle. Do not switch the UI
+    // to "Identifying" on a timer; recognition results are the only transition out
+    // of Listening.
     val visualizerAmplitude = when (state) {
         is HumRecognitionState.Listening -> liveAmplitude
-        is HumRecognitionState.Searching -> searchingPulse
         else -> 0f
     }
 
-    // Progressive Status Pipeline based on listening duration:
-    // Listening... [0s – 4s]
-    // Identifying... [4s – 7s]
-    // Almost there... [7s – 10s]
-    // Ready... [Immediately prior to results display / screen transition]
-    var listeningDurationSeconds by remember { mutableStateOf(0) }
-    LaunchedEffect(state) {
-        when (state) {
-            is HumRecognitionState.Listening, is HumRecognitionState.Searching -> {
-                val started = System.currentTimeMillis()
-                while (isActive) {
-                    val elapsed = ((System.currentTimeMillis() - started) / 1000L).toInt()
-                    listeningDurationSeconds = elapsed
-                    delay(100L)
-                }
-            }
-            else -> {
-                listeningDurationSeconds = 0
-            }
-        }
-    }
-
-    val statusText = when {
-        state is HumRecognitionState.Matched -> "Ready..."
-        state is HumRecognitionState.NoMatch -> "Couldn't Identify"
-        state is HumRecognitionState.ConnectionError -> "Connection Notice"
-        state is HumRecognitionState.ProviderError -> "Service Notice"
-        state is HumRecognitionState.ResponseParsingError -> "Response Notice"
-        listeningDurationSeconds < 4 && state !is HumRecognitionState.Searching -> "Listening..."
-        listeningDurationSeconds < 7 -> "Identifying..."
-        listeningDurationSeconds < 10 -> "Almost there..."
-        else -> "Ready..."
+    val statusText = when (state) {
+        is HumRecognitionState.Listening -> "Listening..."
+        is HumRecognitionState.Matched -> "Ready..."
+        is HumRecognitionState.NoMatch -> "Couldn't Identify"
+        is HumRecognitionState.ConnectionError -> "Connection Notice"
+        is HumRecognitionState.ProviderError -> "Service Notice"
+        is HumRecognitionState.ResponseParsingError -> "Response Notice"
+        else -> "Listening..."
     }
 
     // Intercept back button to dismiss cleanly
