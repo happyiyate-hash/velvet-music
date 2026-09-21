@@ -54,6 +54,9 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          ACRCLOUD_HOST: ${{ secrets.ACRCLOUD_HOST }}
+          ACRCLOUD_ACCESS_KEY: ${{ secrets.ACRCLOUD_ACCESS_KEY }}
+          ACRCLOUD_ACCESS_SECRET: ${{ secrets.ACRCLOUD_ACCESS_SECRET }}
         run: |
           set -euo pipefail
           chmod +x gradlew
@@ -108,6 +111,17 @@ jobs:
       - name: Apply Latest Release Compile Fixes
         shell: bash
         run: python3 scripts/fix_latest_release_compile_errors.py
+
+      - name: Fetch official ACRCloud Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs app/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86,x86_64,riscv64}
+          curl -fsSL "https://raw.githubusercontent.com/acrcloud/ACRCloudUniversalSDK/master/libs/acrcloud-universal-sdk-1.3.33.jar" -o app/libs/acrcloud-universal-sdk-1.3.33.jar
+          for abi in arm64-v8a armeabi-v7a x86 x86_64 riscv64; do
+            curl -fsSL "https://raw.githubusercontent.com/acrcloud/ACRCloudUniversalSDK/master/libs/$abi/libACRCloudUniversalEngine.so" -o "app/src/main/jniLibs/$abi/libACRCloudUniversalEngine.so"
+          done
+          test -s app/libs/acrcloud-universal-sdk-1.3.33.jar
 
       - name: Build Optimized Release APK
         run: ./gradlew clean :app:assembleRelease --stacktrace
