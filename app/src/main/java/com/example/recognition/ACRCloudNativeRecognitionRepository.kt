@@ -171,8 +171,8 @@ class ACRCloudNativeRecognitionRepository(
             )
         } catch (ex: Exception) {
             RecognitionResult.ResponseParsingError(
-                reason = "Invalid ACRCloud response: $\{ex.message\}",
-                rawException = __EX_MESSAGE__
+                reason = "Invalid ACRCloud response: " + ex.message,
+                rawException = ex.message
             )
         }
     }
