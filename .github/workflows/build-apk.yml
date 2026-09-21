@@ -106,6 +106,9 @@ jobs:
             echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks"
             echo "STORE_PASSWORD=${STORE_PASSWORD}"
             echo "KEY_PASSWORD=${KEY_PASSWORD}"
+            echo "ACRCLOUD_HOST=${ACRCLOUD_HOST}"
+            echo "ACRCLOUD_ACCESS_KEY=${ACRCLOUD_ACCESS_KEY}"
+            echo "ACRCLOUD_ACCESS_SECRET=${ACRCLOUD_ACCESS_SECRET}"
           } >> "${GITHUB_ENV}"
 
       - name: Apply Latest Release Compile Fixes
