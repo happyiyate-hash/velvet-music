@@ -208,8 +208,24 @@ object RecognitionDiagnosticsStore {
             prefs.edit()
                 .putString(KEY_SCHEMA, "native-v2")
                 .putString(KEY_SCHEMA, "native-v2")
+                .putString(KEY_SCHEMA, "native-v2")
                 .putString(KEY_LAST_REPORT, sanitized.toFormattedReport())
                 .putString(KEY_TIMESTAMP, sanitized.timestamp)
+                .putString("last_mode", sanitized.mode)
+                .putString("last_provider", sanitized.provider)
+                .putString("last_failure_stage", sanitized.failureStage)
+                .putString("last_failure_code", sanitized.failureCode)
+                .putString("last_failure_reason", sanitized.failureReason)
+                .putBoolean("last_mic_permission", sanitized.microphonePermissionGranted ?: false)
+                .putBoolean("last_host_configured", sanitized.hostConfigured ?: false)
+                .putBoolean("last_key_configured", sanitized.accessKeyConfigured ?: false)
+                .putBoolean("last_secret_configured", sanitized.accessSecretConfigured ?: false)
+                .putBoolean("last_sdk_initialized", sanitized.sdkInitialized ?: false)
+                .putBoolean("last_recognition_started", sanitized.recognitionStarted ?: false)
+                .putInt("last_sdk_status_code", sanitized.sdkStatusCode ?: Int.MIN_VALUE)
+                .putString("last_sdk_status_message", sanitized.sdkStatusMessage)
+                .putString("last_raw_provider_response", sanitized.rawProviderResponse)
+                .putBoolean("last_backend_used", sanitized.backendUsed)
                 .putString("last_mode", sanitized.mode)
                 .putString("last_provider", sanitized.provider)
                 .putString("last_failure_stage", sanitized.failureStage)
@@ -262,6 +278,7 @@ object RecognitionDiagnosticsStore {
         inMemoryLastDiagnostics?.let { return it }
         return try {
             val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (prefs.getString(KEY_SCHEMA, null) != "native-v2") return null
             if (prefs.getString(KEY_SCHEMA, null) != "native-v2") return null
             if (prefs.getString(KEY_SCHEMA, null) != "native-v2") return null
             val report = prefs.getString(KEY_LAST_REPORT, null) ?: return null
