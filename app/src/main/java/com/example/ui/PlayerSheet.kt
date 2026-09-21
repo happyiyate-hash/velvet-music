@@ -2420,7 +2420,8 @@ fun AudioVisualizerBottomSheet(
                     color = accentColor,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
-                )                Text(
+                )
+                Text(
                     text = "70% • 90% Bass ▶",
                     fontSize = 10.sp,
                     color = Color(0xFF03DAC6).copy(alpha = 0.85f),
