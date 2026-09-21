@@ -107,12 +107,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -202,10 +204,15 @@ fun PlayerSheet(
     // Dynamically derive the calm, restrained palette based on the current artwork.
     // The resolved bitmap is passed directly into the color extractor state update loop.
     var resolvedArtworkBitmap by remember(track.id, track.artworkUri, track.coverResId) {
-        mutableStateOf<Bitmap?>(null)
-    }
-    var themeColors by remember(track.id) {
         val initial = ArtworkColorExtractor.resolveTrackBitmap(context, track)
+            ?: if (track.coverResId != 0) {
+                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+            } else null
+        mutableStateOf<Bitmap?>(initial)
+    }
+    var themeColors by remember(track.id, track.artworkUri, track.coverResId) {
+        val initial = resolvedArtworkBitmap
+            ?: ArtworkColorExtractor.resolveTrackBitmap(context, track)
             ?: if (track.coverResId != 0) {
                 runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
             } else null
@@ -213,20 +220,43 @@ fun PlayerSheet(
     }
 
     LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
-        withContext(Dispatchers.IO) {
-            val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
-                ?: if (track.coverResId != 0) {
-                    runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-                } else null
-            val extractedColors = ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
-            withContext(Dispatchers.Main) {
-                resolvedArtworkBitmap = bitmap
-                themeColors = extractedColors
+        if (resolvedArtworkBitmap == null) {
+            withContext(Dispatchers.IO) {
+                val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
+                    ?: if (track.coverResId != 0) {
+                        runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+                    } else null
+                val extractedColors = ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+                withContext(Dispatchers.Main) {
+                    resolvedArtworkBitmap = bitmap
+                    themeColors = extractedColors
+                }
             }
         }
     }
 
     val upNextExpanded = remember { Animatable(0f) }
+    // Smoothly animate colors to prevent ANY sudden flashing or popping when colors change
+    val animatedAmb1 by animateColorAsState(
+        targetValue = themeColors.ambient1,
+        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        label = "animated_ambient1"
+    )
+    val animatedAmb2 by animateColorAsState(
+        targetValue = themeColors.ambient2,
+        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        label = "animated_ambient2"
+    )
+    val animatedAmb3 by animateColorAsState(
+        targetValue = themeColors.ambient3,
+        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        label = "animated_ambient3"
+    )
+    val animatedGlow by animateColorAsState(
+        targetValue = themeColors.glow,
+        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        label = "animated_glow"
+    )
     val upNextP = upNextExpanded.value
     val haptic = LocalHapticFeedback.current
     val queueDragDensity = LocalDensity.current
@@ -361,7 +391,10 @@ fun PlayerSheet(
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
                     SmokyAtmosphericCardBackground(
-                        themeColors = themeColors,
+                        color1 = animatedAmb1,
+                        color2 = animatedAmb2,
+                        color3 = animatedAmb3,
+                        color4 = animatedGlow,
                         modifier = Modifier.fillMaxSize()
                     )
 
@@ -506,7 +539,7 @@ fun PlayerSheet(
                             telemetry = telemetry,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(52.dp)
+                                .height(36.dp)
                                 .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                         )
                     }
@@ -531,7 +564,10 @@ fun PlayerSheet(
                 AnimatedShuffleIcon(
                     isShuffle = isShuffle,
                     activeColor = Color.White,
-                    onClick = onToggleShuffle,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleShuffle()
+                    },
                     modifier = Modifier.testTag("player_shuffle_button"),
                     touchSize = 46.dp,
                     iconSize = 27.dp
@@ -539,7 +575,10 @@ fun PlayerSheet(
 
                 // Previous
                 IconButton(
-                    onClick = onSkipPrevious,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSkipPrevious()
+                    },
                     modifier = Modifier
                         .size(46.dp)
                         .testTag("player_previous_button")
@@ -561,7 +600,10 @@ fun PlayerSheet(
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = onTogglePlayPause
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onTogglePlayPause()
+                            }
                         )
                         .testTag("player_play_pause_button"),
                     contentAlignment = Alignment.Center
@@ -581,7 +623,10 @@ fun PlayerSheet(
 
                 // Next
                 IconButton(
-                    onClick = onSkipNext,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSkipNext()
+                    },
                     modifier = Modifier
                         .size(46.dp)
                         .testTag("player_next_button")
@@ -596,7 +641,10 @@ fun PlayerSheet(
                 AnimatedRepeatIcon(
                     isRepeat = isRepeat,
                     activeColor = Color.White,
-                    onClick = onToggleRepeat,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleRepeat()
+                    },
                     modifier = Modifier.testTag("player_repeat_button"),
                     touchSize = 46.dp,
                     iconSize = 27.dp
@@ -895,214 +943,145 @@ fun PlayerSheet(
 
 @Composable
 private fun SmokyAtmosphericCardBackground(
-    themeColors: TrackThemeColors,
+    color1: Color,
+    color2: Color,
+    color3: Color,
+    color4: Color,
     modifier: Modifier = Modifier
 ) {
     /*
-     * LIQUID ARTWORK ATMOSPHERE
-     *
-     * This background is deliberately independent from playback. It does not
-     * read isPlaying, AudioTelemetry, RMS, bass, beat detection, or progress.
-     *
-     * On Android 13+ the color field is rendered by an AGSL RuntimeShader.
-     * The shader keeps the extracted artwork colors fixed and continuously
-     * moves the coordinate field with several slow sine layers. Nothing is
-     * repeatedly replaced by a new color and there is no reverse animation.
-     *
-     * The result is a soft mesh/fluid appearance: magenta, red, purple, etc.
-     * drift through the permanent ash-gray base and blend into one another.
+     * Shazam / Apple Music-style dynamic floating ambient mesh.
+     * The colors are NOT pinned to fixed coordinates.
+     * Four organic color clouds generated from the track artwork wander continuously
+     * across the entire screen in wide intersecting paths.
+     * When they cross paths, they mix together dynamically using additive blend modes,
+     * creating living, shifting gradients that travel everywhere across the display.
      */
-    val color1 = themeColors.ambient1
-    val color2 = themeColors.ambient2
-    val color3 = themeColors.ambient3
+    val transition = rememberInfiniteTransition(label = "floating_ambient_loop")
 
-    val transition = rememberInfiniteTransition(label = "liquid_ambient_time")
+    // Continuous floating time loop (ultra-slow, serene, peaceful drifting travel)
     val time by transition.animateFloat(
         initialValue = 0f,
-        targetValue = 1000f,
+        targetValue = 6.2831853f, // 1 full cycle
         animationSpec = infiniteRepeatable(
-            animation = tween(300000, easing = LinearEasing),
+            animation = tween(120000, easing = LinearEasing), // 120 seconds (2 full minutes) per cycle
             repeatMode = RepeatMode.Restart
         ),
-        label = "liquid_ambient_time_value"
+        label = "ambient_floating_time"
     )
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        val shader = remember {
-            RuntimeShader(
-                """
-                uniform float2 iResolution;
-                uniform float iTime;
-                uniform float4 uColor1;
-                uniform float4 uColor2;
-                uniform float4 uColor3;
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        if (w <= 0f || h <= 0f) return@Canvas
 
-                float field(float2 p, float2 center, float radius) {
-                    float d = length(p - center) / radius;
-                    return 1.0 - smoothstep(0.0, 1.35, d);
-                }
+        // 1. Deep midnight dark background base
+        drawRect(Color(0xFF0F1016))
 
-                half4 main(float2 fragCoord) {
-                    float2 uv = fragCoord / iResolution;
-                    float aspect = iResolution.x / max(iResolution.y, 1.0);
-                    uv.x *= aspect;
+        val t = time
+        val maxDim = kotlin.math.max(w, h)
 
-                    float t = iTime * 0.055;
+        // Dynamic organic breathing radii as the clouds travel
+        val r1 = maxDim * (0.85f + 0.12f * kotlin.math.sin(t * 0.70f))
+        val r2 = maxDim * (0.85f + 0.12f * kotlin.math.cos(t * 0.65f))
+        val r3 = maxDim * (0.80f + 0.10f * kotlin.math.sin(t * 0.85f))
+        val r4 = maxDim * (0.78f + 0.10f * kotlin.math.cos(t * 0.90f))
 
-                    // Several slow, non-repeating-looking paths. The positions
-                    // continuously bend instead of travelling as rigid blobs.
-                    float2 p1 = float2(
-                        aspect * (0.18 + 0.16 * sin(t * 0.73) + 0.08 * cos(t * 0.31)),
-                        0.35 + 0.20 * cos(t * 0.61) + 0.07 * sin(t * 0.27)
-                    );
+        // True roaming coordinates across the ENTIRE canvas (0.08w to 0.92w, 0.08h to 0.92h)
+        // Orb 1: Sweeps diagonally from upper-left down to lower-right and back
+        val c1X = w * (0.50f + 0.40f * kotlin.math.sin(t * 0.85f))
+        val c1Y = h * (0.50f + 0.42f * kotlin.math.cos(t * 0.68f + 0.4f))
 
-                    float2 p2 = float2(
-                        aspect * (0.82 + 0.18 * cos(t * 0.47) - 0.06 * sin(t * 0.23)),
-                        0.66 + 0.22 * sin(t * 0.53) + 0.06 * cos(t * 0.19)
-                    );
+        // Orb 2: Counter-sweeps across from bottom-left up to top-right
+        val c2X = w * (0.50f + 0.42f * kotlin.math.cos(t * 0.62f + 1.8f))
+        val c2Y = h * (0.50f + 0.38f * kotlin.math.sin(t * 0.95f + 2.2f))
 
-                    float2 p3 = float2(
-                        aspect * (0.48 + 0.25 * sin(t * 0.37 + 1.7)),
-                        0.48 + 0.25 * cos(t * 0.43 + 0.8)
-                    );
+        // Orb 3: Sweeps in a wide vertical figure-eight, traversing top to bottom
+        val c3X = w * (0.50f + 0.38f * kotlin.math.sin(t * 1.10f + 3.1f))
+        val c3Y = h * (0.50f + 0.42f * kotlin.math.cos(t * 0.55f + 1.2f))
 
-                    float r1 = field(uv, p1, aspect * 0.82);
-                    float r2 = field(uv, p2, aspect * 0.78);
-                    float r3 = field(uv, p3, aspect * 0.72);
+        // Orb 4: Highlights the traveling path, crossing horizontally
+        val c4X = w * (0.50f + 0.36f * kotlin.math.cos(t * 0.78f + 4.5f))
+        val c4Y = h * (0.50f + 0.36f * kotlin.math.sin(t * 0.82f + 5.1f))
 
-                    // Add very low-frequency warping so the boundaries behave
-                    // like a liquid field rather than circles moving around.
-                    float wave =
-                        0.035 * sin(uv.x * 5.0 + t * 0.43) +
-                        0.030 * cos(uv.y * 4.0 - t * 0.37) +
-                        0.020 * sin((uv.x + uv.y) * 6.0 + t * 0.29);
-
-                    r1 = clamp(r1 + wave, 0.0, 1.0);
-                    r2 = clamp(r2 - wave * 0.75, 0.0, 1.0);
-                    r3 = clamp(r3 + wave * 0.55, 0.0, 1.0);
-
-                    half3 ash = half3(0.055, 0.065, 0.080);
-
-                    // Fixed artwork hues, spatially blended over ash.
-                    half3 rgb = ash;
-                    rgb = mix(rgb, uColor1.rgb, half(r1 * 0.42));
-                    rgb = mix(rgb, uColor2.rgb, half(r2 * 0.34));
-                    rgb = mix(rgb, uColor3.rgb, half(r3 * 0.30));
-
-                    // Gentle glassy darkening at the extreme edges, static in
-                    // relation to the card and never tied to playback.
-                    float edge = smoothstep(0.0, 0.22, uv.x)
-                               * smoothstep(0.0, 0.22, 1.0 - uv.x)
-                               * smoothstep(0.0, 0.20, uv.y)
-                               * smoothstep(0.0, 0.20, 1.0 - uv.y);
-                    rgb *= half(0.90 + 0.10 * edge);
-
-                    return half4(rgb, 1.0);
-                }
-                """.trimIndent()
-            )
-        }
-
-        Box(
-            modifier = modifier.graphicsLayer {
-                shader.setFloatUniform("iResolution", size.width, size.height)
-                shader.setFloatUniform("iTime", time)
-                shader.setFloatUniform(
-                    "uColor1",
-                    color1.red, color1.green, color1.blue, color1.alpha
-                )
-                shader.setFloatUniform(
-                    "uColor2",
-                    color2.red, color2.green, color2.blue, color2.alpha
-                )
-                shader.setFloatUniform(
-                    "uColor3",
-                    color3.red, color3.green, color3.blue, color3.alpha
-                )
-                renderEffect = RenderEffect
-                    .createRuntimeShaderEffect(shader, "composable")
-                    .asComposeRenderEffect()
-            }
-        )
-    } else {
-        // Older Android fallback. It uses the same concept—large soft fields
-        // with one-way continuous motion—but remains independent of playback.
-        val flow1 by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(90000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
+        // Draw Orb 1 (Dominant artwork hue)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    color1.copy(alpha = 0.58f),
+                    color1.copy(alpha = 0.32f),
+                    color1.copy(alpha = 0.10f),
+                    Color.Transparent
+                ),
+                center = Offset(c1X, c1Y),
+                radius = r1
             ),
-            label = "fallback_flow_1"
+            center = Offset(c1X, c1Y),
+            radius = r1,
+            blendMode = BlendMode.Screen
         )
-        val flow2 by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(117000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
+
+        // Draw Orb 2 (Secondary artwork hue) - mixes with Orb 1 when intersecting
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    color2.copy(alpha = 0.52f),
+                    color2.copy(alpha = 0.28f),
+                    color2.copy(alpha = 0.08f),
+                    Color.Transparent
+                ),
+                center = Offset(c2X, c2Y),
+                radius = r2
             ),
-            label = "fallback_flow_2"
+            center = Offset(c2X, c2Y),
+            radius = r2,
+            blendMode = BlendMode.Screen
         )
 
-        Canvas(modifier = modifier) {
-            val w = size.width
-            val h = size.height
-            val radius = kotlin.math.hypot(w, h) * 1.05f
-
-            drawRect(Color(0xFF17191F))
-
-            val c1 = Offset(
-                -radius + (w + radius * 2f) * flow1,
-                h * 0.30f + kotlin.math.sin(flow1 * 6.28318f) * h * 0.18f
-            )
-            val c2 = Offset(
-                w + radius - (w + radius * 2f) * flow2,
-                h * 0.70f + kotlin.math.cos(flow2 * 6.28318f) * h * 0.16f
-            )
-
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(
-                        color1.copy(alpha = 0.38f),
-                        color1.copy(alpha = 0.16f),
-                        Color.Transparent
-                    ),
-                    center = c1,
-                    radius = radius
+        // Draw Orb 3 (Accent artwork hue) - weaves through both
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    color3.copy(alpha = 0.46f),
+                    color3.copy(alpha = 0.24f),
+                    color3.copy(alpha = 0.06f),
+                    Color.Transparent
                 ),
-                center = c1,
-                radius = radius
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(
-                        color2.copy(alpha = 0.32f),
-                        color2.copy(alpha = 0.13f),
-                        Color.Transparent
-                    ),
-                    center = c2,
-                    radius = radius
-                ),
-                center = c2,
-                radius = radius
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(
-                        color3.copy(alpha = 0.25f),
-                        Color.Transparent
-                    ),
-                    center = Offset(w * 0.50f, h * 0.50f),
-                    radius = radius * 0.80f
-                ),
-                center = Offset(w * 0.50f, h * 0.50f),
-                radius = radius * 0.80f
-            )
+                center = Offset(c3X, c3Y),
+                radius = r3
+            ),
+            center = Offset(c3X, c3Y),
+            radius = r3,
+            blendMode = BlendMode.Screen
+        )
 
-            drawRect(Color(0xFF0D0F14).copy(alpha = 0.10f))
-        }
+        // Draw Orb 4 (Glow / Highlight bloom) - deepens the color mixing
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    color4.copy(alpha = 0.42f),
+                    color4.copy(alpha = 0.20f),
+                    color4.copy(alpha = 0.05f),
+                    Color.Transparent
+                ),
+                center = Offset(c4X, c4Y),
+                radius = r4
+            ),
+            center = Offset(c4X, c4Y),
+            radius = r4,
+            blendMode = BlendMode.Screen
+        )
+
+        // Soft peripheral framing for pristine edge contrast
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.Black.copy(alpha = 0.15f),
+                    Color.Transparent,
+                    Color.Black.copy(alpha = 0.35f)
+                )
+            )
+        )
     }
 }
 
@@ -1165,7 +1144,7 @@ private fun NowPlayingProgressBar(
             ) {
                 val totalWidth = size.width
                 val centerY = size.height / 2f
-                val lineThickness = 2.5.dp.toPx()
+                val lineThickness = 4.5.dp.toPx()
                 val progressWidth = (totalWidth * displayFraction).coerceIn(0f, totalWidth)
 
                 // Unplayed track - subtle translucent ash white
@@ -1219,8 +1198,8 @@ private fun DarkSilhouetteWaveform(
     telemetry: AudioTelemetry,
     modifier: Modifier = Modifier
 ) {
-    // 56 dense vertical bars forming the dark wave silhouette at the bottom of the card
-    val barCount = 56
+    // 76 compact, dense vertical bars forming continuous audio texture at bottom of card
+    val barCount = 76
     val restingProfile = remember(barCount) {
         FloatArray(barCount) { i ->
             val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
@@ -1257,11 +1236,11 @@ private fun DarkSilhouetteWaveform(
         val targetHeights = calculateCompressedWaveform(rawFft, barCount, subBassEnergy)
 
         val totalWidth = size.width
-        val barWidth = 2.6.dp.toPx()
-        val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceAtLeast(1f)
+        val barWidth = 2.4.dp.toPx()
+        val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceAtLeast(1.2.dp.toPx())
 
-        val minBarHeight = 4.dp.toPx()
-        val maxBarHeight = size.height * 0.95f
+        val minBarHeight = 3.dp.toPx()
+        val maxBarHeight = size.height * 0.85f
         val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
 
         val attackRate = 0.45f
@@ -1284,9 +1263,9 @@ private fun DarkSilhouetteWaveform(
             val barTop = size.height - barHeight
             val barX = i * (barWidth + barGap)
 
-            // Dark charcoal silhouette tone with restrained contrast edge nestled at bottom of card
-            val tipColor = Color(0xFF2B2D38)
-            val baseColor = Color(0xFF14151B)
+            // Low opacity dark charcoal tones so it doesn't compete with the artwork
+            val tipColor = Color(0xFF383B4A).copy(alpha = 0.50f)
+            val baseColor = Color(0xFF14151B).copy(alpha = 0.35f)
 
             val barBrush = Brush.verticalGradient(
                 colors = listOf(tipColor, baseColor),

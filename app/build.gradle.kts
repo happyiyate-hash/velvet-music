@@ -21,9 +21,12 @@ android {
     versionName = "1.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     // ACRCloud native SDK credentials are supplied only at build time.
-    buildConfigField("String", "ACRCLOUD_HOST", "\\"${System.getenv("ACRCLOUD_HOST") ?: ""}\\"")
-    buildConfigField("String", "ACRCLOUD_ACCESS_KEY", "\\"${System.getenv("ACRCLOUD_ACCESS_KEY") ?: ""}\\"")
-    buildConfigField("String", "ACRCLOUD_ACCESS_SECRET", "\\"${System.getenv("ACRCLOUD_ACCESS_SECRET") ?: ""}\\"")
+    val acrHost = (System.getenv("ACRCLOUD_HOST") ?: "").replace("\"", "\\\"")
+    val acrKey = (System.getenv("ACRCLOUD_ACCESS_KEY") ?: "").replace("\"", "\\\"")
+    val acrSecret = (System.getenv("ACRCLOUD_ACCESS_SECRET") ?: "").replace("\"", "\\\"")
+    buildConfigField("String", "ACRCLOUD_HOST", "\"$acrHost\"")
+    buildConfigField("String", "ACRCLOUD_ACCESS_KEY", "\"$acrKey\"")
+    buildConfigField("String", "ACRCLOUD_ACCESS_SECRET", "\"$acrSecret\"")
   }
 
   signingConfigs {

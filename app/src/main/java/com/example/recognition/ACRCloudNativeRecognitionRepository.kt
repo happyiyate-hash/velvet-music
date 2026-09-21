@@ -93,10 +93,10 @@ class ACRCloudNativeRecognitionRepository(
             reason = "Live recognition uses the native ACRCloud microphone SDK."
         )
 
-    override fun recognizeHumming(wavAudio: ByteArray): RecognitionResult =
+    override suspend fun recognizeHumming(wavAudio: ByteArray): RecognitionResult =
         RecognitionResult.ProviderError(title = "Direct recognition mode", reason = "Use the native microphone recognizer.")
 
-    override fun recognizeAmbientAudio(wavAudio: ByteArray): RecognitionResult =
+    override suspend fun recognizeAmbientAudio(wavAudio: ByteArray): RecognitionResult =
         RecognitionResult.ProviderError(title = "Direct recognition mode", reason = "Use the native microphone recognizer.")
 
     private fun parseResult(raw: String): RecognitionResult {
