@@ -155,7 +155,7 @@ fun RecognitionDiagnosticsModal(
                             color = Color(0xFFFFF1F2)
                         )
                         Text(
-                            text = if (diagnostics?.httpStatus != null) "HTTP ${diagnostics.httpStatus}" else "Network Trace",
+                            text = diagnostics?.failureStage?.let { "Failure: $it" } ?: diagnostics?.mode ?: "Recognition Trace",
                             fontSize = 12.sp,
                             color = Color(0xFFB5A7AA)
                         )
@@ -203,16 +203,17 @@ fun RecognitionDiagnosticsModal(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 val httpStatus = diagnostics?.httpStatus
+                val failureStage = diagnostics?.failureStage
                 val statusBadgeColor = when {
+                    failureStage != null -> Color(0xFFC62828)
                     httpStatus == 200 -> Color(0xFF2E7D32)
                     httpStatus != null && httpStatus in 400..599 -> Color(0xFFC62828)
-                    diagnostics?.isNetworkFailure == true -> Color(0xFFD84315)
                     else -> Color(0xFF424242)
                 }
                 val statusBadgeText = when {
+                    failureStage != null -> diagnostics?.failureCode ?: "Failure"
                     httpStatus != null -> "HTTP $httpStatus"
-                    diagnostics?.isNetworkFailure == true -> "Network Failure"
-                    else -> "Local Error"
+                    else -> "No error recorded"
                 }
 
                 Box(
