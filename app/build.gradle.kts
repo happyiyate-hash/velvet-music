@@ -20,6 +20,10 @@ android {
     versionCode = 1
     versionName = "1.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    // ACRCloud native SDK credentials are supplied only at build time.
+    buildConfigField("String", "ACRCLOUD_HOST", "\\"${System.getenv("ACRCLOUD_HOST") ?: ""}\\"")
+    buildConfigField("String", "ACRCLOUD_ACCESS_KEY", "\\"${System.getenv("ACRCLOUD_ACCESS_KEY") ?: ""}\\"")
+    buildConfigField("String", "ACRCLOUD_ACCESS_SECRET", "\\"${System.getenv("ACRCLOUD_ACCESS_SECRET") ?: ""}\\"")
   }
 
   signingConfigs {
@@ -81,6 +85,7 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
+  implementation(files("libs/acrcloud-universal-sdk-1.3.33.jar"))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)
