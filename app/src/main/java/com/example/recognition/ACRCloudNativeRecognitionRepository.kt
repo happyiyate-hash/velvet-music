@@ -31,47 +31,71 @@ class ACRCloudNativeRecognitionRepository(
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) return false
 
-        val config = ACRCloudConfig().apply {
-            this.context = context.applicationContext
-            host = BuildConfig.ACRCLOUD_HOST
-            accessKey = BuildConfig.ACRCLOUD_ACCESS_KEY
-            accessSecret = BuildConfig.ACRCLOUD_ACCESS_SECRET
-            acrcloudListener = this@ACRCloudNativeRecognitionRepository
-            recorderConfig.isVolumeCallback = true
-            recorderConfig.reservedRecordBufferMS = 3000
+        return try {
+            val config = ACRCloudConfig().apply {
+                this.context = context.applicationContext
+                host = BuildConfig.ACRCLOUD_HOST
+                accessKey = BuildConfig.ACRCLOUD_ACCESS_KEY
+                accessSecret = BuildConfig.ACRCLOUD_ACCESS_SECRET
+                acrcloudListener = this@ACRCloudNativeRecognitionRepository
+                recorderConfig.isVolumeCallback = true
+                recorderConfig.reservedRecordBufferMS = 3000
+            }
+            val newClient = ACRCloudClient()
+            initialized = newClient.initWithConfig(config)
+            if (initialized) client = newClient else runCatching { newClient.release() }
+            initialized
+        } catch (t: Throwable) {
+            android.util.Log.e("ACRCloudNative", "Failed to initialize native ACRCloud client", t)
+            initialized = false
+            client = null
+            false
         }
-        val newClient = ACRCloudClient()
-        initialized = newClient.initWithConfig(config)
-        if (initialized) client = newClient else newClient.release()
-        return initialized
     }
 
     fun startRecognition(onResult: (RecognitionResult) -> Unit): Boolean {
         resultCallback = onResult
-        if (!initialize()) {
-            onResult(RecognitionResult.ProviderError(
-                title = "ACRCloud is not configured",
-                reason = "Configure ACRCloud host, access key and access secret for the Android build."
+        return try {
+            if (!initialize()) {
+                onResult(RecognitionResult.ProviderError(
+                    title = "ACRCloud is not configured",
+                    reason = "Configure ACRCloud host, access key and access secret for the Android build."
+                ))
+                return false
+            }
+            val started = client?.startRecognize() == true
+            if (!started) onResult(RecognitionResult.ProviderError(
+                title = "Couldn't start recognition",
+                reason = "ACRCloud could not start microphone recognition."
             ))
-            return false
+            started
+        } catch (t: Throwable) {
+            android.util.Log.e("ACRCloudNative", "Failed to start native recognition", t)
+            onResult(RecognitionResult.ProviderError(
+                title = "Recognition error",
+                reason = t.message ?: "Failed to start native recognizer"
+            ))
+            false
         }
-        val started = client?.startRecognize() == true
-        if (!started) onResult(RecognitionResult.ProviderError(
-            title = "Couldn't start recognition",
-            reason = "ACRCloud could not start microphone recognition."
-        ))
-        return started
     }
 
     fun stopRecognition() {
-        client?.cancel()
+        try {
+            client?.cancel()
+        } catch (t: Throwable) {
+            android.util.Log.e("ACRCloudNative", "Error canceling client", t)
+        }
         resultCallback = null
         _volume.value = 0.0
     }
 
     fun release() {
         resultCallback = null
-        client?.release()
+        try {
+            client?.release()
+        } catch (t: Throwable) {
+            android.util.Log.e("ACRCloudNative", "Error releasing client", t)
+        }
         client = null
         initialized = false
         _volume.value = 0.0

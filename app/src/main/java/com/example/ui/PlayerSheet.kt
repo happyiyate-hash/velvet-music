@@ -236,25 +236,25 @@ fun PlayerSheet(
     }
 
     val upNextExpanded = remember { Animatable(0f) }
-    // Smoothly animate colors to prevent ANY sudden flashing or popping when colors change
+    // Smoothly animate colors with a generous, slow transition gap to eliminate any abrupt shifts
     val animatedAmb1 by animateColorAsState(
         targetValue = themeColors.ambient1,
-        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        animationSpec = tween(2400, easing = LinearEasing),
         label = "animated_ambient1"
     )
     val animatedAmb2 by animateColorAsState(
         targetValue = themeColors.ambient2,
-        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        animationSpec = tween(2400, easing = LinearEasing),
         label = "animated_ambient2"
     )
     val animatedAmb3 by animateColorAsState(
         targetValue = themeColors.ambient3,
-        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        animationSpec = tween(2400, easing = LinearEasing),
         label = "animated_ambient3"
     )
     val animatedGlow by animateColorAsState(
         targetValue = themeColors.glow,
-        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        animationSpec = tween(2400, easing = LinearEasing),
         label = "animated_glow"
     )
     val upNextP = upNextExpanded.value
@@ -959,12 +959,12 @@ private fun SmokyAtmosphericCardBackground(
      */
     val transition = rememberInfiniteTransition(label = "floating_ambient_loop")
 
-    // Continuous floating time loop (ultra-slow, serene, peaceful drifting travel)
+    // Continuous floating time loop with a very big gap: 360 seconds (6 full minutes) per cycle
     val time by transition.animateFloat(
         initialValue = 0f,
         targetValue = 6.2831853f, // 1 full cycle
         animationSpec = infiniteRepeatable(
-            animation = tween(120000, easing = LinearEasing), // 120 seconds (2 full minutes) per cycle
+            animation = tween(360000, easing = LinearEasing), // 360 seconds (6 full minutes)
             repeatMode = RepeatMode.Restart
         ),
         label = "ambient_floating_time"
@@ -981,28 +981,24 @@ private fun SmokyAtmosphericCardBackground(
         val t = time
         val maxDim = kotlin.math.max(w, h)
 
-        // Dynamic organic breathing radii as the clouds travel
-        val r1 = maxDim * (0.85f + 0.12f * kotlin.math.sin(t * 0.70f))
-        val r2 = maxDim * (0.85f + 0.12f * kotlin.math.cos(t * 0.65f))
-        val r3 = maxDim * (0.80f + 0.10f * kotlin.math.sin(t * 0.85f))
-        val r4 = maxDim * (0.78f + 0.10f * kotlin.math.cos(t * 0.90f))
+        // Very slow, subtle organic breathing radii as the clouds drift
+        val r1 = maxDim * (0.88f + 0.05f * kotlin.math.sin(t * 0.50f))
+        val r2 = maxDim * (0.88f + 0.05f * kotlin.math.cos(t * 0.45f))
+        val r3 = maxDim * (0.84f + 0.04f * kotlin.math.sin(t * 0.60f))
+        val r4 = maxDim * (0.82f + 0.04f * kotlin.math.cos(t * 0.55f))
 
-        // True roaming coordinates across the ENTIRE canvas (0.08w to 0.92w, 0.08h to 0.92h)
-        // Orb 1: Sweeps diagonally from upper-left down to lower-right and back
-        val c1X = w * (0.50f + 0.40f * kotlin.math.sin(t * 0.85f))
-        val c1Y = h * (0.50f + 0.42f * kotlin.math.cos(t * 0.68f + 0.4f))
+        // True roaming coordinates with wide, gentle drift
+        val c1X = w * (0.50f + 0.32f * kotlin.math.sin(t * 0.70f))
+        val c1Y = h * (0.50f + 0.32f * kotlin.math.cos(t * 0.60f + 0.4f))
 
-        // Orb 2: Counter-sweeps across from bottom-left up to top-right
-        val c2X = w * (0.50f + 0.42f * kotlin.math.cos(t * 0.62f + 1.8f))
-        val c2Y = h * (0.50f + 0.38f * kotlin.math.sin(t * 0.95f + 2.2f))
+        val c2X = w * (0.50f + 0.32f * kotlin.math.cos(t * 0.55f + 1.8f))
+        val c2Y = h * (0.50f + 0.30f * kotlin.math.sin(t * 0.75f + 2.2f))
 
-        // Orb 3: Sweeps in a wide vertical figure-eight, traversing top to bottom
-        val c3X = w * (0.50f + 0.38f * kotlin.math.sin(t * 1.10f + 3.1f))
-        val c3Y = h * (0.50f + 0.42f * kotlin.math.cos(t * 0.55f + 1.2f))
+        val c3X = w * (0.50f + 0.30f * kotlin.math.sin(t * 0.85f + 3.1f))
+        val c3Y = h * (0.50f + 0.32f * kotlin.math.cos(t * 0.45f + 1.2f))
 
-        // Orb 4: Highlights the traveling path, crossing horizontally
-        val c4X = w * (0.50f + 0.36f * kotlin.math.cos(t * 0.78f + 4.5f))
-        val c4Y = h * (0.50f + 0.36f * kotlin.math.sin(t * 0.82f + 5.1f))
+        val c4X = w * (0.50f + 0.28f * kotlin.math.cos(t * 0.65f + 4.5f))
+        val c4Y = h * (0.50f + 0.28f * kotlin.math.sin(t * 0.65f + 5.1f))
 
         // Draw Orb 1 (Dominant artwork hue)
         drawCircle(

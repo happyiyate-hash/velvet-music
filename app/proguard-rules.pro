@@ -50,3 +50,11 @@
 -keep class com.example.recognition.** { *; }
 -keepclassmembers class com.example.recognition.** { *; }
 
+# ===================================================================
+# 5. ACRCloud Native SDK & JNI Bindings (Must not be stripped or obfuscated)
+# ===================================================================
+-keep class com.acrcloud.** { *; }
+-keepclassmembers class com.acrcloud.** { *; }
+-dontwarn com.acrcloud.**
+
+

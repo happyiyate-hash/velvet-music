@@ -237,8 +237,10 @@ fun SingToSearchSheet(
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) {
-        recognitionEngine.startListening(context, libraryTracks)
+    ) { isGranted ->
+        if (isGranted) {
+            recognitionEngine.startListening(context, libraryTracks)
+        }
     }
 
     // Auto-start listening on open

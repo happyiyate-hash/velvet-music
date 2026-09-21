@@ -149,39 +149,47 @@ class HummingRecognitionEngine(
                 BuildConfig.ACRCLOUD_ACCESS_KEY.isNotBlank() &&
                 BuildConfig.ACRCLOUD_ACCESS_SECRET.isNotBlank()
             ) {
-                val direct = nativeRecognizer ?: com.example.recognition.ACRCloudNativeRecognitionRepository(context).also {
-                    nativeRecognizer = it
-                }
-                _state.value = HumRecognitionState.Listening(0, MAX_CAPTURE_SECONDS)
-                _liveAmplitude.value = 0f
-                direct.startRecognition { result ->
-                    when (result) {
-                        is RecognitionResult.Match -> {
-                            _state.value = HumRecognitionState.Matched(
-                                result = toHumMatchResult(result.song, libraryTracks),
-                                diagnostics = result.diagnostics
+                var nativeStarted = false
+                try {
+                    val direct = nativeRecognizer ?: com.example.recognition.ACRCloudNativeRecognitionRepository(context).also {
+                        nativeRecognizer = it
+                    }
+                    _state.value = HumRecognitionState.Listening(0, MAX_CAPTURE_SECONDS)
+                    _liveAmplitude.value = 0f
+                    nativeStarted = direct.startRecognition { result ->
+                        when (result) {
+                            is RecognitionResult.Match -> {
+                                _state.value = HumRecognitionState.Matched(
+                                    result = toHumMatchResult(result.song, libraryTracks),
+                                    diagnostics = result.diagnostics
+                                )
+                            }
+                            is RecognitionResult.NoMatch -> _state.value = HumRecognitionState.NoMatch(
+                                title = result.title, message = result.reason, diagnostics = result.diagnostics
+                            )
+                            is RecognitionResult.ProviderError -> _state.value = HumRecognitionState.ProviderError(
+                                title = result.title, message = result.reason, diagnostics = result.diagnostics
+                            )
+                            is RecognitionResult.ResponseParsingError -> _state.value = HumRecognitionState.ResponseParsingError(
+                                title = result.title, message = result.reason, diagnostics = result.diagnostics
+                            )
+                            is RecognitionResult.ConnectionError -> _state.value = HumRecognitionState.ConnectionError(
+                                title = result.title, message = result.reason, diagnostics = result.diagnostics
                             )
                         }
-                        is RecognitionResult.NoMatch -> _state.value = HumRecognitionState.NoMatch(
-                            title = result.title, message = result.reason, diagnostics = result.diagnostics
-                        )
-                        is RecognitionResult.ProviderError -> _state.value = HumRecognitionState.ProviderError(
-                            title = result.title, message = result.reason, diagnostics = result.diagnostics
-                        )
-                        is RecognitionResult.ResponseParsingError -> _state.value = HumRecognitionState.ResponseParsingError(
-                            title = result.title, message = result.reason, diagnostics = result.diagnostics
-                        )
-                        is RecognitionResult.ConnectionError -> _state.value = HumRecognitionState.ConnectionError(
-                            title = result.title, message = result.reason, diagnostics = result.diagnostics
-                        )
                     }
-                }
-                scope.launch {
-                    direct.volume.collect { v ->
-                        _liveAmplitude.value = (v.toFloat() / 100f).coerceIn(0f, 1f)
+                    if (nativeStarted) {
+                        scope.launch {
+                            direct.volume.collect { v ->
+                                _liveAmplitude.value = (v.toFloat() / 100f).coerceIn(0f, 1f)
+                            }
+                        }
+                        return@launch
                     }
+                } catch (t: Throwable) {
+                    android.util.Log.e("HummingRecognition", "Native ACRCloud failed, falling back to batch recording", t)
                 }
-                return@launch
+                // If native direct recognition could not start, proceed to captureAudio() fallback below!
             }
 
             _state.value = HumRecognitionState.Listening(0, MAX_CAPTURE_SECONDS)
