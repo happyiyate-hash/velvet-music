@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.example.R
 import com.example.model.Track
+import com.example.BuildConfig
 import com.example.recognition.RecognitionDiagnostics
 import com.example.recognition.RecognitionDiagnosticsStore
 import com.example.recognition.RecognitionResult
@@ -108,6 +109,7 @@ class HummingRecognitionEngine(
     val lastDiagnostics: kotlinx.coroutines.flow.StateFlow<RecognitionDiagnostics?> = _lastDiagnostics
     private var activeJob: Job? = null
     private var lastContext: Context? = null
+    private var nativeRecognizer: com.example.recognition.ACRCloudNativeRecognitionRepository? = null
 
     fun loadSavedDiagnostics(context: Context) {
         val saved = RecognitionDiagnosticsStore.getLastDiagnostics(context)
@@ -138,6 +140,47 @@ class HummingRecognitionEngine(
                     message = "Microphone permission is required to identify a song.",
                     diagnostics = diag
                 )
+                return@launch
+            }
+
+            // Prefer direct ACRCloud microphone recognition when build-time credentials are present.
+            // This removes the Vercel hop from the live listening path without changing Velvet UI.
+            if (BuildConfig.ACRCLOUD_HOST.isNotBlank() &&
+                BuildConfig.ACRCLOUD_ACCESS_KEY.isNotBlank() &&
+                BuildConfig.ACRCLOUD_ACCESS_SECRET.isNotBlank()
+            ) {
+                val direct = nativeRecognizer ?: com.example.recognition.ACRCloudNativeRecognitionRepository(context).also {
+                    nativeRecognizer = it
+                }
+                _state.value = HumRecognitionState.Listening(0, MAX_CAPTURE_SECONDS)
+                _liveAmplitude.value = 0f
+                direct.startRecognition { result ->
+                    when (result) {
+                        is RecognitionResult.Match -> {
+                            _state.value = HumRecognitionState.Matched(
+                                result = toHumMatchResult(result.song, libraryTracks),
+                                diagnostics = result.diagnostics
+                            )
+                        }
+                        is RecognitionResult.NoMatch -> _state.value = HumRecognitionState.NoMatch(
+                            title = result.title, message = result.reason, diagnostics = result.diagnostics
+                        )
+                        is RecognitionResult.ProviderError -> _state.value = HumRecognitionState.ProviderError(
+                            title = result.title, message = result.reason, diagnostics = result.diagnostics
+                        )
+                        is RecognitionResult.ResponseParsingError -> _state.value = HumRecognitionState.ResponseParsingError(
+                            title = result.title, message = result.reason, diagnostics = result.diagnostics
+                        )
+                        is RecognitionResult.ConnectionError -> _state.value = HumRecognitionState.ConnectionError(
+                            title = result.title, message = result.reason, diagnostics = result.diagnostics
+                        )
+                    }
+                }
+                scope.launch {
+                    direct.volume.collect { v ->
+                        _liveAmplitude.value = (v.toFloat() / 100f).coerceIn(0f, 1f)
+                    }
+                }
                 return@launch
             }
 
@@ -340,6 +383,7 @@ class HummingRecognitionEngine(
     fun stopListening() {
         activeJob?.cancel()
         activeJob = null
+        nativeRecognizer?.stopRecognition()
         _liveAmplitude.value = 0f
         _livePitchHz.value = 0f
     }
