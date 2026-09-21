@@ -162,12 +162,7 @@ fun SingToSearchSheet(
 
     val state by recognitionEngine.state.collectAsState()
     val liveAmplitude by recognitionEngine.liveAmplitude.collectAsState()
-    val lastSavedDiagnostics by recognitionEngine.lastDiagnostics.collectAsState()
     var showDiagnosticsModal by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        recognitionEngine.loadSavedDiagnostics(context)
-    }
 
     val activeDiagnostics: RecognitionDiagnostics? = when (val s = state) {
         is HumRecognitionState.Matched -> s.diagnostics
@@ -176,7 +171,7 @@ fun SingToSearchSheet(
         is HumRecognitionState.ProviderError -> s.diagnostics
         is HumRecognitionState.ResponseParsingError -> s.diagnostics
         else -> null
-    } ?: lastSavedDiagnostics
+    }
 
     // The native recognizer owns the live listening lifecycle. Do not switch the UI
     // to "Identifying" on a timer; recognition results are the only transition out
