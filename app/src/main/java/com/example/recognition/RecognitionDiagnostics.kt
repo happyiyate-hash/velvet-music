@@ -16,8 +16,13 @@ import java.util.TimeZone
  */
 data class RecognitionDiagnostics(
     val timestamp: String = currentFormattedTimestamp(),
+    val mode: String = "Native ACRCloud Android SDK",
+    val provider: String = "ACRCloud",
+    val failureStage: String? = null,
+    val failureCode: String? = null,
+    val failureReason: String? = null,
     val requestId: String? = null,
-    val requestUrl: String = "https://velvet-recognition-backend-cx6ybckmo-happyiyate-hashs-projects.vercel.app/v1/recognition/batch",
+    val requestUrl: String? = null,
     val httpStatus: Int? = null,
     val httpStatusMessage: String? = null,
     val exceptionClass: String? = null,
@@ -35,6 +40,16 @@ data class RecognitionDiagnostics(
     val acrcloudStatus: String? = null,
     val acrcloudError: String? = null,
     val timeoutInfo: String? = null,
+    val microphonePermissionGranted: Boolean? = null,
+    val hostConfigured: Boolean? = null,
+    val accessKeyConfigured: Boolean? = null,
+    val accessSecretConfigured: Boolean? = null,
+    val sdkInitialized: Boolean? = null,
+    val recognitionStarted: Boolean? = null,
+    val sdkStatusCode: Int? = null,
+    val sdkStatusMessage: String? = null,
+    val rawProviderResponse: String? = null,
+    val backendUsed: Boolean = false,
     val isNetworkFailure: Boolean = false
 ) {
     /**
@@ -42,7 +57,8 @@ data class RecognitionDiagnostics(
      */
     fun sanitized(): RecognitionDiagnostics {
         return copy(
-            requestUrl = RecognitionSanitizer.sanitize(requestUrl),
+            requestUrl = requestUrl?.let { RecognitionSanitizer.sanitize(it) },
+            failureReason = failureReason?.let { RecognitionSanitizer.sanitize(it) },
             exceptionMessage = exceptionMessage?.let { RecognitionSanitizer.sanitize(it) },
             causeMessage = causeMessage?.let { RecognitionSanitizer.sanitize(it) },
             backendResponseBody = backendResponseBody?.let { RecognitionSanitizer.sanitize(it) },
@@ -50,7 +66,9 @@ data class RecognitionDiagnostics(
             backendTrace = backendTrace?.map { RecognitionSanitizer.sanitize(it) },
             auddError = auddError?.let { RecognitionSanitizer.sanitize(it) },
             acrcloudError = acrcloudError?.let { RecognitionSanitizer.sanitize(it) },
-            timeoutInfo = timeoutInfo?.let { RecognitionSanitizer.sanitize(it) }
+            timeoutInfo = timeoutInfo?.let { RecognitionSanitizer.sanitize(it) },
+            sdkStatusMessage = sdkStatusMessage?.let { RecognitionSanitizer.sanitize(it) },
+            rawProviderResponse = rawProviderResponse?.let { RecognitionSanitizer.sanitize(it) }
         )
     }
 
@@ -64,60 +82,65 @@ data class RecognitionDiagnostics(
         sb.appendLine("VELVET RECOGNITION DIAGNOSTICS")
         sb.appendLine()
         sb.appendLine("Time: ${s.timestamp}")
-        sb.appendLine("Request ID: ${s.requestId ?: "None"}")
+        sb.appendLine("Mode: ${s.mode}")
+        sb.appendLine("Provider: ${s.provider}")
         sb.appendLine()
-        sb.appendLine("Request URL:")
-        sb.appendLine(s.requestUrl)
+        sb.appendLine("FAILURE / RESULT")
+        sb.appendLine("Stage: ${s.failureStage ?: "None reported"}")
+        sb.appendLine("Code: ${s.failureCode ?: "None"}")
+        sb.appendLine("Reason: ${s.failureReason ?: "None reported"}")
         sb.appendLine()
-        sb.appendLine("HTTP Status: ${s.httpStatus?.toString() ?: "None (Backend was not reached / network failure)"}")
-        if (!s.httpStatusMessage.isNullOrBlank()) {
-            sb.appendLine("HTTP Status Message: ${s.httpStatusMessage}")
+        sb.appendLine("NATIVE ACRCloud STATE")
+        sb.appendLine("Microphone permission: ${status(s.microphonePermissionGranted)}")
+        sb.appendLine("Host configured: ${status(s.hostConfigured)}")
+        sb.appendLine("Access key configured: ${status(s.accessKeyConfigured)}")
+        sb.appendLine("Access secret configured: ${status(s.accessSecretConfigured)}")
+        sb.appendLine("SDK initialized: ${status(s.sdkInitialized)}")
+        sb.appendLine("Recognition started: ${status(s.recognitionStarted)}")
+        if (s.sdkStatusCode != null || !s.sdkStatusMessage.isNullOrBlank()) {
+            sb.appendLine("SDK status code: ${s.sdkStatusCode ?: "None"}")
+            sb.appendLine("SDK status message: ${s.sdkStatusMessage ?: "None"}")
         }
-        sb.appendLine()
-        sb.appendLine("Exception:")
-        sb.appendLine(s.exceptionClass ?: "None")
-        sb.appendLine()
-        sb.appendLine("Exception Message:")
-        sb.appendLine(s.exceptionMessage ?: "None")
-        sb.appendLine()
-        if (!s.causeClass.isNullOrBlank() || !s.causeMessage.isNullOrBlank()) {
-            sb.appendLine("Cause:")
-            sb.appendLine("${s.causeClass ?: "Unknown"}: ${s.causeMessage ?: ""}".trim())
+        if (!s.rawProviderResponse.isNullOrBlank()) {
             sb.appendLine()
+            sb.appendLine("RAW ACRCloud RESPONSE")
+            sb.appendLine(s.rawProviderResponse)
+        }
+        if (!s.exceptionClass.isNullOrBlank() || !s.exceptionMessage.isNullOrBlank()) {
+            sb.appendLine()
+            sb.appendLine("EXCEPTION")
+            sb.appendLine("Type: ${s.exceptionClass ?: "Unknown"}")
+            sb.appendLine("Message: ${s.exceptionMessage ?: "None"}")
+        }
+        if (!s.causeClass.isNullOrBlank() || !s.causeMessage.isNullOrBlank()) {
+            sb.appendLine("Cause: ${s.causeClass ?: "Unknown"}: ${s.causeMessage ?: ""}".trim())
         }
         if (!s.timeoutInfo.isNullOrBlank()) {
-            sb.appendLine("Timeout Information:")
+            sb.appendLine()
+            sb.appendLine("TIMEOUT")
             sb.appendLine(s.timeoutInfo)
-            sb.appendLine()
         }
-        sb.appendLine("Backend Response:")
-        sb.appendLine(s.backendResponseBody?.takeIf { it.isNotBlank() } ?: "None (Backend was not reached or empty body returned)")
         sb.appendLine()
-        if (s.backendSuccess != null || s.backendError != null) {
-            sb.appendLine("Backend Top-Level:")
-            sb.appendLine("success=${s.backendSuccess}")
-            sb.appendLine("error=${s.backendError ?: "None"}")
-            sb.appendLine()
-        }
-        sb.appendLine("AudD:")
-        sb.appendLine("success=${s.auddSuccess?.toString() ?: "None"}")
-        sb.appendLine("status=${s.auddStatus ?: "None"}")
-        sb.appendLine("error=${s.auddError ?: "None"}")
-        sb.appendLine()
-        sb.appendLine("ACRCloud:")
-        sb.appendLine("success=${s.acrcloudSuccess?.toString() ?: "None"}")
-        sb.appendLine("status=${s.acrcloudStatus ?: "None"}")
-        sb.appendLine("error=${s.acrcloudError ?: "None"}")
-        sb.appendLine()
-        sb.appendLine("Trace:")
-        if (!s.backendTrace.isNullOrEmpty()) {
-            s.backendTrace.forEach { step ->
-                sb.appendLine("- $step")
-            }
+        sb.appendLine("BACKEND")
+        if (s.backendUsed) {
+            sb.appendLine("Used: Yes")
+            sb.appendLine("Request ID: ${s.requestId ?: "None"}")
+            sb.appendLine("Request URL: ${s.requestUrl ?: "None"}")
+            sb.appendLine("HTTP status: ${s.httpStatus ?: "None"}")
+            sb.appendLine("HTTP message: ${s.httpStatusMessage ?: "None"}")
+            sb.appendLine("Response: ${s.backendResponseBody?.takeIf { it.isNotBlank() } ?: "None"}")
+            sb.appendLine("Backend success: ${s.backendSuccess ?: "None"}")
+            sb.appendLine("Backend error: ${s.backendError ?: "None"}")
         } else {
-            sb.appendLine("None")
+            sb.appendLine("Used: No — this recognition attempt did not use the Velvet backend.")
         }
         return sb.toString().trimEnd()
+    }
+
+    private fun status(value: Boolean?): String = when (value) {
+        true -> "YES"
+        false -> "NO"
+        null -> "UNKNOWN"
     }
 
     companion object {
