@@ -64,8 +64,7 @@ class HummingRecognitionEngine(private val scope: CoroutineScope) {
     fun startListening(context: Context, libraryTracks: List<Track> = emptyList()) {
         stopListening()
         lastContext = context.applicationContext
-        loadSavedDiagnostics(context)
-
+        _lastDiagnostics.value = null
         activeJob = scope.launch {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 val diag = RecognitionDiagnostics(
@@ -86,30 +85,40 @@ class HummingRecognitionEngine(private val scope: CoroutineScope) {
             _liveAmplitude.value = 0f
             _livePitchHz.value = 0f
 
+            var callbackDelivered = false
             val started = try {
-                direct.startRecognition { result -> handleRecognitionResult(context, result, libraryTracks) }
+                direct.startRecognition { result ->
+                    callbackDelivered = true
+                    handleRecognitionResult(context, result, libraryTracks)
+                }
             } catch (t: Throwable) {
                 android.util.Log.e("HummingRecognition", "Native ACRCloud start failed", t)
                 false
             }
 
-            if (!started) {
+            if (!started && !callbackDelivered) {
                 val diag = RecognitionDiagnostics(
                     timestamp = RecognitionDiagnostics.currentFormattedTimestamp(),
+                    failureStage = "RECOGNITION_START",
+                    failureCode = "NATIVE_RECOGNIZER_START_UNEXPECTED_FAILURE",
+                    failureReason = "The native ACRCloud recognizer returned false without providing a diagnostic result.",
                     exceptionClass = "ACRCloudStartException",
                     exceptionMessage = "Native ACRCloud microphone recognition could not start.",
-                    causeMessage = "ACRCloud SDK initialization or startRecognize() failed",
-                    isNetworkFailure = false
+                    microphonePermissionGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED,
+                    sdkInitialized = null,
+                    recognitionStarted = false
                 )
                 _lastDiagnostics.value = diag
                 RecognitionDiagnosticsStore.saveLastDiagnostics(context, diag)
                 _state.value = HumRecognitionState.ProviderError(
                     "Couldn't start recognition",
-                    "Velvet could not start live microphone recognition. Check the ACRCloud configuration used to build this APK.",
+                    diag.failureReason ?: "Native recognition failed to start.",
                     diag
                 )
                 return@launch
             }
+
+            if (!started) return@launch
 
             nativeVolumeJob?.cancel()
             nativeVolumeJob = launch {
