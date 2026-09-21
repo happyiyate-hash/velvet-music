@@ -597,8 +597,7 @@ fun PlayerSheet(
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.11f))
                         .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                        .clickable(                            interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -950,24 +949,25 @@ private fun SmokyAtmosphericCardBackground(
     modifier: Modifier = Modifier
 ) {
     /*
-     * Shazam / Apple Music-style dynamic floating ambient mesh.
-     * The colors are NOT pinned to fixed coordinates.
-     * Four organic color clouds generated from the track artwork wander continuously
-     * across the entire screen in wide intersecting paths.
-     * When they cross paths, they mix together dynamically using additive blend modes,
-     * creating living, shifting gradients that travel everywhere across the display.
+     * Slow, continuously drifting ambient mesh.
+     *
+     * Important: the clouds do NOT travel between two endpoints and reverse.
+     * Each cloud follows a long orbital/Lissajous path, so its direction is
+     * always progressing through the scene. Different phase speeds keep the
+     * colors from looking synchronized or mechanically repetitive.
      */
-    val transition = rememberInfiniteTransition(label = "floating_ambient_loop")
+    val transition = rememberInfiniteTransition(label = "floating_ambient_mesh")
 
-    // Continuous floating time loop with a very big gap: 360 seconds (6 full minutes) per cycle
-    val time by transition.animateFloat(
+    // One complete ambient journey takes two minutes. The phase wraps at the
+    // end of the cycle, but the visible path itself never reverses.
+    val phase by transition.animateFloat(
         initialValue = 0f,
-        targetValue = 6.2831853f, // 1 full cycle
+        targetValue = 6.2831853f,
         animationSpec = infiniteRepeatable(
-            animation = tween(360000, easing = LinearEasing), // 360 seconds (6 full minutes)
+            animation = tween(120000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "ambient_floating_time"
+        label = "ambient_mesh_phase"
     )
 
     Canvas(modifier = modifier) {
@@ -975,106 +975,131 @@ private fun SmokyAtmosphericCardBackground(
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
-        // 1. Deep midnight dark background base
         drawRect(Color(0xFF0F1016))
 
-        val t = time
+        val t = phase
         val maxDim = kotlin.math.max(w, h)
 
-        // Very slow, subtle organic breathing radii as the clouds drift
-        val r1 = maxDim * (0.88f + 0.05f * kotlin.math.sin(t * 0.50f))
-        val r2 = maxDim * (0.88f + 0.05f * kotlin.math.cos(t * 0.45f))
-        val r3 = maxDim * (0.84f + 0.04f * kotlin.math.sin(t * 0.60f))
-        val r4 = maxDim * (0.82f + 0.04f * kotlin.math.cos(t * 0.55f))
+        // Keep the clouds smaller than the old 82–88% screen-sized circles.
+        // This makes their movement visible instead of washing the whole screen
+        // in one nearly uniform color.
+        val r1 = maxDim * 0.52f
+        val r2 = maxDim * 0.47f
+        val r3 = maxDim * 0.43f
+        val r4 = maxDim * 0.40f
 
-        // True roaming coordinates with wide, gentle drift
-        val c1X = w * (0.50f + 0.32f * kotlin.math.sin(t * 0.70f))
-        val c1Y = h * (0.50f + 0.32f * kotlin.math.cos(t * 0.60f + 0.4f))
+        fun cloudX(angle: Float, amplitude: Float, offset: Float): Float {
+            return w * 0.50f + w * amplitude * kotlin.math.sin(angle + offset)
+        }
 
-        val c2X = w * (0.50f + 0.32f * kotlin.math.cos(t * 0.55f + 1.8f))
-        val c2Y = h * (0.50f + 0.30f * kotlin.math.sin(t * 0.75f + 2.2f))
+        fun cloudY(
+            angle: Float,
+            amplitude: Float,
+            speed: Float,
+            offset: Float
+        ): Float {
+            return h * 0.50f + h * amplitude *
+                kotlin.math.cos(angle * speed + offset)
+        }
 
-        val c3X = w * (0.50f + 0.30f * kotlin.math.sin(t * 0.85f + 3.1f))
-        val c3Y = h * (0.50f + 0.32f * kotlin.math.cos(t * 0.45f + 1.2f))
+        // Each cloud has a different orbital ratio and phase. There is no
+        // "go to this point, then go back" animation.
+        val c1 = Offset(
+            cloudX(t * 0.92f, 0.34f, 0.0f),
+            cloudY(t, 0.31f, 0.73f, 0.7f)
+        )
+        val c2 = Offset(
+            cloudX(t * 0.76f, 0.31f, 2.2f),
+            cloudY(t, 0.34f, 0.61f, 2.9f)
+        )
+        val c3 = Offset(
+            cloudX(t * 1.08f, 0.29f, 4.1f),
+            cloudY(t, 0.30f, 0.82f, 4.7f)
+        )
+        val c4 = Offset(
+            cloudX(t * 0.64f, 0.35f, 5.4f),
+            cloudY(t, 0.27f, 0.67f, 5.9f)
+        )
 
-        val c4X = w * (0.50f + 0.28f * kotlin.math.cos(t * 0.65f + 4.5f))
-        val c4Y = h * (0.50f + 0.28f * kotlin.math.sin(t * 0.65f + 5.1f))
+        // Subtle radius breathing prevents the clouds from feeling like
+        // rigid circles while keeping the overall motion very calm.
+        val rr1 = r1 * (0.94f + 0.06f * kotlin.math.sin(t * 0.43f))
+        val rr2 = r2 * (0.95f + 0.05f * kotlin.math.cos(t * 0.37f + 1.2f))
+        val rr3 = r3 * (0.94f + 0.06f * kotlin.math.sin(t * 0.31f + 2.4f))
+        val rr4 = r4 * (0.95f + 0.05f * kotlin.math.cos(t * 0.27f + 3.1f))
 
-        // Draw Orb 1 (Dominant artwork hue)
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color1.copy(alpha = 0.58f),
-                    color1.copy(alpha = 0.32f),
-                    color1.copy(alpha = 0.10f),
+                    color1.copy(alpha = 0.68f),
+                    color1.copy(alpha = 0.38f),
+                    color1.copy(alpha = 0.13f),
                     Color.Transparent
                 ),
-                center = Offset(c1X, c1Y),
-                radius = r1
+                center = c1,
+                radius = rr1
             ),
-            center = Offset(c1X, c1Y),
-            radius = r1,
+            center = c1,
+            radius = rr1,
             blendMode = BlendMode.Screen
         )
 
-        // Draw Orb 2 (Secondary artwork hue) - mixes with Orb 1 when intersecting
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color2.copy(alpha = 0.52f),
-                    color2.copy(alpha = 0.28f),
-                    color2.copy(alpha = 0.08f),
+                    color2.copy(alpha = 0.62f),
+                    color2.copy(alpha = 0.34f),
+                    color2.copy(alpha = 0.11f),
                     Color.Transparent
                 ),
-                center = Offset(c2X, c2Y),
-                radius = r2
+                center = c2,
+                radius = rr2
             ),
-            center = Offset(c2X, c2Y),
-            radius = r2,
+            center = c2,
+            radius = rr2,
             blendMode = BlendMode.Screen
         )
 
-        // Draw Orb 3 (Accent artwork hue) - weaves through both
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color3.copy(alpha = 0.46f),
-                    color3.copy(alpha = 0.24f),
-                    color3.copy(alpha = 0.06f),
+                    color3.copy(alpha = 0.58f),
+                    color3.copy(alpha = 0.30f),
+                    color3.copy(alpha = 0.09f),
                     Color.Transparent
                 ),
-                center = Offset(c3X, c3Y),
-                radius = r3
+                center = c3,
+                radius = rr3
             ),
-            center = Offset(c3X, c3Y),
-            radius = r3,
+            center = c3,
+            radius = rr3,
             blendMode = BlendMode.Screen
         )
 
-        // Draw Orb 4 (Glow / Highlight bloom) - deepens the color mixing
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color4.copy(alpha = 0.42f),
-                    color4.copy(alpha = 0.20f),
-                    color4.copy(alpha = 0.05f),
+                    color4.copy(alpha = 0.54f),
+                    color4.copy(alpha = 0.27f),
+                    color4.copy(alpha = 0.08f),
                     Color.Transparent
                 ),
-                center = Offset(c4X, c4Y),
-                radius = r4
+                center = c4,
+                radius = rr4
             ),
-            center = Offset(c4X, c4Y),
-            radius = r4,
+            center = c4,
+            radius = rr4,
             blendMode = BlendMode.Screen
         )
 
-        // Soft peripheral framing for pristine edge contrast
+        // Gentle vignette keeps the player readable without stopping the
+        // color clouds from travelling through the entire surface.
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color.Black.copy(alpha = 0.15f),
+                    Color.Black.copy(alpha = 0.12f),
                     Color.Transparent,
-                    Color.Black.copy(alpha = 0.35f)
+                    Color.Black.copy(alpha = 0.30f)
                 )
             )
         )
@@ -1197,8 +1222,7 @@ private fun DarkSilhouetteWaveform(
     // 76 compact, dense vertical bars forming continuous audio texture at bottom of card
     val barCount = 76
     val restingProfile = remember(barCount) {
-        FloatArray(barCount) { i ->
-            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+        FloatArray(barCount) { i ->            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
             // Multi-harmonic natural undulating wave silhouette
             val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.35f
             val wave2 = abs(sin(norm * 3.14159f * 3.6f)) * 0.20f
@@ -1797,8 +1821,7 @@ fun NowPlayingWaveformProgress(
     var dragFraction by remember { mutableFloatStateOf(0f) }
     val displayFraction = if (isDragging) dragFraction else progressFraction
 
-    val barCount = 80
-    // Generate an authentic acoustic signature for the song
+    val barCount = 80    // Generate an authentic acoustic signature for the song
     val baseProfile = remember(durationMs, barCount) {
         FloatArray(barCount) { i ->
             val norm = i.toFloat() / barCount
@@ -2397,8 +2420,7 @@ fun AudioVisualizerBottomSheet(
                     color = accentColor,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
-                )
-                Text(
+                )                Text(
                     text = "70% • 90% Bass ▶",
                     fontSize = 10.sp,
                     color = Color(0xFF03DAC6).copy(alpha = 0.85f),
