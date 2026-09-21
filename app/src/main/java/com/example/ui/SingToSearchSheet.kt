@@ -467,7 +467,7 @@ fun SingToSearchSheet(
         // Fullscreen diagnostics modal overlay
         if (showDiagnosticsModal) {
             RecognitionDiagnosticsModal(
-                diagnostics = activeDiagnostics ?: lastSavedDiagnostics,
+                diagnostics = activeDiagnostics,
                 onClose = { showDiagnosticsModal = false }
             )
         }
