@@ -158,6 +158,7 @@ object RecognitionSanitizer {
 object RecognitionDiagnosticsStore {
     private const val TAG = "VelvetDiagnosticsStore"
     private const val PREFS_NAME = "velvet_recognition_diagnostics"
+    private const val KEY_SCHEMA = "diagnostics_schema_v2"
     private const val KEY_LAST_REPORT = "last_diagnostic_report"
     private const val KEY_TIMESTAMP = "last_timestamp"
     private const val KEY_REQUEST_ID = "last_request_id"
@@ -182,8 +183,24 @@ object RecognitionDiagnosticsStore {
         try {
             val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()
+                .putString(KEY_SCHEMA, "native-v2")
                 .putString(KEY_LAST_REPORT, sanitized.toFormattedReport())
                 .putString(KEY_TIMESTAMP, sanitized.timestamp)
+                .putString("last_mode", sanitized.mode)
+                .putString("last_provider", sanitized.provider)
+                .putString("last_failure_stage", sanitized.failureStage)
+                .putString("last_failure_code", sanitized.failureCode)
+                .putString("last_failure_reason", sanitized.failureReason)
+                .putBoolean("last_mic_permission", sanitized.microphonePermissionGranted ?: false)
+                .putBoolean("last_host_configured", sanitized.hostConfigured ?: false)
+                .putBoolean("last_key_configured", sanitized.accessKeyConfigured ?: false)
+                .putBoolean("last_secret_configured", sanitized.accessSecretConfigured ?: false)
+                .putBoolean("last_sdk_initialized", sanitized.sdkInitialized ?: false)
+                .putBoolean("last_recognition_started", sanitized.recognitionStarted ?: false)
+                .putInt("last_sdk_status_code", sanitized.sdkStatusCode ?: Int.MIN_VALUE)
+                .putString("last_sdk_status_message", sanitized.sdkStatusMessage)
+                .putString("last_raw_provider_response", sanitized.rawProviderResponse)
+                .putBoolean("last_backend_used", sanitized.backendUsed)
                 .putString(KEY_REQUEST_ID, sanitized.requestId)
                 .putInt(KEY_HTTP_STATUS, sanitized.httpStatus ?: -1)
                 .putString(KEY_REQUEST_URL, sanitized.requestUrl)
@@ -206,13 +223,13 @@ object RecognitionDiagnosticsStore {
         inMemoryLastDiagnostics?.let { return it }
         return try {
             val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (prefs.getString(KEY_SCHEMA, null) != "native-v2") return null
             val report = prefs.getString(KEY_LAST_REPORT, null) ?: return null
             val timestamp = prefs.getString(KEY_TIMESTAMP, "Unknown") ?: "Unknown"
             val requestId = prefs.getString(KEY_REQUEST_ID, null)
             val httpStatusRaw = prefs.getInt(KEY_HTTP_STATUS, -1)
             val httpStatus = if (httpStatusRaw != -1) httpStatusRaw else null
-            val requestUrl = prefs.getString(KEY_REQUEST_URL, "https://velvet-recognition-backend-cx6ybckmo-happyiyate-hashs-projects.vercel.app/v1/recognition/batch")
-                ?: "https://velvet-recognition-backend-cx6ybckmo-happyiyate-hashs-projects.vercel.app/v1/recognition/batch"
+            val requestUrl = prefs.getString(KEY_REQUEST_URL, null)
             val excClass = prefs.getString(KEY_EXCEPTION_CLASS, null)
             val excMsg = prefs.getString(KEY_EXCEPTION_MESSAGE, null)
             val responseBody = prefs.getString(KEY_BACKEND_RESPONSE, null)
@@ -224,8 +241,23 @@ object RecognitionDiagnosticsStore {
 
             val loaded = RecognitionDiagnostics(
                 timestamp = timestamp,
+                mode = prefs.getString("last_mode", "Native ACRCloud Android SDK") ?: "Native ACRCloud Android SDK",
+                provider = prefs.getString("last_provider", "ACRCloud") ?: "ACRCloud",
+                failureStage = prefs.getString("last_failure_stage", null),
+                failureCode = prefs.getString("last_failure_code", null),
+                failureReason = prefs.getString("last_failure_reason", null),
                 requestId = requestId,
                 requestUrl = requestUrl,
+                microphonePermissionGranted = prefs.getBoolean("last_mic_permission", false),
+                hostConfigured = prefs.getBoolean("last_host_configured", false),
+                accessKeyConfigured = prefs.getBoolean("last_key_configured", false),
+                accessSecretConfigured = prefs.getBoolean("last_secret_configured", false),
+                sdkInitialized = prefs.getBoolean("last_sdk_initialized", false),
+                recognitionStarted = prefs.getBoolean("last_recognition_started", false),
+                sdkStatusCode = prefs.getInt("last_sdk_status_code", Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE },
+                sdkStatusMessage = prefs.getString("last_sdk_status_message", null),
+                rawProviderResponse = prefs.getString("last_raw_provider_response", null),
+                backendUsed = prefs.getBoolean("last_backend_used", false),
                 httpStatus = httpStatus,
                 exceptionClass = excClass,
                 exceptionMessage = excMsg,
