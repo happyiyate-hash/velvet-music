@@ -125,17 +125,31 @@ class ACRCloudNativeRecognitionRepository(
 
     private fun parseResult(raw: String): RecognitionResult {
         if (raw.isBlank()) return RecognitionResult.NoMatch()
+
         return try {
             val root = JSONObject(raw)
-            if (root.optJSONObject("status")?.optInt("code", -1) != 0) return RecognitionResult.NoMatch()
-            val music = root.optJSONObject("metadata")?.optJSONArray("music")
+            if (root.optJSONObject("status")?.optInt("code", -1) != 0) {
+                return RecognitionResult.NoMatch()
+            }
+
+            val metadata = root.optJSONObject("metadata") ?: return RecognitionResult.NoMatch()
+
+            // Prefer ACRCloud humming/cover metadata for Sing to Search.
+            // Only fall back to normal music metadata when no humming candidate exists.
+            val item = metadata.optJSONArray("humming")?.optJSONObject(0)
+                ?: metadata.optJSONArray("music")?.optJSONObject(0)
                 ?: return RecognitionResult.NoMatch()
-            if (music.length() == 0) return RecognitionResult.NoMatch()
-            val item = music.optJSONObject(0) ?: return RecognitionResult.NoMatch()
-            val artist = item.optJSONArray("artists")?.optJSONObject(0)?.optString("name").orEmpty()
+
+            val artist = item.optJSONArray("artists")
+                ?.optJSONObject(0)
+                ?.optString("name")
+                .orEmpty()
             val title = item.optString("title")
             val album = item.optJSONObject("album")?.optString("name").orEmpty()
+
             if (title.isBlank() || artist.isBlank()) return RecognitionResult.NoMatch()
+
+            val score = item.optDouble("score", 100.0).toInt().coerceIn(0, 100)
 
             RecognitionResult.Match(
                 RecognizedSong(
@@ -145,7 +159,7 @@ class ACRCloudNativeRecognitionRepository(
                     album = album,
                     artworkUrl = null,
                     durationMs = item.optLong("duration_ms", 0L),
-                    confidence = 100,
+                    confidence = score,
                     isrc = null,
                     spotifyUrl = null,
                     appleMusicUrl = null,
@@ -157,8 +171,8 @@ class ACRCloudNativeRecognitionRepository(
             )
         } catch (ex: Exception) {
             RecognitionResult.ResponseParsingError(
-                reason = "Invalid ACRCloud response: ${ex.message}",
-                rawException = ex.message
+                reason = "Invalid ACRCloud response: $\{ex.message\}",
+                rawException = __EX_MESSAGE__
             )
         }
     }
