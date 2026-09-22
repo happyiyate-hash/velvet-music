@@ -236,27 +236,6 @@ fun PlayerSheet(
     }
 
     val upNextExpanded = remember { Animatable(0f) }
-    // Smoothly animate colors with a generous, slow transition gap to eliminate any abrupt shifts
-    val animatedAmb1 by animateColorAsState(
-        targetValue = themeColors.ambient1,
-        animationSpec = tween(2400, easing = LinearEasing),
-        label = "animated_ambient1"
-    )
-    val animatedAmb2 by animateColorAsState(
-        targetValue = themeColors.ambient2,
-        animationSpec = tween(2400, easing = LinearEasing),
-        label = "animated_ambient2"
-    )
-    val animatedAmb3 by animateColorAsState(
-        targetValue = themeColors.ambient3,
-        animationSpec = tween(2400, easing = LinearEasing),
-        label = "animated_ambient3"
-    )
-    val animatedGlow by animateColorAsState(
-        targetValue = themeColors.glow,
-        animationSpec = tween(2400, easing = LinearEasing),
-        label = "animated_glow"
-    )
     val upNextP = upNextExpanded.value
     val haptic = LocalHapticFeedback.current
     val queueDragDensity = LocalDensity.current
@@ -391,10 +370,10 @@ fun PlayerSheet(
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
                     SmokyAtmosphericCardBackground(
-                        color1 = animatedAmb1,
-                        color2 = animatedAmb2,
-                        color3 = animatedAmb3,
-                        color4 = animatedGlow,
+                        color1 = themeColors.ambient1,
+                        color2 = themeColors.ambient2,
+                        color3 = themeColors.ambient3,
+                        color4 = themeColors.glow,
                         modifier = Modifier.fillMaxSize()
                     )
 
@@ -948,152 +927,91 @@ private fun SmokyAtmosphericCardBackground(
     color4: Color,
     modifier: Modifier = Modifier
 ) {
-    /*
-     * Slow, continuously drifting ambient mesh.
-     *
-     * Important: the clouds do NOT travel between two endpoints and reverse.
-     * Each cloud follows a long orbital/Lissajous path, so its direction is
-     * always progressing through the scene. Different phase speeds keep the
-     * colors from looking synchronized or mechanically repetitive.
-     */
-    val transition = rememberInfiniteTransition(label = "floating_ambient_mesh")
-
-    // One complete ambient journey takes two minutes. The phase wraps at the
-    // end of the cycle, but the visible path itself never reverses.
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 6.2831853f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(120000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "ambient_mesh_phase"
-    )
-
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
+        // 1. Deep midnight dark background base
         drawRect(Color(0xFF0F1016))
 
-        val t = phase
         val maxDim = kotlin.math.max(w, h)
 
-        // Keep the clouds smaller than the old 82–88% screen-sized circles.
-        // This makes their movement visible instead of washing the whole screen
-        // in one nearly uniform color.
-        val r1 = maxDim * 0.52f
-        val r2 = maxDim * 0.47f
-        val r3 = maxDim * 0.43f
-        val r4 = maxDim * 0.40f
+        // Static extracted color gradients at fixed, balanced coordinates (no animation)
+        val c1 = Offset(w * 0.28f, h * 0.22f)
+        val c2 = Offset(w * 0.74f, h * 0.32f)
+        val c3 = Offset(w * 0.36f, h * 0.68f)
+        val c4 = Offset(w * 0.68f, h * 0.58f)
 
-        fun cloudX(angle: Float, amplitude: Float, offset: Float): Float {
-            return w * 0.50f + w * amplitude * kotlin.math.sin(angle + offset)
-        }
-
-        fun cloudY(
-            angle: Float,
-            amplitude: Float,
-            speed: Float,
-            offset: Float
-        ): Float {
-            return h * 0.50f + h * amplitude *
-                kotlin.math.cos(angle * speed + offset)
-        }
-
-        // Each cloud has a different orbital ratio and phase. There is no
-        // "go to this point, then go back" animation.
-        val c1 = Offset(
-            cloudX(t * 0.92f, 0.34f, 0.0f),
-            cloudY(t, 0.31f, 0.73f, 0.7f)
-        )
-        val c2 = Offset(
-            cloudX(t * 0.76f, 0.31f, 2.2f),
-            cloudY(t, 0.34f, 0.61f, 2.9f)
-        )
-        val c3 = Offset(
-            cloudX(t * 1.08f, 0.29f, 4.1f),
-            cloudY(t, 0.30f, 0.82f, 4.7f)
-        )
-        val c4 = Offset(
-            cloudX(t * 0.64f, 0.35f, 5.4f),
-            cloudY(t, 0.27f, 0.67f, 5.9f)
-        )
-
-        // Subtle radius breathing prevents the clouds from feeling like
-        // rigid circles while keeping the overall motion very calm.
-        val rr1 = r1 * (0.94f + 0.06f * kotlin.math.sin(t * 0.43f))
-        val rr2 = r2 * (0.95f + 0.05f * kotlin.math.cos(t * 0.37f + 1.2f))
-        val rr3 = r3 * (0.94f + 0.06f * kotlin.math.sin(t * 0.31f + 2.4f))
-        val rr4 = r4 * (0.95f + 0.05f * kotlin.math.cos(t * 0.27f + 3.1f))
-
+        // Dominant extracted color
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color1.copy(alpha = 0.68f),
-                    color1.copy(alpha = 0.38f),
-                    color1.copy(alpha = 0.13f),
+                    color1.copy(alpha = 0.65f),
+                    color1.copy(alpha = 0.35f),
+                    color1.copy(alpha = 0.12f),
                     Color.Transparent
                 ),
                 center = c1,
-                radius = rr1
+                radius = maxDim * 0.55f
             ),
             center = c1,
-            radius = rr1,
+            radius = maxDim * 0.55f,
             blendMode = BlendMode.Screen
         )
 
+        // Secondary extracted color
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color2.copy(alpha = 0.62f),
-                    color2.copy(alpha = 0.34f),
-                    color2.copy(alpha = 0.11f),
+                    color2.copy(alpha = 0.58f),
+                    color2.copy(alpha = 0.30f),
+                    color2.copy(alpha = 0.10f),
                     Color.Transparent
                 ),
                 center = c2,
-                radius = rr2
+                radius = maxDim * 0.50f
             ),
             center = c2,
-            radius = rr2,
+            radius = maxDim * 0.50f,
             blendMode = BlendMode.Screen
         )
 
+        // Accent extracted color
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color3.copy(alpha = 0.58f),
-                    color3.copy(alpha = 0.30f),
-                    color3.copy(alpha = 0.09f),
+                    color3.copy(alpha = 0.52f),
+                    color3.copy(alpha = 0.25f),
+                    color3.copy(alpha = 0.08f),
                     Color.Transparent
                 ),
                 center = c3,
-                radius = rr3
+                radius = maxDim * 0.46f
             ),
             center = c3,
-            radius = rr3,
+            radius = maxDim * 0.46f,
             blendMode = BlendMode.Screen
         )
 
+        // Highlight glow
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color4.copy(alpha = 0.54f),
-                    color4.copy(alpha = 0.27f),
-                    color4.copy(alpha = 0.08f),
+                    color4.copy(alpha = 0.48f),
+                    color4.copy(alpha = 0.22f),
+                    color4.copy(alpha = 0.06f),
                     Color.Transparent
                 ),
                 center = c4,
-                radius = rr4
+                radius = maxDim * 0.42f
             ),
             center = c4,
-            radius = rr4,
+            radius = maxDim * 0.42f,
             blendMode = BlendMode.Screen
         )
 
-        // Gentle vignette keeps the player readable without stopping the
-        // color clouds from travelling through the entire surface.
+        // Subtle dark vignette to ensure crisp readability of all text and controls
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
