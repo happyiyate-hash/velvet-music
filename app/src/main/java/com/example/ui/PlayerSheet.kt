@@ -216,7 +216,10 @@ fun PlayerSheet(
             ?: if (track.coverResId != 0) {
                 runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
             } else null
-        mutableStateOf(ArtworkColorExtractor.extractColorsFromBitmap(initial))
+        mutableStateOf(
+            if (initial != null) ArtworkColorExtractor.extractColorsFromBitmap(initial)
+            else ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+        )
     }
 
     LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
@@ -226,7 +229,11 @@ fun PlayerSheet(
                     ?: if (track.coverResId != 0) {
                         runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
                     } else null
-                val extractedColors = ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+                val extractedColors = if (bitmap != null) {
+                    ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+                } else {
+                    ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+                }
                 withContext(Dispatchers.Main) {
                     resolvedArtworkBitmap = bitmap
                     themeColors = extractedColors
@@ -364,16 +371,14 @@ fun PlayerSheet(
                         .fillMaxWidth()
                         .weight(1f)
                         .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+                        .background(themeColors.dominant)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
-                    SmokyAtmosphericCardBackground(
-                        color1 = themeColors.ambient1,
-                        color2 = themeColors.ambient2,
-                        color3 = themeColors.ambient3,
-                        color4 = themeColors.glow,
+                    SingleColorCardBackground(
+                        color = themeColors.dominant,
                         modifier = Modifier.fillMaxSize()
                     )
 
@@ -920,108 +925,15 @@ fun PlayerSheet(
 
 
 @Composable
-private fun SmokyAtmosphericCardBackground(
-    color1: Color,
-    color2: Color,
-    color3: Color,
-    color4: Color,
+private fun SingleColorCardBackground(
+    color: Color,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        if (w <= 0f || h <= 0f) return@Canvas
-
-        // 1. Deep midnight dark background base
-        drawRect(Color(0xFF0F1016))
-
-        val maxDim = kotlin.math.max(w, h)
-
-        // Static extracted color gradients at fixed, balanced coordinates (no animation)
-        val c1 = Offset(w * 0.28f, h * 0.22f)
-        val c2 = Offset(w * 0.74f, h * 0.32f)
-        val c3 = Offset(w * 0.36f, h * 0.68f)
-        val c4 = Offset(w * 0.68f, h * 0.58f)
-
-        // Dominant extracted color
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    color1.copy(alpha = 0.65f),
-                    color1.copy(alpha = 0.35f),
-                    color1.copy(alpha = 0.12f),
-                    Color.Transparent
-                ),
-                center = c1,
-                radius = maxDim * 0.55f
-            ),
-            center = c1,
-            radius = maxDim * 0.55f,
-            blendMode = BlendMode.Screen
-        )
-
-        // Secondary extracted color
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    color2.copy(alpha = 0.58f),
-                    color2.copy(alpha = 0.30f),
-                    color2.copy(alpha = 0.10f),
-                    Color.Transparent
-                ),
-                center = c2,
-                radius = maxDim * 0.50f
-            ),
-            center = c2,
-            radius = maxDim * 0.50f,
-            blendMode = BlendMode.Screen
-        )
-
-        // Accent extracted color
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    color3.copy(alpha = 0.52f),
-                    color3.copy(alpha = 0.25f),
-                    color3.copy(alpha = 0.08f),
-                    Color.Transparent
-                ),
-                center = c3,
-                radius = maxDim * 0.46f
-            ),
-            center = c3,
-            radius = maxDim * 0.46f,
-            blendMode = BlendMode.Screen
-        )
-
-        // Highlight glow
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    color4.copy(alpha = 0.48f),
-                    color4.copy(alpha = 0.22f),
-                    color4.copy(alpha = 0.06f),
-                    Color.Transparent
-                ),
-                center = c4,
-                radius = maxDim * 0.42f
-            ),
-            center = c4,
-            radius = maxDim * 0.42f,
-            blendMode = BlendMode.Screen
-        )
-
-        // Subtle dark vignette to ensure crisp readability of all text and controls
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Black.copy(alpha = 0.12f),
-                    Color.Transparent,
-                    Color.Black.copy(alpha = 0.30f)
-                )
-            )
-        )
-    }
+    // Fills the entire card with the single extracted color.
+    // No extra dark layers, no multiple circles, and no vignette shadows blocking the color.
+    Box(
+        modifier = modifier.background(color)
+    )
 }
 
 @Composable
@@ -1201,9 +1113,9 @@ private fun DarkSilhouetteWaveform(
             val barTop = size.height - barHeight
             val barX = i * (barWidth + barGap)
 
-            // Low opacity dark charcoal tones so it doesn't compete with the artwork
-            val tipColor = Color(0xFF383B4A).copy(alpha = 0.50f)
-            val baseColor = Color(0xFF14151B).copy(alpha = 0.35f)
+            // Translucent clean white tones so they don't cast a dark shadow over the extracted card color
+            val tipColor = Color.White.copy(alpha = 0.28f)
+            val baseColor = Color.White.copy(alpha = 0.08f)
 
             val barBrush = Brush.verticalGradient(
                 colors = listOf(tipColor, baseColor),
