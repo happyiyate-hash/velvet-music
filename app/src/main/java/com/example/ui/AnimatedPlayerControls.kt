@@ -12,6 +12,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.offset
+import com.example.audio.RepeatMode
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -44,7 +51,7 @@ private val SolidMilkWhite = Color(0xFFF2F0ED)
  */
 @Composable
 fun AnimatedRepeatIcon(
-    isRepeat: Boolean,
+    repeatMode: RepeatMode,
     activeColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -53,8 +60,8 @@ fun AnimatedRepeatIcon(
 ) {
     val travelOffset = remember { Animatable(0f) }
 
-    LaunchedEffect(isRepeat) {
-        if (isRepeat) {
+    LaunchedEffect(repeatMode) {
+        if (repeatMode != RepeatMode.OFF) {
             // One smooth circulation loop forward along racetrack path
             travelOffset.snapTo(0f)
             travelOffset.animateTo(
@@ -75,7 +82,7 @@ fun AnimatedRepeatIcon(
         }
     }
 
-    val targetColor = if (isRepeat) activeColor.copy(alpha = 1.0f) else SolidMilkWhite
+    val targetColor = if (repeatMode != RepeatMode.OFF) activeColor.copy(alpha = 1.0f) else SolidMilkWhite
     val iconColor by animateColorAsState(
         targetValue = targetColor,
         animationSpec = tween(durationMillis = 300),
@@ -193,6 +200,16 @@ fun AnimatedRepeatIcon(
                 )
             }
         }
+        if (repeatMode == RepeatMode.ONE || repeatMode == RepeatMode.ALL) {
+            Text(
+                text = if (repeatMode == RepeatMode.ONE) "1" else "all",
+                color = iconColor,
+                fontSize = if (repeatMode == RepeatMode.ONE) 8.sp else 6.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.offset(y = 1.dp)
+            )
+        }
+
     }
 }
 
