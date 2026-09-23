@@ -1512,8 +1512,8 @@ private fun SeamlessMatchedResultView(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(Color(0x66000000))
-                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                    .background(Color.White.copy(alpha = 0.075f))
+                    .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.35f))
                     .clickable(onClick = onClose)
                     .testTag("sing_close_button"),
                 contentAlignment = Alignment.Center
@@ -1531,8 +1531,8 @@ private fun SeamlessMatchedResultView(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(Color(0x66000000))
-                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                    .background(Color.White.copy(alpha = 0.075f))
+                    .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.35f))
                     .clickable { onViewDiagnostics?.invoke() }
                     .testTag("sing_more_options_button"),
                 contentAlignment = Alignment.Center
