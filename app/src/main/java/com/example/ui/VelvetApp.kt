@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import kotlinx.coroutines.launch
+import com.example.audio.RepeatMode
 import com.example.audio.VelvetAudioEngine
 import com.example.media.DeviceMediaManager
 import com.example.model.SampleData
@@ -118,7 +119,7 @@ fun VelvetApp() {
     val telemetry by audioEngine.telemetry.collectAsState()
     val isSoundCatchEnabled by audioEngine.isSoundCatchEnabled.collectAsState()
     val isShuffle by audioEngine.isShuffle.collectAsState()
-    val isRepeat by audioEngine.isRepeat.collectAsState()
+    val repeatMode by audioEngine.repeatMode.collectAsState()
     val offlineCachedIds by audioEngine.offlineCachedTrackIds.collectAsState()
     val trackPlayCounts by audioEngine.trackPlayCounts.collectAsState()
     val favoriteTrackIds by audioEngine.favoriteTrackIds.collectAsState()
@@ -323,7 +324,7 @@ fun VelvetApp() {
                 playbackPositionMs = playbackPositionMs,
                 telemetry = telemetry,
                 isShuffle = isShuffle,
-                isRepeat = isRepeat,
+                repeatMode = repeatMode,
                 isFavorite = favoriteTrackIds.contains(currentTrack.id),
                 isCachedOffline = offlineCachedIds.contains(currentTrack.id),
                 queueTracks = if (activeQueue.isNotEmpty()) activeQueue else allTracks,
