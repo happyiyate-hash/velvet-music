@@ -45,24 +45,30 @@ fun PlayerPlayIcon(
             val offsetX = (size.width - 64f * scale) / 2f
             val offsetY = (size.height - 64f * scale) / 2f
 
+            val left = offsetX + 17f * scale
+            val right = offsetX + 51f * scale
+            val top = offsetY + 14f * scale
+            val bottom = offsetY + 50f * scale
+            val midY = offsetY + 32f * scale
+
             val path = Path().apply {
-                moveTo(offsetX + 23f * scale, offsetY + 16.8f * scale)
+                moveTo(left + 3f * scale, top)
                 cubicTo(
-                    offsetX + 21.7f * scale, offsetY + 16f * scale,
-                    offsetX + 20f * scale, offsetY + 16.9f * scale,
-                    offsetX + 20f * scale, offsetY + 18.5f * scale
+                    left + 1.2f * scale, top - 0.2f * scale,
+                    left, top + 1.4f * scale,
+                    left, top + 3.2f * scale
                 )
-                lineTo(offsetX + 20f * scale, offsetY + 45.5f * scale)
+                lineTo(left, bottom - 3.2f * scale)
                 cubicTo(
-                    offsetX + 20f * scale, offsetY + 47.1f * scale,
-                    offsetX + 21.7f * scale, offsetY + 48f * scale,
-                    offsetX + 23f * scale, offsetY + 47.2f * scale
+                    left, bottom - 1.4f * scale,
+                    left + 1.2f * scale, bottom + 0.2f * scale,
+                    left + 3f * scale, bottom
                 )
-                lineTo(offsetX + 45f * scale, offsetY + 33.7f * scale)
+                lineTo(right - 2.5f * scale, midY + 1.8f * scale)
                 cubicTo(
-                    offsetX + 46.4f * scale, offsetY + 32.8f * scale,
-                    offsetX + 46.4f * scale, offsetY + 31.2f * scale,
-                    offsetX + 45f * scale, offsetY + 30.3f * scale
+                    right + 0.8f * scale, midY + 0.9f * scale,
+                    right + 0.8f * scale, midY - 0.9f * scale,
+                    right - 2.5f * scale, midY - 1.8f * scale
                 )
                 close()
             }
@@ -130,36 +136,42 @@ fun PlayerPreviousIcon(
             val offsetX = (size.width - 64f * scale) / 2f
             val offsetY = (size.height - 64f * scale) / 2f
 
-            // Triangle
+            // Elongated triangle pointing left directly at the standing line
+            val backX = offsetX + 53f * scale
+            val tipX = offsetX + 20f * scale
+            val topY = offsetY + 14f * scale
+            val bottomY = offsetY + 50f * scale
+            val midY = offsetY + 32f * scale
+
             val triangle = Path().apply {
-                moveTo(offsetX + 44f * scale, offsetY + 18f * scale)
+                moveTo(backX - 2.5f * scale, topY)
                 cubicTo(
-                    offsetX + 44f * scale, offsetY + 16.3f * scale,
-                    offsetX + 42f * scale, offsetY + 15.4f * scale,
-                    offsetX + 40.7f * scale, offsetY + 16.5f * scale
+                    backX - 0.5f * scale, topY - 0.4f * scale,
+                    backX, topY + 1.2f * scale,
+                    backX, topY + 3.2f * scale
                 )
-                lineTo(offsetX + 21.5f * scale, offsetY + 30.5f * scale)
+                lineTo(backX, bottomY - 3.2f * scale)
                 cubicTo(
-                    offsetX + 21.5f * scale, offsetY + 32.1f * scale,
-                    offsetX + 21.5f * scale, offsetY + 31.9f * scale,
-                    offsetX + 23.5f * scale, offsetY + 33.5f * scale
+                    backX, bottomY - 1.2f * scale,
+                    backX - 0.5f * scale, bottomY + 0.4f * scale,
+                    backX - 2.5f * scale, bottomY
                 )
-                lineTo(offsetX + 40.7f * scale, offsetY + 47.5f * scale)
+                lineTo(tipX + 2.5f * scale, midY + 1.8f * scale)
                 cubicTo(
-                    offsetX + 42f * scale, offsetY + 48.6f * scale,
-                    offsetX + 44f * scale, offsetY + 47.7f * scale,
-                    offsetX + 44f * scale, offsetY + 46f * scale
+                    tipX - 0.8f * scale, midY + 0.9f * scale,
+                    tipX - 0.8f * scale, midY - 0.9f * scale,
+                    tipX + 2.5f * scale, midY - 1.8f * scale
                 )
                 close()
             }
             drawPath(path = triangle, color = tint)
 
-            // Bar: x=13, y=16, width=6, height=32, rx=3
+            // Standing line (bar)
             drawRoundRect(
                 color = tint,
-                topLeft = Offset(offsetX + 13f * scale, offsetY + 16f * scale),
-                size = Size(6f * scale, 32f * scale),
-                cornerRadius = CornerRadius(3f * scale, 3f * scale)
+                topLeft = Offset(offsetX + 10f * scale, offsetY + 14f * scale),
+                size = Size(6.5f * scale, 36f * scale),
+                cornerRadius = CornerRadius(3.25f * scale, 3.25f * scale)
             )
         }
     }
@@ -185,36 +197,42 @@ fun PlayerNextIcon(
             val offsetX = (size.width - 64f * scale) / 2f
             val offsetY = (size.height - 64f * scale) / 2f
 
-            // Triangle
+            // Elongated triangle pointing right directly at the standing line
+            val backX = offsetX + 11f * scale
+            val tipX = offsetX + 44f * scale
+            val topY = offsetY + 14f * scale
+            val bottomY = offsetY + 50f * scale
+            val midY = offsetY + 32f * scale
+
             val triangle = Path().apply {
-                moveTo(offsetX + 20f * scale, offsetY + 18f * scale)
+                moveTo(backX + 2.5f * scale, topY)
                 cubicTo(
-                    offsetX + 20f * scale, offsetY + 16.3f * scale,
-                    offsetX + 22f * scale, offsetY + 15.4f * scale,
-                    offsetX + 23.3f * scale, offsetY + 16.5f * scale
+                    backX + 0.5f * scale, topY - 0.4f * scale,
+                    backX, topY + 1.2f * scale,
+                    backX, topY + 3.2f * scale
                 )
-                lineTo(offsetX + 42.5f * scale, offsetY + 30.5f * scale)
+                lineTo(backX, bottomY - 3.2f * scale)
                 cubicTo(
-                    offsetX + 42.5f * scale, offsetY + 32.1f * scale,
-                    offsetX + 42.5f * scale, offsetY + 31.9f * scale,
-                    offsetX + 40.5f * scale, offsetY + 33.5f * scale
+                    backX, bottomY - 1.2f * scale,
+                    backX + 0.5f * scale, bottomY + 0.4f * scale,
+                    backX + 2.5f * scale, bottomY
                 )
-                lineTo(offsetX + 23.3f * scale, offsetY + 47.5f * scale)
+                lineTo(tipX - 2.5f * scale, midY + 1.8f * scale)
                 cubicTo(
-                    offsetX + 22f * scale, offsetY + 48.6f * scale,
-                    offsetX + 20f * scale, offsetY + 47.7f * scale,
-                    offsetX + 20f * scale, offsetY + 46f * scale
+                    tipX + 0.8f * scale, midY + 0.9f * scale,
+                    tipX + 0.8f * scale, midY - 0.9f * scale,
+                    tipX - 2.5f * scale, midY - 1.8f * scale
                 )
                 close()
             }
             drawPath(path = triangle, color = tint)
 
-            // Bar: x=45, y=16, width=6, height=32, rx=3
+            // Standing line (bar)
             drawRoundRect(
                 color = tint,
-                topLeft = Offset(offsetX + 45f * scale, offsetY + 16f * scale),
-                size = Size(6f * scale, 32f * scale),
-                cornerRadius = CornerRadius(3f * scale, 3f * scale)
+                topLeft = Offset(offsetX + 47.5f * scale, offsetY + 14f * scale),
+                size = Size(6.5f * scale, 36f * scale),
+                cornerRadius = CornerRadius(3.25f * scale, 3.25f * scale)
             )
         }
     }

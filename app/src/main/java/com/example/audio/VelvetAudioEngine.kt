@@ -698,7 +698,7 @@ class VelvetAudioEngine(
             val currentIndex = queue.indexOfFirst { it.id == _currentTrack.value.id }
             val nextIndex = if (currentIndex != -1 && currentIndex < queue.lastIndex) {
                 currentIndex + 1
-            } else if (_isRepeat.value || queue.size == 1) {
+            } else if (_repeatMode.value != RepeatMode.OFF || queue.size == 1) {
                 0
             } else {
                 -1
@@ -725,7 +725,7 @@ class VelvetAudioEngine(
             val currentIndex = queue.indexOfFirst { it.id == _currentTrack.value.id }
             val prevIndex = if (currentIndex > 0) {
                 currentIndex - 1
-            } else if (_isRepeat.value) {
+            } else if (_repeatMode.value != RepeatMode.OFF) {
                 queue.lastIndex
             } else {
                 0

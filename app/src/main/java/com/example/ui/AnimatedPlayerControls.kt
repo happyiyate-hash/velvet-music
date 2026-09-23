@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
@@ -31,22 +32,21 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
-// Solid milk-white: softened off-white with 100% solid opacity (no translucent gray)
+// Solid softened off-white for controls
 private val SolidMilkWhite = Color(0xFFF2F0ED)
 
 /**
  * Animated Repeat Icon:
- * - Rendered with thin, solid off-white vector strokes (1.7.dp) matching navigation icons.
- * - 100% solid opacity with zero translucent gray overlay.
+ * - Rendered with refined, solid vector strokes (1.9.dp) matching navigation icons.
+ * - Solid opacity with subtle dimming when inactive.
  * - The actual strokes travel along their racetrack loop path when tapped.
  * - Arrowheads dynamically align along the path tangents with rounded caps and joins.
- * - Switches to the solid artwork accent color when active, maintaining uniform stroke width and zero glow.
+ * - Displays a bold, clearly visible "1" or "ALL" badge inside the loop.
  */
 @Composable
 fun AnimatedRepeatIcon(
@@ -54,8 +54,8 @@ fun AnimatedRepeatIcon(
     activeColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    touchSize: Dp = 48.dp,
-    iconSize: Dp = 26.dp
+    touchSize: Dp = 54.dp,
+    iconSize: Dp = 34.dp
 ) {
     val travelOffset = remember { Animatable(0f) }
 
@@ -81,7 +81,7 @@ fun AnimatedRepeatIcon(
         }
     }
 
-    val targetColor = if (repeatMode != RepeatMode.OFF) activeColor.copy(alpha = 1.0f) else SolidMilkWhite
+    val targetColor = if (repeatMode != RepeatMode.OFF) activeColor else Color.White.copy(alpha = 0.45f)
     val iconColor by animateColorAsState(
         targetValue = targetColor,
         animationSpec = tween(durationMillis = 300),
@@ -100,23 +100,22 @@ fun AnimatedRepeatIcon(
     ) {
         Canvas(modifier = Modifier.size(iconSize)) {
             val scale = size.width / 48f
-            // Slim, refined stroke matching the visual weight of clean navigation icons
-            val strokeWidthPx = 1.7.dp.toPx()
+            val strokeWidthPx = 1.9.dp.toPx()
 
             // Canonical racetrack path in 48x48 coordinate space
-            // Height = 18 (from y=15 to y=33), width = 28 (from x=10 to x=38), radius = 9
+            // Height = 24 (from y=12 to y=36), width = 44 (from x=2 to x=46), radius = 12
             val racetrack = Path().apply {
-                moveTo(16f * scale, 15f * scale)
-                lineTo(32f * scale, 15f * scale)
+                moveTo(14f * scale, 12f * scale)
+                lineTo(34f * scale, 12f * scale)
                 arcTo(
-                    rect = Rect(23f * scale, 15f * scale, 41f * scale, 33f * scale),
+                    rect = Rect(22f * scale, 12f * scale, 46f * scale, 36f * scale),
                     startAngleDegrees = -90f,
                     sweepAngleDegrees = 180f,
                     forceMoveTo = false
                 )
-                lineTo(16f * scale, 33f * scale)
+                lineTo(14f * scale, 36f * scale)
                 arcTo(
-                    rect = Rect(7f * scale, 15f * scale, 25f * scale, 33f * scale),
+                    rect = Rect(2f * scale, 12f * scale, 26f * scale, 36f * scale),
                     startAngleDegrees = 90f,
                     sweepAngleDegrees = 180f,
                     forceMoveTo = false
@@ -132,9 +131,9 @@ fun AnimatedRepeatIcon(
             // Resting positions:
             // Arrow 1 head on the top straight run pointing right
             // Arrow 2 head on the bottom straight run pointing left
-            val baseHead1 = 14f * scale
+            val baseHead1 = 18f * scale
             val baseHead2 = baseHead1 + totalLength * 0.5f
-            val strokeLength = totalLength * 0.38f // elegant gap between the two arrows
+            val strokeLength = totalLength * 0.38f
 
             val offsetDist = travelOffset.value * totalLength
 
@@ -152,7 +151,6 @@ fun AnimatedRepeatIcon(
             for (headDist in heads) {
                 val tailDist = (headDist - strokeLength).mod(totalLength)
 
-                // Extract and draw the body segment
                 val segmentPath = Path()
                 if (tailDist <= headDist) {
                     pathMeasure.getSegment(tailDist, headDist, segmentPath, true)
@@ -167,12 +165,11 @@ fun AnimatedRepeatIcon(
                     style = strokeStyle
                 )
 
-                // Dynamic arrowhead aligned precisely to the local path tangent
                 val headPos = pathMeasure.getPosition(headDist)
                 val tangent = pathMeasure.getTangent(headDist)
                 val angle = atan2(tangent.y, tangent.x)
-                val wingAngle = 0.70f // ~40 degrees
-                val wingLen = 4.2f * scale
+                val wingAngle = 0.70f
+                val wingLen = 4.6f * scale
 
                 val wing1 = headPos - Offset(
                     cos(angle - wingAngle) * wingLen,
@@ -199,26 +196,45 @@ fun AnimatedRepeatIcon(
                 )
             }
         }
-        if (repeatMode == RepeatMode.ONE || repeatMode == RepeatMode.ALL) {
-            Text(
-                text = if (repeatMode == RepeatMode.ONE) "1" else "all",
-                color = iconColor,
-                fontSize = if (repeatMode == RepeatMode.ONE) 8.sp else 6.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.offset(y = 1.dp)
-            )
-        }
 
+        if (repeatMode == RepeatMode.ONE || repeatMode == RepeatMode.ALL) {
+            Box(
+                modifier = Modifier.size(iconSize),
+                contentAlignment = Alignment.Center
+            ) {
+                if (repeatMode == RepeatMode.ONE) {
+                    Text(
+                        text = "1",
+                        color = iconColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        lineHeight = 11.sp
+                    )
+                } else {
+                    Text(
+                        text = "ALL",
+                        color = iconColor,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-0.4).sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        lineHeight = 8.5.sp,
+                        softWrap = false
+                    )
+                }
+            }
+        }
     }
 }
 
 /**
  * Animated Shuffle Icon:
- * - Slim, thin vector strokes (1.7.dp) matching navigation icons.
- * - Solid off-white (#F2F0ED) with 100% solid opacity.
- * - Solid opacity ensures the crossing point does NOT compound alpha or create a bright center hotspot.
+ * - Refined vector strokes (1.9.dp) matching navigation icons.
+ * - Subtle dimming when inactive; solid white when active.
  * - When tapped, the two crossing paths flex and slide through their crossing point before easing into place.
- * - Completely smooth rounded line caps and joins throughout.
  */
 @Composable
 fun AnimatedShuffleIcon(
@@ -226,14 +242,13 @@ fun AnimatedShuffleIcon(
     activeColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    touchSize: Dp = 48.dp,
-    iconSize: Dp = 26.dp
+    touchSize: Dp = 54.dp,
+    iconSize: Dp = 34.dp
 ) {
     val shuffleAnim = remember { Animatable(0f) }
 
     LaunchedEffect(isShuffle) {
         if (isShuffle) {
-            // Smooth natural flex and stroke slide through crossing point
             shuffleAnim.snapTo(0f)
             shuffleAnim.animateTo(
                 targetValue = 1f,
@@ -241,7 +256,6 @@ fun AnimatedShuffleIcon(
             )
             shuffleAnim.snapTo(0f)
         } else {
-            // Gentle reverse pulse
             shuffleAnim.snapTo(0f)
             shuffleAnim.animateTo(
                 targetValue = 0.5f,
@@ -254,7 +268,7 @@ fun AnimatedShuffleIcon(
         }
     }
 
-    val targetColor = if (isShuffle) activeColor.copy(alpha = 1.0f) else SolidMilkWhite
+    val targetColor = if (isShuffle) activeColor else Color.White.copy(alpha = 0.45f)
     val iconColor by animateColorAsState(
         targetValue = targetColor,
         animationSpec = tween(durationMillis = 300),
@@ -273,8 +287,7 @@ fun AnimatedShuffleIcon(
     ) {
         Canvas(modifier = Modifier.size(iconSize)) {
             val scale = size.width / 48f
-            // Slim, refined stroke matching the visual weight of clean navigation icons
-            val strokeWidthPx = 1.7.dp.toPx()
+            val strokeWidthPx = 1.9.dp.toPx()
 
             val progress = shuffleAnim.value
             val pulse = sin(progress * PI.toFloat())
@@ -322,26 +335,21 @@ fun AnimatedShuffleIcon(
                 join = StrokeJoin.Round
             )
 
-            // Because iconColor has 100% solid opacity, drawing the crossing paths
-            // creates a completely uniform stroke brightness with NO alpha compounding at the intersection
             drawPath(path = pathA, color = iconColor, style = strokeStyle)
             drawPath(path = pathB, color = iconColor, style = strokeStyle)
 
-            // Arrowheads: Slim, refined wings matching stroke width and geometry
-            val wingLen = 4.2f * scale
-            val wingAngle = 0.68f // ~39 degrees
+            val wingLen = 4.6f * scale
+            val wingAngle = 0.68f
 
-            // Arrowhead A (bottom-right: tip at (39 + arrowNudge, 32), pointing right)
             val tipA = Offset((39f + arrowNudge) * scale, 32f * scale)
             val wingA1 = tipA - Offset(cos(wingAngle) * wingLen, sin(wingAngle) * wingLen)
             val wingA2 = tipA - Offset(cos(wingAngle) * wingLen, -sin(wingAngle) * wingLen)
             drawLine(color = iconColor, start = wingA1, end = tipA, strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
             drawLine(color = iconColor, start = wingA2, end = tipA, strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
 
-            // Arrowhead B (top-right: tip at (39 + arrowNudge, 16), pointing right)
             val tipB = Offset((39f + arrowNudge) * scale, 16f * scale)
-            val wingB1 = tipB - Offset(cos(wingAngle) * wingLen, sin(wingAngle) * wingLen)
-            val wingB2 = tipB - Offset(cos(wingAngle) * wingLen, -sin(wingAngle) * wingLen)
+            val wingB1 = tipB - Offset(cos(wingAngle) * wingLen, -sin(wingAngle) * wingLen)
+            val wingB2 = tipB - Offset(cos(wingAngle) * wingLen, sin(wingAngle) * wingLen)
             drawLine(color = iconColor, start = wingB1, end = tipB, strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
             drawLine(color = iconColor, start = wingB2, end = tipB, strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
         }

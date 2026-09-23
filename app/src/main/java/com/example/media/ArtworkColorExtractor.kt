@@ -190,12 +190,12 @@ object ArtworkColorExtractor {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(baseColor.toArgb(), hsv)
         val hue = hsv[0]
-        val sat = hsv[1].coerceIn(0.45f, 0.95f)
-        // The player surface should use a deep, restrained version of the artwork color.
-        // Keep the vivid accent separately so controls/highlights can still feel alive.
-        val surfaceSat = (sat * 0.82f).coerceIn(0.38f, 0.78f)
-        val dominant = Color.hsv(hue, surfaceSat, 0.52f)
-        val secondary = Color.hsv(hue, (sat * 0.9f).coerceIn(0.5f, 1f), 0.16f)
+        val sat = hsv[1].coerceIn(0.35f, 0.85f)
+        // The player surface uses a very deep, subtle, and premium dark tone
+        // rather than bright/shining all over the screen.
+        val surfaceSat = (sat * 0.50f).coerceIn(0.22f, 0.48f)
+        val dominant = Color.hsv(hue, surfaceSat, 0.18f)
+        val secondary = Color.hsv(hue, (sat * 0.85f).coerceIn(0.40f, 0.90f), 0.14f)
         val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
         val glow = Color.hsv(hue, sat, 0.88f)
         val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0.40f, 0.82f), 0.32f)

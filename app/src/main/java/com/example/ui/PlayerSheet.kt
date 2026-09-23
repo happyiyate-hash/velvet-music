@@ -10,7 +10,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -103,13 +102,18 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -366,6 +370,11 @@ fun PlayerSheet(
         ) {
             val totalHeight = maxHeight
             val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val cardColor by animateColorAsState(
+                targetValue = themeColors.dominant,
+                animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                label = "card_color"
+            )
 
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -374,30 +383,87 @@ fun PlayerSheet(
                 // 1. FULL-WIDTH IMMERSIVE UPPER PLAYER SURFACE
                 // Stretches from the absolute top of the screen (behind status bar) to the bottom endpoint above controls
                 // Edge-to-edge: No left/right margins, no visible side or top borders
+                // The border is positioned exclusively along the bottom curved boundary as a premium glass rim with extracted artwork color
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-                        .background(themeColors.dominant)
-                        .border(
-                            width = 1.dp,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.24f),
-                                    Color.White.copy(alpha = 0.14f),
-                                    Color.White.copy(alpha = 0.07f)
+                        .background(cardColor)
+                        .drawWithContent {
+                            drawContent()
+                            val r = 28.dp.toPx()
+                            val strokeWidthPx = 1.6.dp.toPx()
+                            val halfStroke = strokeWidthPx / 2f
+                            val left = halfStroke
+                            val right = size.width - halfStroke
+                            val bottom = size.height - halfStroke
+                            val arcR = (r - halfStroke).coerceAtLeast(0f)
+
+                            val bottomCurvePath = Path().apply {
+                                moveTo(left, bottom - arcR)
+                                arcTo(
+                                    rect = Rect(left, bottom - 2 * arcR, left + 2 * arcR, bottom),
+                                    startAngleDegrees = 180f,
+                                    sweepAngleDegrees = -90f,
+                                    forceMoveTo = false
                                 )
-                            ),
-                            shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
-                        )
+                                lineTo(right - arcR, bottom)
+                                arcTo(
+                                    rect = Rect(right - 2 * arcR, bottom - 2 * arcR, right, bottom),
+                                    startAngleDegrees = 90f,
+                                    sweepAngleDegrees = -90f,
+                                    forceMoveTo = false
+                                )
+                            }
+
+                            // Layer 1: Ambient extracted artwork color glow along curved bottom boundary
+                            val glassGlowBrush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.10f),
+                                    themeColors.accent.copy(alpha = 0.40f),
+                                    themeColors.glow.copy(alpha = 0.55f),
+                                    themeColors.accent.copy(alpha = 0.40f),
+                                    Color.White.copy(alpha = 0.10f)
+                                )
+                            )
+                            drawPath(
+                                path = bottomCurvePath,
+                                brush = glassGlowBrush,
+                                style = Stroke(
+                                    width = 3.2.dp.toPx(),
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                )
+                            )
+
+                            // Layer 2: Ultra-crisp specular glass rim with extracted artwork color & bright peak
+                            val glassRimBrush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.25f),
+                                    themeColors.accent.copy(alpha = 0.80f),
+                                    Color.White.copy(alpha = 0.95f),
+                                    themeColors.accent.copy(alpha = 0.80f),
+                                    Color.White.copy(alpha = 0.25f)
+                                )
+                            )
+                            drawPath(
+                                path = bottomCurvePath,
+                                brush = glassRimBrush,
+                                style = Stroke(
+                                    width = 1.5.dp.toPx(),
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                )
+                            )
+                        }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
                     SingleColorCardBackground(
-                        color = themeColors.dominant,
+                        color = cardColor,
                         modifier = Modifier.fillMaxSize()
                     )
 
@@ -507,11 +573,51 @@ fun PlayerSheet(
                                             ambientColor = Color.Black
                                         )
                                         .clip(RoundedCornerShape(artworkCornerRadius))
-                                        .border(
-                                            1.dp,
-                                            Color.White.copy(alpha = if (isPlaying) 0.16f else 0.09f),
-                                            RoundedCornerShape(artworkCornerRadius)
-                                        ),
+                                        .drawWithContent {
+                                            drawContent()
+                                            val r = artworkCornerRadius.toPx()
+                                            val strokeWidthPx = 1.3.dp.toPx()
+                                            val halfStroke = strokeWidthPx / 2f
+                                            val left = halfStroke
+                                            val right = size.width - halfStroke
+                                            val bottom = size.height - halfStroke
+                                            val arcR = (r - halfStroke).coerceAtLeast(0f)
+
+                                            val bottomCurvePath = Path().apply {
+                                                moveTo(left, bottom - arcR)
+                                                arcTo(
+                                                    rect = Rect(left, bottom - 2 * arcR, left + 2 * arcR, bottom),
+                                                    startAngleDegrees = 180f,
+                                                    sweepAngleDegrees = -90f,
+                                                    forceMoveTo = false
+                                                )
+                                                lineTo(right - arcR, bottom)
+                                                arcTo(
+                                                    rect = Rect(right - 2 * arcR, bottom - 2 * arcR, right, bottom),
+                                                    startAngleDegrees = 90f,
+                                                    sweepAngleDegrees = -90f,
+                                                    forceMoveTo = false
+                                                )
+                                            }
+
+                                            drawPath(
+                                                path = bottomCurvePath,
+                                                brush = Brush.horizontalGradient(
+                                                    colors = listOf(
+                                                        Color.White.copy(alpha = 0.18f),
+                                                        themeColors.accent.copy(alpha = if (isPlaying) 0.65f else 0.40f),
+                                                        Color.White.copy(alpha = if (isPlaying) 0.85f else 0.60f),
+                                                        themeColors.accent.copy(alpha = if (isPlaying) 0.65f else 0.40f),
+                                                        Color.White.copy(alpha = 0.18f)
+                                                    )
+                                                ),
+                                                style = Stroke(
+                                                    width = strokeWidthPx,
+                                                    cap = StrokeCap.Round,
+                                                    join = StrokeJoin.Round
+                                                )
+                                            )
+                                        },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     TrackArtworkImage(
@@ -554,8 +660,8 @@ fun PlayerSheet(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(64.dp)
-                        .padding(horizontal = 16.dp)
+                        .height(84.dp)
+                        .padding(horizontal = 12.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -572,8 +678,8 @@ fun PlayerSheet(
                         onToggleShuffle()
                     },
                     modifier = Modifier.testTag("player_shuffle_button"),
-                    touchSize = 52.dp,
-                    iconSize = 31.dp
+                    touchSize = 58.dp,
+                    iconSize = 40.dp
                 )
 
                 // Previous
@@ -583,11 +689,11 @@ fun PlayerSheet(
                         onSkipPrevious()
                     },
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(64.dp)
                         .testTag("player_previous_button")
                 ) {
                     PlayerPreviousIcon(
-                        modifier = Modifier.size(40.dp),
+                        modifier = Modifier.size(50.dp),
                         tint = Color.White
                     )
                 }
@@ -595,12 +701,13 @@ fun PlayerSheet(
                 // Circular Glass Play / Pause Button
                 Box(
                     modifier = Modifier
-                        .size(72.dp)
-                        .shadow(10.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.38f))
+                        .size(82.dp)
+                        .shadow(14.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.42f))
                         .clip(CircleShape)
                         .background(Color(0xFFF4F4F2))
                         .border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
-                        .clickable(                            interactionSource = remember { MutableInteractionSource() },
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -612,13 +719,13 @@ fun PlayerSheet(
                 ) {
                     if (isPlaying) {
                         PlayerPauseIcon(
-                            modifier = Modifier.size(37.dp),
+                            modifier = Modifier.size(48.dp),
                             tint = Color(0xFF08090C)
                         )
                     } else {
                         PlayerPlayIcon(
-                            modifier = Modifier.size(31.dp),
-                            tint = Color.White
+                            modifier = Modifier.size(52.dp),
+                            tint = Color(0xFF08090C)
                         )
                     }
                 }
@@ -630,11 +737,11 @@ fun PlayerSheet(
                         onSkipNext()
                     },
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(64.dp)
                         .testTag("player_next_button")
                 ) {
                     PlayerNextIcon(
-                        modifier = Modifier.size(34.dp),
+                        modifier = Modifier.size(50.dp),
                         tint = Color.White
                     )
                 }
@@ -648,8 +755,8 @@ fun PlayerSheet(
                         onToggleRepeat()
                     },
                     modifier = Modifier.testTag("player_repeat_button"),
-                    touchSize = 46.dp,
-                    iconSize = 27.dp
+                    touchSize = 58.dp,
+                    iconSize = 40.dp
                 )
             }
 
