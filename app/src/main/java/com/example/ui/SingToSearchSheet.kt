@@ -1079,10 +1079,6 @@ private fun SeamlessMatchedResultView(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scrollState = rememberScrollState()
-    // Keep third-party streaming destinations collapsed until the user explicitly asks for them.
-    // Recognition should settle on the identified song instead of automatically moving to the platform list.
-    var showPlatforms by remember(result) { mutableStateOf(false) }
-
     // Animation states for the 5-step entrance sequence
     val artworkAlpha = remember { Animatable(0f) }
     val artworkScale = remember { Animatable(0.96f) }
@@ -1296,294 +1292,199 @@ private fun SeamlessMatchedResultView(
                 }
             }
 
-            // 2. RESULTS CONTENT: Pushed up a little bit (not too close to the line)
+            // 2. RESULTS CONTENT
+            // Keep song details fixed. Only the streaming-platform rows below
+            // "Available on" are scrollable.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .offset(y = (-14).dp)
+                    .padding(horizontal = 16.dp)
             ) {
-                // TRACK HEADER: Left Album Thumbnail + Right Track Metadata & Soundwave
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
                         .graphicsLayer {
                             alpha = trackInfoAlpha.value
                             translationY = trackInfoOffsetY.value
                         },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Album Art Thumbnail (Left Side) - slightly bigger with sharp edges
                     Box(
                         modifier = Modifier
                             .size(94.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF141418))
-                            .border(1.dp, Color(0x33FF2448), RoundedCornerShape(6.dp)),
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0x12121518))
+                            .shadow(10.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.45f)),
                         contentAlignment = Alignment.Center
                     ) {
-                    if (!resolvedArtworkUrl.isNullOrBlank()) {
-                        SubcomposeAsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(resolvedArtworkUrl)
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = result.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                            loading = {
-                                ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
-                            },
-                            success = {
-                                SubcomposeAsyncImageContent()
-                            },
-                            error = {
-                                ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
-                            }
-                        )
-                    } else {
-                        ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
-                    }
-                }
-
-                Spacer(modifier = Modifier .width(12.dp))
-
-                // Track Metadata Column (Right Side)
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    // 5-bar crimson soundwave indicator
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    ) {
-                        Box(modifier = Modifier.size(3.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
-                        Box(modifier = Modifier.size(3.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
-                        Box(modifier = Modifier.size(3.dp, 20.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
-                        Box(modifier = Modifier.size(3.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
-                        Box(modifier = Modifier.size(3.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                        if (!resolvedArtworkUrl.isNullOrBlank()) {
+                            SubcomposeAsyncImage(
+                                model = ImageRequest.Builder(context).data(resolvedArtworkUrl).crossfade(true).build(),
+                                contentDescription = result.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                                loading = { ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize()) },
+                                success = { SubcomposeAsyncImageContent() },
+                                error = { ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize()) }
+                            )
+                        } else {
+                            ArtworkLoadingSkeleton(modifier = Modifier.fillMaxSize())
+                        }
                     }
 
-                    // Prominent Artist Name
-                    Text(
-                        text = result.artist,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        letterSpacing = (-0.3).sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Spacer(modifier = Modifier.width(14.dp))
 
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    // Song Title
-                    Text(
-                        text = result.title,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    // Album / Subtitle Metadata
-                    if (result.album.isNotBlank() && !result.album.equals(result.title, ignoreCase = true)) {
-                        Spacer(modifier = Modifier.height(2.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        ) {
+                            Box(modifier = Modifier.size(3.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(3.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(3.dp, 20.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(3.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(3.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                        }
                         Text(
-                            text = result.album,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color(0xFF8E8E93),
+                            text = result.artist,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            letterSpacing = (-0.3).sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = result.title,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color.White.copy(alpha = 0.92f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (result.album.isNotBlank() && !result.album.equals(result.title, ignoreCase = true)) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = result.album,
+                                fontSize = 13.sp,
+                                color = Color(0xFF8E8E93),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-            // 3. ACTION CONTROLS (Play | Copy Title | Share)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .graphicsLayer {
-                        alpha = actionsAlpha.value
-                        translationY = actionsOffsetY.value
-                    },
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Play Button (Brand gradient pill)
-                Box(
+                Row(
                     modifier = Modifier
-                        .weight(1.15f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(
-                                    Color(0xFFFF2448).copy(alpha = if (playbackReady) 1f else 0.28f),
-                                    Color(0xFFD51035).copy(alpha = if (playbackReady) 1f else 0.20f)
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = actionsAlpha.value
+                            translationY = actionsOffsetY.value
+                        },
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1.05f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        Color(0xFFFF2448).copy(alpha = if (playbackReady) 0.92f else 0.24f),
+                                        Color(0xFFD51035).copy(alpha = if (playbackReady) 0.82f else 0.18f)
+                                    )
                                 )
                             )
-                        )
-                        .clickable(enabled = playbackReady, onClick = onPlayInVelvet)
-                        .testTag("sing_play_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                            .shadow(8.dp, RoundedCornerShape(24.dp), spotColor = Color(0x55FF2448))
+                            .clickable(enabled = playbackReady, onClick = onPlayInVelvet)
+                            .testTag("sing_play_button"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Play",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
-                    }
-                }
-
-                // Copy Title Button (Dark glass pill with subtle border)
-                Box(
-                    modifier = Modifier
-                        .weight(1.35f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(Color(0xFF141418))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
-                        .clickable {
-                            val textToCopy = "${result.artist} - ${result.title}"
-                            clipboardManager.setText(AnnotatedString(textToCopy))
-                            Toast.makeText(context, "Title copied", Toast.LENGTH_SHORT).show()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(21.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Play", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                         }
-                        .testTag("copy_title_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "Copy Title",
-                            tint = Color(0xFFE5DEE0),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Copy Title",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFFE5DEE0)
-                        )
                     }
-                }
 
-                // Share Button (Dark glass circular button)
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF141418))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                        .clickable {
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                val shareUrl = result.spotifyUrl ?: result.youtubeMusicUrl ?: result.appleMusicUrl ?: ""
-                                putExtra(Intent.EXTRA_SUBJECT, "${result.artist} - ${result.title}")
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "Found this song via Velvet: ${result.artist} - ${result.title}${if (shareUrl.isNotBlank()) "\n$shareUrl" else ""}"
-                                )
+                    Box(
+                        modifier = Modifier
+                            .weight(1.18f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.White.copy(alpha = 0.075f))
+                            .shadow(7.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.35f))
+                            .clickable {
+                                val textToCopy = result.artist + " - " + result.title
+                                clipboardManager.setText(AnnotatedString(textToCopy))
+                                Toast.makeText(context, "Title copied", Toast.LENGTH_SHORT).show()
                             }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
+                            .testTag("copy_title_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ContentCopy, "Copy Title", tint = Color(0xFFE9E4E6), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(7.dp))
+                            Text("Copy title", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE9E4E6))
                         }
-                        .testTag("sing_share_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Share",
-                        tint = Color(0xFFE5DEE0),
-                        modifier = Modifier.size(17.dp)
-                    )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.075f))
+                            .shadow(7.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.35f))
+                            .clickable {
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    val shareUrl = result.spotifyUrl ?: result.youtubeMusicUrl ?: result.appleMusicUrl ?: ""
+                                    putExtra(Intent.EXTRA_SUBJECT, result.artist + " - " + result.title)
+                                    putExtra(
+                                        Intent.EXTRA_TEXT,
+                                        "Found this song via Velvet: " + result.artist + " - " + result.title +
+                                            if (shareUrl.isNotBlank()) "\n" + shareUrl else ""
+                                    )
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
+                            }
+                            .testTag("sing_share_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Share, "Share", tint = Color(0xFFE9E4E6), modifier = Modifier.size(19.dp))
+                    }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Streaming destinations are intentionally opt-in. Do not automatically move
-            // the user from the recognized song into the "Available on" page/list.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(Color(0xFF141418))
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(22.dp))
-                    .clickable { showPlatforms = !showPlatforms }
-                    .testTag("sing_streaming_apps_toggle"),
-                contentAlignment = Alignment.Center
-            ) {
                 Text(
-                    text = if (showPlatforms) "Hide music apps" else "Open in another music app",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFFE5DEE0)
+                    text = "Available on",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
-            }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Open in your preferred music app",
+                    fontSize = 13.sp,
+                    color = Color(0xFF8E8E93)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
 
-            AnimatedVisibility(
-                visible = showPlatforms,
-                enter = fadeIn(animationSpec = tween(220)) + slideInVertically(
-                    initialOffsetY = { it / 8 },
-                    animationSpec = tween(220, easing = FastOutSlowInEasing)
-                ),
-                exit = fadeOut(animationSpec = tween(160)) + slideOutVertically(
-                    targetOffsetY = { it / 8 },
-                    animationSpec = tween(160)
-                )
-            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .verticalScroll(scrollState)
+                        .verticalScroll(rememberScrollState())
                 ) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        Text(
-                            text = "Available on",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Open in your preferred music app",
-                            fontSize = 13.sp,
-                            color = Color(0xFF8E8E93)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
                     platforms.forEachIndexed { index, platform ->
                         NativePlatformRow(
                             platform = platform,
@@ -1592,7 +1493,7 @@ private fun SeamlessMatchedResultView(
                             onClick = { platform.launch(context) }
                         )
                     }
-                    Spacer(modifier = Modifier.height(bottomPadding + 16.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
@@ -1601,6 +1502,7 @@ private fun SeamlessMatchedResultView(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .align(Alignment.TopCenter)
                 .padding(top = topPadding + 10.dp, start = 16.dp, end = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
