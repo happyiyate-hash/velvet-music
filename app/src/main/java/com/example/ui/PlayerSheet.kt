@@ -383,52 +383,13 @@ fun PlayerSheet(
             ) {
                 // 1. FULL-WIDTH IMMERSIVE UPPER PLAYER SURFACE
                 // Stretches from the absolute top of the screen (behind status bar) to the bottom endpoint above controls
-                // Edge-to-edge: No left/right margins, no visible side or top borders
-                // The border is positioned exclusively along the bottom curved boundary as a premium glass rim with extracted artwork color
+                // Edge-to-edge: No left/right margins, no visible side or top borders, seamless unbordered bottom curve
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                         .background(cardColor)
-                        .drawWithContent {
-                            drawContent()
-                            val r = 28.dp.toPx()
-                            val strokeWidthPx = 0.8.dp.toPx()
-                            val halfStroke = strokeWidthPx / 2f
-                            val left = halfStroke
-                            val right = size.width - halfStroke
-                            val bottom = size.height - halfStroke
-                            val arcR = (r - halfStroke).coerceAtLeast(0f)
-
-                            val bottomCurvePath = Path().apply {
-                                moveTo(left, bottom - arcR)
-                                arcTo(
-                                    rect = Rect(left, bottom - 2 * arcR, left + 2 * arcR, bottom),
-                                    startAngleDegrees = 180f,
-                                    sweepAngleDegrees = -90f,
-                                    forceMoveTo = false
-                                )
-                                lineTo(right - arcR, bottom)
-                                arcTo(
-                                    rect = Rect(right - 2 * arcR, bottom - 2 * arcR, right, bottom),
-                                    startAngleDegrees = 90f,
-                                    sweepAngleDegrees = -90f,
-                                    forceMoveTo = false
-                                )
-                            }
-
-                            // Slim, normal border with sharp ends on the main bottom of the card
-                            drawPath(
-                                path = bottomCurvePath,
-                                color = Color(0xFF44464C),
-                                style = Stroke(
-                                    width = strokeWidthPx,
-                                    cap = StrokeCap.Butt,
-                                    join = StrokeJoin.Miter
-                                )
-                            )
-                        }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -2105,7 +2066,7 @@ fun NowPlayingActionSheet(
                 icon = {
                     ActionFavoriteIcon(
                         isFavorite = isFavorite,
-                        tint = if (isFavorite) accentColor else ActionIconAshWhite,
+                        tint = ActionFavoriteRed,
                         modifier = Modifier.size(30.dp)
                     )
                 },

@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 val ActionIconAshWhite = Color(0xFFF4F4F2)
 val ActionIconSecondary = Color(0xFFAEB0B5)
 val ActionIconDestructive = Color(0xFFFF6B72)
+val ActionFavoriteRed = Color(0xFFFF3358)
 val ActionSheetBackground = Color(0xFF232427)
 val ActionSheetDivider = Color(0xFF34363A)
 
@@ -166,7 +167,7 @@ fun ActionQueueIcon(
 fun ActionFavoriteIcon(
     isFavorite: Boolean,
     modifier: Modifier = Modifier,
-    tint: Color = ActionIconAshWhite,
+    tint: Color = ActionFavoriteRed,
     contentDescription: String? = "Favourite"
 ) {
     Box(
@@ -180,45 +181,46 @@ fun ActionFavoriteIcon(
             val scale = size.minDimension / 32f
             val ox = (size.width - 32f * scale) / 2f
             val oy = (size.height - 32f * scale) / 2f
+            val strokeW = 2.4f * scale
 
-            // Wide, elegant modern heart path with graceful curves
+            // Balanced, proportional heart path (thinner than previous wide version, perfectly centered)
             val path = Path().apply {
-                moveTo(ox + 16f * scale, oy + 25.8f * scale)
+                moveTo(ox + 16f * scale, oy + 25.5f * scale)
                 // Left flank up
                 cubicTo(
-                    ox + 10.0f * scale, oy + 21.5f * scale,
-                    ox + 3.5f * scale, oy + 17.2f * scale,
-                    ox + 3.5f * scale, oy + 12.2f * scale
+                    ox + 11.2f * scale, oy + 21.2f * scale,
+                    ox + 6.0f * scale, oy + 17.5f * scale,
+                    ox + 6.0f * scale, oy + 13.0f * scale
                 )
                 // Left shoulder curve
                 cubicTo(
-                    ox + 3.5f * scale, oy + 8.2f * scale,
-                    ox + 6.6f * scale, oy + 5.8f * scale,
-                    ox + 10.5f * scale, oy + 5.8f * scale
+                    ox + 6.0f * scale, oy + 8.8f * scale,
+                    ox + 9.2f * scale, oy + 6.5f * scale,
+                    ox + 12.5f * scale, oy + 6.5f * scale
                 )
                 // Dip into center cleft
                 cubicTo(
-                    ox + 12.8f * scale, oy + 5.8f * scale,
-                    ox + 14.8f * scale, oy + 7.0f * scale,
-                    ox + 16f * scale, oy + 9.2f * scale
+                    ox + 14.2f * scale, oy + 6.5f * scale,
+                    ox + 15.4f * scale, oy + 7.6f * scale,
+                    ox + 16f * scale, oy + 9.5f * scale
                 )
                 // Right lobe out from center cleft
                 cubicTo(
-                    ox + 17.2f * scale, oy + 7.0f * scale,
-                    ox + 19.2f * scale, oy + 5.8f * scale,
-                    ox + 21.5f * scale, oy + 5.8f * scale
+                    ox + 16.6f * scale, oy + 7.6f * scale,
+                    ox + 17.8f * scale, oy + 6.5f * scale,
+                    ox + 19.5f * scale, oy + 6.5f * scale
                 )
                 // Right shoulder curve
                 cubicTo(
-                    ox + 25.4f * scale, oy + 5.8f * scale,
-                    ox + 28.5f * scale, oy + 8.2f * scale,
-                    ox + 28.5f * scale, oy + 12.2f * scale
+                    ox + 22.8f * scale, oy + 6.5f * scale,
+                    ox + 26.0f * scale, oy + 8.8f * scale,
+                    ox + 26.0f * scale, oy + 13.0f * scale
                 )
                 // Right flank down to bottom tip
                 cubicTo(
-                    ox + 28.5f * scale, oy + 17.2f * scale,
-                    ox + 22.0f * scale, oy + 21.5f * scale,
-                    ox + 16f * scale, oy + 25.8f * scale
+                    ox + 26.0f * scale, oy + 17.5f * scale,
+                    ox + 20.8f * scale, oy + 21.2f * scale,
+                    ox + 16f * scale, oy + 25.5f * scale
                 )
                 close()
             }
@@ -226,12 +228,12 @@ fun ActionFavoriteIcon(
             if (isFavorite) {
                 drawPath(path = path, color = tint)
             } else {
-                // Slim, refined 1.5dp stroke (not fat)
+                // Consistent 2.4dp stroke matching all action sheet icons
                 drawPath(
                     path = path,
                     color = tint,
                     style = Stroke(
-                        width = 1.5f * scale,
+                        width = strokeW,
                         cap = StrokeCap.Round,
                         join = StrokeJoin.Round
                     )
