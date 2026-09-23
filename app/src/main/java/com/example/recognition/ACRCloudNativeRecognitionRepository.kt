@@ -70,7 +70,7 @@ class ACRCloudNativeRecognitionRepository(
 
         return try {
             val config = ACRCloudConfig().apply {
-                this.context = context.applicationContext
+                // ACRCloud's Android sample passes the live Android Context directly.\n                // Do not replace it with applicationContext here: the 1.3.33 SDK dereferences\n                // its configured Context during initWithConfig(), and a null application context\n                // can surface as a misleading getApplicationContext() NPE inside the SDK.\n                this.context = context
                 host = BuildConfig.ACRCLOUD_HOST
                 accessKey = BuildConfig.ACRCLOUD_ACCESS_KEY
                 accessSecret = BuildConfig.ACRCLOUD_ACCESS_SECRET
