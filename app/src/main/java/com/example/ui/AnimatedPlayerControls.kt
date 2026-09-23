@@ -54,8 +54,8 @@ fun AnimatedRepeatIcon(
     activeColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    touchSize: Dp = 54.dp,
-    iconSize: Dp = 34.dp
+    touchSize: Dp = 46.dp,
+    iconSize: Dp = 26.dp
 ) {
     val travelOffset = remember { Animatable(0f) }
 
@@ -81,7 +81,8 @@ fun AnimatedRepeatIcon(
         }
     }
 
-    val targetColor = if (repeatMode != RepeatMode.OFF) activeColor else Color.White.copy(alpha = 0.45f)
+    // Solid ash-gray when inactive to prevent double-alpha hotspots / overshining
+    val targetColor = if (repeatMode != RepeatMode.OFF) Color.White else Color(0xFF8E9096)
     val iconColor by animateColorAsState(
         targetValue = targetColor,
         animationSpec = tween(durationMillis = 300),
@@ -100,7 +101,7 @@ fun AnimatedRepeatIcon(
     ) {
         Canvas(modifier = Modifier.size(iconSize)) {
             val scale = size.width / 48f
-            val strokeWidthPx = 1.9.dp.toPx()
+            val strokeWidthPx = 1.6.dp.toPx()
 
             // Canonical racetrack path in 48x48 coordinate space
             // Height = 24 (from y=12 to y=36), width = 44 (from x=2 to x=46), radius = 12
@@ -206,22 +207,22 @@ fun AnimatedRepeatIcon(
                     Text(
                         text = "1",
                         color = iconColor,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
-                        lineHeight = 11.sp
+                        lineHeight = 8.sp
                     )
                 } else {
                     Text(
                         text = "ALL",
                         color = iconColor,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = (-0.4).sp,
+                        fontSize = 6.sp,
+                        fontWeight = FontWeight.Normal,
+                        letterSpacing = 0.3.sp,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
-                        lineHeight = 8.5.sp,
+                        lineHeight = 6.sp,
                         softWrap = false
                     )
                 }
@@ -232,9 +233,9 @@ fun AnimatedRepeatIcon(
 
 /**
  * Animated Shuffle Icon:
- * - Refined vector strokes (1.9.dp) matching navigation icons.
- * - Subtle dimming when inactive; solid white when active.
- * - When tapped, the two crossing paths flex and slide through their crossing point before easing into place.
+ * - Refined vector strokes matching navigation icons.
+ * - Solid ash-gray when inactive; solid white when active.
+ * - Clean crossing without overshining double-alpha hotspot.
  */
 @Composable
 fun AnimatedShuffleIcon(
@@ -242,8 +243,8 @@ fun AnimatedShuffleIcon(
     activeColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    touchSize: Dp = 54.dp,
-    iconSize: Dp = 34.dp
+    touchSize: Dp = 46.dp,
+    iconSize: Dp = 26.dp
 ) {
     val shuffleAnim = remember { Animatable(0f) }
 
@@ -268,7 +269,8 @@ fun AnimatedShuffleIcon(
         }
     }
 
-    val targetColor = if (isShuffle) activeColor else Color.White.copy(alpha = 0.45f)
+    // Solid ash-gray when inactive to prevent double-alpha hotspots / overshining
+    val targetColor = if (isShuffle) Color.White else Color(0xFF8E9096)
     val iconColor by animateColorAsState(
         targetValue = targetColor,
         animationSpec = tween(durationMillis = 300),
@@ -287,7 +289,7 @@ fun AnimatedShuffleIcon(
     ) {
         Canvas(modifier = Modifier.size(iconSize)) {
             val scale = size.width / 48f
-            val strokeWidthPx = 1.9.dp.toPx()
+            val strokeWidthPx = 1.6.dp.toPx()
 
             val progress = shuffleAnim.value
             val pulse = sin(progress * PI.toFloat())

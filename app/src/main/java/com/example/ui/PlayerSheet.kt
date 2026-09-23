@@ -394,7 +394,7 @@ fun PlayerSheet(
                         .drawWithContent {
                             drawContent()
                             val r = 28.dp.toPx()
-                            val strokeWidthPx = 1.6.dp.toPx()
+                            val strokeWidthPx = 0.8.dp.toPx()
                             val halfStroke = strokeWidthPx / 2f
                             val left = halfStroke
                             val right = size.width - halfStroke
@@ -418,43 +418,14 @@ fun PlayerSheet(
                                 )
                             }
 
-                            // Layer 1: Ambient extracted artwork color glow along curved bottom boundary
-                            val glassGlowBrush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.10f),
-                                    themeColors.accent.copy(alpha = 0.40f),
-                                    themeColors.glow.copy(alpha = 0.55f),
-                                    themeColors.accent.copy(alpha = 0.40f),
-                                    Color.White.copy(alpha = 0.10f)
-                                )
-                            )
+                            // Slim, normal border with sharp ends on the main bottom of the card
                             drawPath(
                                 path = bottomCurvePath,
-                                brush = glassGlowBrush,
+                                color = Color(0xFF44464C),
                                 style = Stroke(
-                                    width = 3.2.dp.toPx(),
-                                    cap = StrokeCap.Round,
-                                    join = StrokeJoin.Round
-                                )
-                            )
-
-                            // Layer 2: Ultra-crisp specular glass rim with extracted artwork color & bright peak
-                            val glassRimBrush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.25f),
-                                    themeColors.accent.copy(alpha = 0.80f),
-                                    Color.White.copy(alpha = 0.95f),
-                                    themeColors.accent.copy(alpha = 0.80f),
-                                    Color.White.copy(alpha = 0.25f)
-                                )
-                            )
-                            drawPath(
-                                path = bottomCurvePath,
-                                brush = glassRimBrush,
-                                style = Stroke(
-                                    width = 1.5.dp.toPx(),
-                                    cap = StrokeCap.Round,
-                                    join = StrokeJoin.Round
+                                    width = strokeWidthPx,
+                                    cap = StrokeCap.Butt,
+                                    join = StrokeJoin.Miter
                                 )
                             )
                         }
@@ -514,6 +485,8 @@ fun PlayerSheet(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(6.dp))
+
                         // Track Title & Artist (Centered at top)
                         Column(
                             modifier = Modifier
@@ -550,12 +523,13 @@ fun PlayerSheet(
                         }
 
                         // Centered Album Artwork floating in middle
-                        // Automatically bounces and enlarges by 30% when playing, and bounces back down when paused
+                        // Dragged down with generous breathing room
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 6.dp),
+                                .padding(horizontal = 24.dp)
+                                .padding(top = 18.dp, bottom = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -573,52 +547,7 @@ fun PlayerSheet(
                                             spotColor = Color.Black.copy(alpha = if (isPlaying) 0.75f else 0.42f),
                                             ambientColor = Color.Black
                                         )
-                                        .clip(RoundedCornerShape(artworkCornerRadius))
-                                        .drawWithContent {
-                                            drawContent()
-                                            val r = artworkCornerRadius.toPx()
-                                            val strokeWidthPx = 1.3.dp.toPx()
-                                            val halfStroke = strokeWidthPx / 2f
-                                            val left = halfStroke
-                                            val right = size.width - halfStroke
-                                            val bottom = size.height - halfStroke
-                                            val arcR = (r - halfStroke).coerceAtLeast(0f)
-
-                                            val bottomCurvePath = Path().apply {
-                                                moveTo(left, bottom - arcR)
-                                                arcTo(
-                                                    rect = Rect(left, bottom - 2 * arcR, left + 2 * arcR, bottom),
-                                                    startAngleDegrees = 180f,
-                                                    sweepAngleDegrees = -90f,
-                                                    forceMoveTo = false
-                                                )
-                                                lineTo(right - arcR, bottom)
-                                                arcTo(
-                                                    rect = Rect(right - 2 * arcR, bottom - 2 * arcR, right, bottom),
-                                                    startAngleDegrees = 90f,
-                                                    sweepAngleDegrees = -90f,
-                                                    forceMoveTo = false
-                                                )
-                                            }
-
-                                            drawPath(
-                                                path = bottomCurvePath,
-                                                brush = Brush.horizontalGradient(
-                                                    colors = listOf(
-                                                        Color.White.copy(alpha = 0.18f),
-                                                        themeColors.accent.copy(alpha = if (isPlaying) 0.65f else 0.40f),
-                                                        Color.White.copy(alpha = if (isPlaying) 0.85f else 0.60f),
-                                                        themeColors.accent.copy(alpha = if (isPlaying) 0.65f else 0.40f),
-                                                        Color.White.copy(alpha = 0.18f)
-                                                    )
-                                                ),
-                                                style = Stroke(
-                                                    width = strokeWidthPx,
-                                                    cap = StrokeCap.Round,
-                                                    join = StrokeJoin.Round
-                                                )
-                                            )
-                                        },
+                                        .clip(RoundedCornerShape(artworkCornerRadius)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     TrackArtworkImage(
@@ -662,141 +591,141 @@ fun PlayerSheet(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(84.dp)
-                        .padding(horizontal = 12.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { /* Absorb clicks on controls row empty padding */ },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Shuffle
-                AnimatedShuffleIcon(
-                    isShuffle = isShuffle,
-                    activeColor = Color.White,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onToggleShuffle()
-                    },
-                    modifier = Modifier.testTag("player_shuffle_button"),
-                    touchSize = 58.dp,
-                    iconSize = 40.dp
-                )
-
-                // Previous
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onSkipPrevious()
-                    },
-                    modifier = Modifier
-                        .size(64.dp)
-                        .testTag("player_previous_button")
+                        .height(68.dp)
+                        .padding(horizontal = 18.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { /* Absorb clicks on controls row empty padding */ },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PlayerPreviousIcon(
-                        modifier = Modifier.size(50.dp),
-                        tint = Color.White
+                    // Shuffle
+                    AnimatedShuffleIcon(
+                        isShuffle = isShuffle,
+                        activeColor = Color.White,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onToggleShuffle()
+                        },
+                        modifier = Modifier.testTag("player_shuffle_button"),
+                        touchSize = 46.dp,
+                        iconSize = 26.dp
+                    )
+
+                    // Previous
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSkipPrevious()
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("player_previous_button")
+                    ) {
+                        PlayerPreviousIcon(
+                            modifier = Modifier.size(32.dp),
+                            tint = Color.White
+                        )
+                    }
+
+                    // Circular Play / Pause Button (Scaled down, elegant proportions)
+                    Box(
+                        modifier = Modifier
+                            .size(62.dp)
+                            .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.35f))
+                            .clip(CircleShape)
+                            .background(Color(0xFFF4F4F2))
+                            .border(1.dp, Color.White.copy(alpha = 0.60f), CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onTogglePlayPause()
+                                }
+                            )
+                            .testTag("player_play_pause_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isPlaying) {
+                            PlayerPauseIcon(
+                                modifier = Modifier.size(34.dp),
+                                tint = Color(0xFF08090C)
+                            )
+                        } else {
+                            PlayerPlayIcon(
+                                modifier = Modifier.size(38.dp),
+                                tint = Color(0xFF08090C)
+                            )
+                        }
+                    }
+
+                    // Next
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSkipNext()
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("player_next_button")
+                    ) {
+                        PlayerNextIcon(
+                            modifier = Modifier.size(32.dp),
+                            tint = Color.White
+                        )
+                    }
+
+                    // Repeat
+                    AnimatedRepeatIcon(
+                        repeatMode = repeatMode,
+                        activeColor = Color.White,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onToggleRepeat()
+                        },
+                        modifier = Modifier.testTag("player_repeat_button"),
+                        touchSize = 46.dp,
+                        iconSize = 26.dp
                     )
                 }
 
-                // Circular Glass Play / Pause Button
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // 4. DISCREET UP NEXT SWIPE-UP HANDLE (Longer, modern gesture pill)
                 Box(
                     modifier = Modifier
-                        .size(82.dp)
-                        .shadow(14.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.42f))
-                        .clip(CircleShape)
-                        .background(Color(0xFFF4F4F2))
-                        .border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
+                        .fillMaxWidth()
+                        .height(34.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onTogglePlayPause()
-                            }
-                        )
-                        .testTag("player_play_pause_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isPlaying) {
-                        PlayerPauseIcon(
-                            modifier = Modifier.size(48.dp),
-                            tint = Color(0xFF08090C)
-                        )
-                    } else {
-                        PlayerPlayIcon(
-                            modifier = Modifier.size(52.dp),
-                            tint = Color(0xFF08090C)
-                        )
-                    }
-                }
-
-                // Next
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onSkipNext()
-                    },
-                    modifier = Modifier
-                        .size(64.dp)
-                        .testTag("player_next_button")
-                ) {
-                    PlayerNextIcon(
-                        modifier = Modifier.size(50.dp),
-                        tint = Color.White
-                    )
-                }
-
-                // Repeat
-                AnimatedRepeatIcon(
-                    repeatMode = repeatMode,
-                    activeColor = Color.White,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onToggleRepeat()
-                    },
-                    modifier = Modifier.testTag("player_repeat_button"),
-                    touchSize = 58.dp,
-                    iconSize = 40.dp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // 4. DISCREET UP NEXT SWIPE-UP HANDLE (Keeps screen clean while leaving Up Next easily accessible)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(34.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
-                            coroutineScope.launch {
-                                upNextExpanded.animateTo(1f)
-                            }
-                        }
-                    )
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures { _, dragAmount ->
-                            if (dragAmount < -12f) {
                                 coroutineScope.launch {
                                     upNextExpanded.animateTo(1f)
                                 }
                             }
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(36.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(Color.White.copy(alpha = 0.22f))
-                )
-            }
+                        )
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures { _, dragAmount ->
+                                if (dragAmount < -12f) {
+                                    coroutineScope.launch {
+                                        upNextExpanded.animateTo(1f)
+                                    }
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(68.dp)
+                            .height(4.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.25f))
+                    )
+                }
 
             Spacer(modifier = Modifier.height(4.dp))
         }
@@ -2068,38 +1997,61 @@ fun NowPlayingActionSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF151618),
-        contentColor = Color.White,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = ActionSheetBackground,
+        contentColor = ActionIconAshWhite,
+        scrimColor = Color(0xFF111216).copy(alpha = 0.72f),
         dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp, bottom = 8.dp)
-                    .width(36.dp)
-                    .height(3.5.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.20f))
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Subtle top specular highlight on the curved sheet rim
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.04f),
+                                    Color.White.copy(alpha = 0.16f),
+                                    Color.White.copy(alpha = 0.04f)
+                                )
+                            )
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(top = 8.dp, bottom = 6.dp)
+                        .width(36.dp)
+                        .height(3.5.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF4E5056))
+                )
+            }
         }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp)
+                .padding(horizontal = 8.dp)
+                .padding(bottom = 12.dp)
                 .testTag("now_playing_action_sheet")
         ) {
-            // Track Header
+            // Track Header (Compact, tight padding)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 14.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
                         .size(46.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.05f))
+                        .shadow(4.dp, RoundedCornerShape(10.dp), spotColor = Color.Black.copy(alpha = 0.4f))
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.06f))
                 ) {
                     TrackArtworkImage(
                         track = track,
@@ -2108,85 +2060,149 @@ fun NowPlayingActionSheet(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                Spacer(modifier = Modifier.width(14.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = track.title.substringBefore(" - "),
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = ActionIconAshWhite,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(1.dp))
                     Text(
                         text = "${track.artist} • ${track.album}",
                         fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.60f),
+                        fontWeight = FontWeight.Normal,
+                        color = ActionIconSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
+            // Hairline separator below header
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
-                    .background(Color.White.copy(alpha = 0.08f))
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .height(0.8.dp)
+                    .background(ActionSheetDivider)
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            // 1. Playback Group
+            SheetActionRow(
+                title = "Play next",
+                icon = { ActionPlayNextIcon(modifier = Modifier.size(30.dp)) },
+                onClick = onPlayNext
+            )
+            SheetActionRow(
+                title = "Add to queue",
+                icon = { ActionQueueIcon(modifier = Modifier.size(30.dp)) },
+                onClick = onQueue
+            )
 
-            // Action Items
-            SheetActionRow(icon = Icons.Default.PlayArrow, title = "Play next") { onPlayNext() }
-            SheetActionRow(icon = Icons.Default.QueueMusic, title = "Add to queue") { onQueue() }
+            ActionGroupDivider()
+
+            // 2. Library Group
             SheetActionRow(
-                icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 title = if (isFavorite) "Remove from favourites" else "Add to favourites",
-                iconTint = if (isFavorite) accentColor else Color.White.copy(alpha = 0.70f)
-            ) { onToggleFavorite() }
-            SheetActionRow(icon = Icons.Default.Folder, title = "Add to playlist") { onAddToPlaylist() }
-            SheetActionRow(icon = Icons.Default.GraphicEq, title = "Audio Visualizer") { onOpenVisualizer() }
-            SheetActionRow(icon = Icons.Default.Subtitles, title = "Synced Lyrics") { onOpenLyrics() }
-            SheetActionRow(icon = Icons.Default.Share, title = "Share song") { onShare() }
-            SheetActionRow(icon = Icons.Default.Info, title = "Song information") { onSongInfo() }
+                icon = {
+                    ActionFavoriteIcon(
+                        isFavorite = isFavorite,
+                        tint = if (isFavorite) accentColor else ActionIconAshWhite,
+                        modifier = Modifier.size(30.dp)
+                    )
+                },
+                onClick = onToggleFavorite
+            )
             SheetActionRow(
-                icon = Icons.Default.Delete,
+                title = "Add to playlist",
+                icon = { ActionPlaylistIcon(modifier = Modifier.size(30.dp)) },
+                onClick = onAddToPlaylist
+            )
+
+            ActionGroupDivider()
+
+            // 3. Experience Group
+            SheetActionRow(
+                title = "Audio Visualizer",
+                icon = { ActionVisualizerIcon(modifier = Modifier.size(30.dp)) },
+                onClick = onOpenVisualizer
+            )
+            SheetActionRow(
+                title = "Synced Lyrics",
+                icon = { ActionLyricsIcon(modifier = Modifier.size(30.dp)) },
+                onClick = onOpenLyrics
+            )
+
+            ActionGroupDivider()
+
+            // 4. Management / Destructive Group
+            SheetActionRow(
+                title = "Share song",
+                icon = { ActionShareIcon(modifier = Modifier.size(30.dp)) },
+                onClick = onShare
+            )
+            SheetActionRow(
+                title = "Song information",
+                icon = { ActionInfoIcon(modifier = Modifier.size(30.dp)) },
+                onClick = onSongInfo
+            )
+            SheetActionRow(
                 title = "Delete from library",
-                iconTint = Color(0xFFE57373)
-            ) { onDelete() }
+                textColor = ActionIconDestructive,
+                icon = { ActionDeleteIcon(modifier = Modifier.size(30.dp), tint = ActionIconDestructive) },
+                onClick = onDelete
+            )
         }
     }
 }
 
 @Composable
 private fun SheetActionRow(
-    icon: ImageVector,
     title: String,
-    iconTint: Color = Color.White.copy(alpha = 0.70f),
+    textColor: Color = ActionIconAshWhite,
+    icon: @Composable () -> Unit,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(42.dp)
+            .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 11.dp, horizontal = 4.dp),
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = title,
-            tint = iconTint,
-            modifier = Modifier.size(22.dp)
-        )
-        Spacer(modifier = Modifier.width(16.dp))
+        Box(
+            modifier = Modifier.size(34.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            icon()
+        }
+        Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = title,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color.White.copy(alpha = 0.90f)
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = textColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+@Composable
+private fun ActionGroupDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .height(0.8.dp)
+            .background(ActionSheetDivider)
+    )
 }
 
 @Composable
