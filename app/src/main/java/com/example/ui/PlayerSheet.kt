@@ -341,7 +341,14 @@ fun PlayerSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF16181F)) // Solid ashes gray background covering entire screen
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF20242C),
+                        Color(0xFF171A20)
+                    )
+                )
+            ) // Premium neutral charcoal glass-like control surface
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -372,6 +379,17 @@ fun PlayerSheet(
                         .weight(1f)
                         .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                         .background(themeColors.dominant)
+                        .border(
+                            width = 1.dp,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.24f),
+                                    Color.White.copy(alpha = 0.14f),
+                                    Color.White.copy(alpha = 0.07f)
+                                )
+                            ),
+                            shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+                        )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
