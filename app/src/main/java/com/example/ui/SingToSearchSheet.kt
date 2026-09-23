@@ -1479,21 +1479,27 @@ private fun SeamlessMatchedResultView(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Column(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .offset(x = (-16).dp)
                 ) {
-                    platforms.forEachIndexed { index, platform ->
-                        NativePlatformRow(
-                            platform = platform,
-                            alpha = platformAlphas[index].value,
-                            offsetY = platformOffsetsY[index].value,
-                            onClick = { platform.launch(context) }
-                        )
+                    Column(
+                        modifier = Modifier
+                            .width(maxWidth + 32.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        platforms.forEachIndexed { index, platform ->
+                            NativePlatformRow(
+                                platform = platform,
+                                alpha = platformAlphas[index].value,
+                                offsetY = platformOffsetsY[index].value,
+                                onClick = { platform.launch(context) }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
@@ -1503,7 +1509,7 @@ private fun SeamlessMatchedResultView(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(top = topPadding + 10.dp, start = 16.dp, end = 16.dp),
+                .padding(top = topPadding - 2.dp, start = 16.dp, end = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1775,7 +1781,7 @@ private fun NativePlatformRow(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = 0.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             PlatformLogoView(
