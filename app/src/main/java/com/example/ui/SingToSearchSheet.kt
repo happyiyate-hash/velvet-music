@@ -1645,6 +1645,7 @@ private fun SeamlessMatchedResultView(
         }
     }
 }
+}
 
 /**
  * Single source of truth for streaming platforms.
