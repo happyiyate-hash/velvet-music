@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.hypot
 import kotlin.math.sin
 
+enum class RepeatMode { OFF, ONE, ALL }
+
 data class AudioTelemetry(
     val transientSpike: Float = 0f,
     val sustainedEnergy: Float = 0.4f,
@@ -118,8 +120,13 @@ class VelvetAudioEngine(
     private val _isShuffle = MutableStateFlow(false)
     val isShuffle: StateFlow<Boolean> = _isShuffle.asStateFlow()
 
-    private val _isRepeat = MutableStateFlow(false)
-    val isRepeat: StateFlow<Boolean> = _isRepeat.asStateFlow()
+    private val _repeatMode = MutableStateFlow(RepeatMode.OFF)
+    val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
+    val isRepeat: StateFlow<Boolean> = MutableStateFlow(false).also { legacy ->
+        scope.launch {
+            _repeatMode.collect { legacy.value = it != RepeatMode.OFF }
+        }
+    }
 
     private val _offlineCachedTrackIds = MutableStateFlow<Set<String>>(emptySet())
     val offlineCachedTrackIds: StateFlow<Set<String>> = _offlineCachedTrackIds.asStateFlow()
@@ -336,10 +343,9 @@ class VelvetAudioEngine(
                                 _isPlaying.value = false
                                 _playbackPositionMs.value = track.durationMs
                                 updateMediaSession()
-                                if (_isRepeat.value) {
-                                    preparedRestart()
-                                } else {
-                                    playNext()
+                                when (_repeatMode.value) {
+                                    RepeatMode.ONE -> preparedRestart()
+                                    RepeatMode.ALL, RepeatMode.OFF -> playNext()
                                 }
                             }
                         }
@@ -665,7 +671,13 @@ class VelvetAudioEngine(
         }
     }
 
-    fun toggleRepeat() { _isRepeat.value = !_isRepeat.value }
+    fun toggleRepeat() {
+        _repeatMode.value = when (_repeatMode.value) {
+            RepeatMode.OFF -> RepeatMode.ONE
+            RepeatMode.ONE -> RepeatMode.ALL
+            RepeatMode.ALL -> RepeatMode.OFF
+        }
+    }
     fun toggleSoundCatch() { _isSoundCatchEnabled.value = !_isSoundCatchEnabled.value }
 
     fun toggleOfflineCache(trackId: String) {
