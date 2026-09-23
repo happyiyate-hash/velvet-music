@@ -2,6 +2,7 @@ package com.example.ui
 
 import androidx.compose.runtime.Composable
 import com.example.audio.AudioTelemetry
+import com.example.audio.RepeatMode
 import com.example.model.Track
 
 /** Compatibility overload for existing callers while Sound Catch controls are removed from the UI. */
@@ -32,7 +33,7 @@ fun PlayerSheet(
         playbackPositionMs = playbackPositionMs,
         telemetry = telemetry,
         isShuffle = isShuffle,
-        isRepeat = isRepeat,
+        repeatMode = if (isRepeat) RepeatMode.ALL else RepeatMode.OFF,
         isCachedOffline = isCachedOffline,
         onTogglePlayPause = onTogglePlayPause,
         onSeekTo = onSeekTo,
