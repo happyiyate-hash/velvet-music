@@ -4,6 +4,7 @@ import com.example.R
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -634,6 +635,7 @@ fun PlayerSheet(
                         NowPlayingProgressBar(
                             positionMs = playbackPositionMs,
                             durationMs = track.durationMs,
+                            isPlaying = isPlaying,
                             onSeekTo = onSeekTo,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1062,20 +1064,96 @@ private fun SingleColorCardBackground(
     )
 }
 
+/**
+ * Continuous smooth progress engine:
+ * Bridges discrete playback position pulses (e.g. 200ms polls) with the 60Hz/120Hz display refresh.
+ *
+ * How it eliminates jumping & holding:
+ * 1. Tracks reference arrival time using SystemClock.uptimeMillis().
+ * 2. On every display frame (withFrameNanos), extrapolates progress forward by the exact frame delta dt.
+ * 3. Smoothly converges towards the actual hardware position with an exponential low-pass filter,
+ *    eradicating discrete holding and stepping.
+ * 4. Snaps immediately on seeking (>1200ms jump) or pausing.
+ */
+@Composable
+private fun rememberSmoothProgressMs(
+    positionMs: Long,
+    durationMs: Long,
+    isPlaying: Boolean,
+    isDragging: Boolean
+): Float {
+    var smoothedMs by remember { mutableFloatStateOf(positionMs.toFloat()) }
+    var lastEnginePos by remember { mutableLongStateOf(positionMs) }
+    var lastUpdateUptime by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
+
+    // When engine publishes a new discrete position packet
+    LaunchedEffect(positionMs, isPlaying) {
+        val now = SystemClock.uptimeMillis()
+        val delta = abs(positionMs - smoothedMs.toLong())
+        // Large jump (seek / track change) or paused: snap immediately
+        if (delta > 1200L || !isPlaying) {
+            smoothedMs = positionMs.toFloat()
+        }
+        lastEnginePos = positionMs
+        lastUpdateUptime = now
+    }
+
+    // High-frequency frame animation loop for continuous liquid gliding
+    LaunchedEffect(isPlaying, isDragging) {
+        if (!isPlaying || isDragging) return@LaunchedEffect
+
+        var lastFrameNanos = 0L
+        while (isActive) {
+            withFrameNanos { frameNanos ->
+                val now = SystemClock.uptimeMillis()
+                val dtMs = if (lastFrameNanos == 0L) 16f else {
+                    ((frameNanos - lastFrameNanos) / 1_000_000f).coerceIn(1f, 40f)
+                }
+                lastFrameNanos = frameNanos
+
+                val timeSinceUpdate = (now - lastUpdateUptime).coerceAtLeast(0L)
+                val targetEngineMs = (lastEnginePos + timeSinceUpdate).toFloat()
+                val drift = targetEngineMs - smoothedMs
+
+                // Continuously advance by elapsed frame time plus a subtle correction drift
+                val driftCorrection = drift * 0.12f
+                val maxDur = durationMs.coerceAtLeast(1L).toFloat()
+                smoothedMs = (smoothedMs + dtMs + driftCorrection).coerceIn(0f, maxDur)
+            }
+        }
+    }
+
+    return smoothedMs
+}
+
 @Composable
 private fun NowPlayingProgressBar(
     positionMs: Long,
     durationMs: Long,
+    isPlaying: Boolean,
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val progressFraction = if (durationMs > 0L) {
-        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-
     var isDragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
+
+    val smoothMs = rememberSmoothProgressMs(
+        positionMs = positionMs,
+        durationMs = durationMs,
+        isPlaying = isPlaying,
+        isDragging = isDragging
+    )
+
+    val progressFraction = if (durationMs > 0L) {
+        (smoothMs / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
     val displayFraction = if (isDragging) dragFraction else progressFraction
+    val currentDisplayMs = if (isDragging) {
+        (dragFraction * durationMs).toLong()
+    } else {
+        smoothMs.toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
+    }
 
     Column(
         modifier = modifier
@@ -1084,7 +1162,7 @@ private fun NowPlayingProgressBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(18.dp)
+                .height(14.dp)
                 .pointerInput(durationMs) {
                     detectTapGestures { offset ->
                         if (durationMs > 0L && size.width > 0f) {
@@ -1117,7 +1195,7 @@ private fun NowPlayingProgressBar(
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp)
+                    .height(6.dp)
             ) {
                 val totalWidth = size.width
                 val centerY = size.height / 2f
@@ -1144,25 +1222,24 @@ private fun NowPlayingProgressBar(
             }
         }
 
-        Spacer(modifier = Modifier.height(2.dp))
-
-        // Timestamps Row directly underneath the line (1:34 on left, 3:45 on right)
+        // Timestamps Row directly underneath the line (brought closer to the line)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .offset(y = (-3).dp)
                 .padding(horizontal = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = formatMs(if (isDragging) (dragFraction * durationMs).toLong() else positionMs),
+                text = formatMs(currentDisplayMs),
                 fontSize = 11.5.sp,
-                fontWeight = FontWeight.Normal,
+                fontWeight = FontWeight.Medium,
                 color = Color.White.copy(alpha = 0.65f)
             )
             Text(
                 text = formatMs(durationMs),
                 fontSize = 11.5.sp,
-                fontWeight = FontWeight.Normal,
+                fontWeight = FontWeight.Medium,
                 color = Color.White.copy(alpha = 0.65f)
             )
         }
