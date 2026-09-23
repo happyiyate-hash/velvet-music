@@ -143,6 +143,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.audio.AudioTelemetry
+import com.example.audio.RepeatMode
 import com.example.media.ArtworkColorExtractor
 import com.example.media.TrackThemeColors
 import com.example.model.Track
@@ -173,7 +174,7 @@ fun PlayerSheet(
     playbackPositionMs: Long,
     telemetry: AudioTelemetry = AudioTelemetry(),
     isShuffle: Boolean = false,
-    isRepeat: Boolean = false,
+    repeatMode: RepeatMode = RepeatMode.OFF,
     isFavorite: Boolean = false,
     isCachedOffline: Boolean = false,
     queueTracks: List<Track> = emptyList(),
@@ -571,8 +572,8 @@ fun PlayerSheet(
                         onToggleShuffle()
                     },
                     modifier = Modifier.testTag("player_shuffle_button"),
-                    touchSize = 46.dp,
-                    iconSize = 27.dp
+                    touchSize = 52.dp,
+                    iconSize = 31.dp
                 )
 
                 // Previous
@@ -582,11 +583,11 @@ fun PlayerSheet(
                         onSkipPrevious()
                     },
                     modifier = Modifier
-                        .size(46.dp)
+                        .size(52.dp)
                         .testTag("player_previous_button")
                 ) {
                     PlayerPreviousIcon(
-                        modifier = Modifier.size(34.dp),
+                        modifier = Modifier.size(40.dp),
                         tint = Color.White
                     )
                 }
@@ -594,11 +595,11 @@ fun PlayerSheet(
                 // Circular Glass Play / Pause Button
                 Box(
                     modifier = Modifier
-                        .size(62.dp)
-                        .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.50f))
+                        .size(72.dp)
+                        .shadow(10.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.38f))
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.11f))
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .background(Color(0xFFF4F4F2))
+                        .border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
                         .clickable(                            interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {
@@ -611,8 +612,8 @@ fun PlayerSheet(
                 ) {
                     if (isPlaying) {
                         PlayerPauseIcon(
-                            modifier = Modifier.size(31.dp),
-                            tint = Color.White
+                            modifier = Modifier.size(37.dp),
+                            tint = Color(0xFF08090C)
                         )
                     } else {
                         PlayerPlayIcon(
@@ -629,7 +630,7 @@ fun PlayerSheet(
                         onSkipNext()
                     },
                     modifier = Modifier
-                        .size(46.dp)
+                        .size(52.dp)
                         .testTag("player_next_button")
                 ) {
                     PlayerNextIcon(
@@ -640,7 +641,7 @@ fun PlayerSheet(
 
                 // Repeat
                 AnimatedRepeatIcon(
-                    isRepeat = isRepeat,
+                    repeatMode = repeatMode,
                     activeColor = Color.White,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
