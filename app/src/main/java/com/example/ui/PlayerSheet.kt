@@ -146,6 +146,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -376,9 +377,9 @@ fun PlayerSheet(
             // player feels saturated rather than washed out. The artwork itself stays untouched.
             val cardColor by animateColorAsState(
                 targetValue = Color(
-                    red = (themeColors.dominant.red * 0.30f).coerceIn(0f, 1f),
-                    green = (themeColors.dominant.green * 0.30f).coerceIn(0f, 1f),
-                    blue = (themeColors.dominant.blue * 0.30f).coerceIn(0f, 1f),
+                    red = (themeColors.dominant.red * 0.45f).coerceIn(0f, 1f),
+                    green = (themeColors.dominant.green * 0.45f).coerceIn(0f, 1f),
+                    blue = (themeColors.dominant.blue * 0.45f).coerceIn(0f, 1f),
                     alpha = 1f
                 ),
                 animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
@@ -413,9 +414,9 @@ fun PlayerSheet(
                                     colors = listOf(
                                         cardColor,
                                         Color(
-                                            red = (cardColor.red * 0.72f).coerceIn(0f, 1f),
-                                            green = (cardColor.green * 0.72f).coerceIn(0f, 1f),
-                                            blue = (cardColor.blue * 0.72f).coerceIn(0f, 1f),
+                                            red = (cardColor.red * 0.80f).coerceIn(0f, 1f),
+                                            green = (cardColor.green * 0.80f).coerceIn(0f, 1f),
+                                            blue = (cardColor.blue * 0.80f).coerceIn(0f, 1f),
                                             alpha = 1f
                                         )
                                     )
@@ -537,14 +538,8 @@ fun PlayerSheet(
                                     ),
                                     label = "track_title_enter"
                                 ) {
-                                    Text(
-                                        text = track.title,
-                                        fontSize = 21.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        textAlign = TextAlign.Start,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                    MarqueeTrackTitle(
+                                        title = track.title,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("player_track_title")
@@ -2181,6 +2176,62 @@ fun NowPlayingActionSheet(
                 onClick = onDelete
             )
         }
+    }
+}
+
+@Composable
+private fun MarqueeTrackTitle(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    var isOverflowing by remember(title) { mutableStateOf(false) }
+    var textWidthPx by remember(title) { mutableFloatStateOf(0f) }
+    val marqueeOffset = remember(title) { Animatable(0f) }
+
+    LaunchedEffect(title, isOverflowing, textWidthPx) {
+        marqueeOffset.stop()
+        marqueeOffset.snapTo(0f)
+
+        if (!isOverflowing || textWidthPx <= 0f) return@LaunchedEffect
+
+        // Let the title settle briefly, then keep it moving left in a readable marquee.
+        delay(900L)
+
+        while (isActive) {
+            marqueeOffset.animateTo(
+                targetValue = -textWidthPx,
+                animationSpec = tween(
+                    durationMillis = (textWidthPx * 18f).roundToInt().coerceIn(2600, 9000),
+                    easing = LinearEasing
+                )
+            )
+            delay(450L)
+            marqueeOffset.snapTo(0f)
+            delay(650L)
+        }
+    }
+
+    Box(
+        modifier = modifier.clipToBounds(),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = title,
+            fontSize = 21.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            textAlign = TextAlign.Start,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
+            onTextLayout = { layout ->
+                isOverflowing = layout.hasVisualOverflow
+                textWidthPx = layout.getLineRight(0)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(marqueeOffset.value.roundToInt(), 0) }
+        )
     }
 }
 
