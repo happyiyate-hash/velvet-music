@@ -1595,6 +1595,7 @@ private fun SeamlessMatchedResultView(
                     Spacer(modifier = Modifier.height(bottomPadding + 16.dp))
                 }
             }
+        }
 
         // TOP NAV OVERLAY: Circular Back Button (Left) and More Options (Right)
         Row(
