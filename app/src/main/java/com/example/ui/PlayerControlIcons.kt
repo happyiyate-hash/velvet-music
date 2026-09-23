@@ -138,7 +138,7 @@ fun PlayerPreviousIcon(
                     offsetX + 42f * scale, offsetY + 15.4f * scale,
                     offsetX + 40.7f * scale, offsetY + 16.5f * scale
                 )
-                lineTo(offsetX + 23.5f * scale, offsetY + 30.5f * scale)
+                lineTo(offsetX + 21.5f * scale, offsetY + 30.5f * scale)
                 cubicTo(
                     offsetX + 21.5f * scale, offsetY + 32.1f * scale,
                     offsetX + 21.5f * scale, offsetY + 31.9f * scale,
@@ -193,7 +193,7 @@ fun PlayerNextIcon(
                     offsetX + 22f * scale, offsetY + 15.4f * scale,
                     offsetX + 23.3f * scale, offsetY + 16.5f * scale
                 )
-                lineTo(offsetX + 40.5f * scale, offsetY + 30.5f * scale)
+                lineTo(offsetX + 42.5f * scale, offsetY + 30.5f * scale)
                 cubicTo(
                     offsetX + 42.5f * scale, offsetY + 32.1f * scale,
                     offsetX + 42.5f * scale, offsetY + 31.9f * scale,
