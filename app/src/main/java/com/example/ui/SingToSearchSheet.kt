@@ -1079,6 +1079,9 @@ private fun SeamlessMatchedResultView(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scrollState = rememberScrollState()
+    // Keep third-party streaming destinations collapsed until the user explicitly asks for them.
+    // Recognition should settle on the identified song instead of automatically moving to the platform list.
+    var showPlatforms by remember(result) { mutableStateOf(false) }
 
     // Animation states for the 5-step entrance sequence
     val artworkAlpha = remember { Animatable(0f) }
@@ -1522,47 +1525,76 @@ private fun SeamlessMatchedResultView(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 4. "AVAILABLE ON" HEADER
-            Column(
+            // Streaming destinations are intentionally opt-in. Do not automatically move
+            // the user from the recognized song into the "Available on" page/list.
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color(0xFF141418))
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(22.dp))
+                    .clickable { showPlatforms = !showPlatforms }
+                    .testTag("sing_streaming_apps_toggle"),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Available on",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Open in your preferred music app",
-                    fontSize = 13.sp,
-                    color = Color(0xFF8E8E93)
+                    text = if (showPlatforms) "Hide music apps" else "Open in another music app",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFFE5DEE0)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 5. FULL-WIDTH PLATFORMS LIST (Stretched full width with no horizontal padding)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(scrollState)
+            AnimatedVisibility(
+                visible = showPlatforms,
+                enter = fadeIn(animationSpec = tween(220)) + slideInVertically(
+                    initialOffsetY = { it / 8 },
+                    animationSpec = tween(220, easing = FastOutSlowInEasing)
+                ),
+                exit = fadeOut(animationSpec = tween(160)) + slideOutVertically(
+                    targetOffsetY = { it / 8 },
+                    animationSpec = tween(160)
+                )
             ) {
-                platforms.forEachIndexed { index, platform ->
-                    NativePlatformRow(
-                        platform = platform,
-                        alpha = platformAlphas[index].value,
-                        offsetY = platformOffsetsY[index].value,
-                        onClick = { platform.launch(context) }
-                    )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(scrollState)
+                ) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Text(
+                            text = "Available on",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Open in your preferred music app",
+                            fontSize = 13.sp,
+                            color = Color(0xFF8E8E93)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    platforms.forEachIndexed { index, platform ->
+                        NativePlatformRow(
+                            platform = platform,
+                            alpha = platformAlphas[index].value,
+                            offsetY = platformOffsetsY[index].value,
+                            onClick = { platform.launch(context) }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(bottomPadding + 16.dp))
                 }
-                Spacer(modifier = Modifier.height(bottomPadding + 16.dp))
             }
-        }
-    }
 
         // TOP NAV OVERLAY: Circular Back Button (Left) and More Options (Right)
         Row(
