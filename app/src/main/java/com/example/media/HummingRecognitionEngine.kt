@@ -57,6 +57,12 @@ class HummingRecognitionEngine(private val scope: CoroutineScope) {
     private var nativeRecognizer: ACRCloudNativeRecognitionRepository? = null
     private var lastContext: Context? = null
 
+    // ACRCloud can deliver the provider result while the UI ticker is still running.
+    // Guard the recognition session so that ticker updates can never overwrite a final result.
+    private var listeningTickerJob: Job? = null
+    @Volatile
+    private var recognitionFinished = false
+
     fun loadSavedDiagnostics(context: Context) {
         RecognitionDiagnosticsStore.getLastDiagnostics(context)?.let { _lastDiagnostics.value = it }
     }
@@ -65,6 +71,9 @@ class HummingRecognitionEngine(private val scope: CoroutineScope) {
         stopListening()
         lastContext = context.applicationContext
         _lastDiagnostics.value = null
+        recognitionFinished = false
+        listeningTickerJob?.cancel()
+        listeningTickerJob = null
         activeJob = scope.launch {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 val diag = RecognitionDiagnostics(
@@ -125,10 +134,15 @@ class HummingRecognitionEngine(private val scope: CoroutineScope) {
                 direct.volume.collect { value -> _liveAmplitude.value = (value.toFloat() / 100f).coerceIn(0f, 1f) }
             }
 
-            launch {
+            listeningTickerJob = launch {
                 var seconds = 0
-                while (isActive) {
-                    _state.value = HumRecognitionState.Listening(seconds, 0, _liveAmplitude.value)
+                while (isActive && !recognitionFinished) {
+                    // Never publish another Listening state after ACRCloud has delivered
+                    // a terminal result. This is what previously caused the matched
+                    // metadata screen to jump back to the microphone/listening screen.
+                    if (!recognitionFinished) {
+                        _state.value = HumRecognitionState.Listening(seconds, 0, _liveAmplitude.value)
+                    }
                     delay(1000L)
                     seconds++
                 }
@@ -147,6 +161,21 @@ class HummingRecognitionEngine(private val scope: CoroutineScope) {
     }
 
     private fun handleRecognitionResult(context: Context, result: RecognitionResult, libraryTracks: List<Track>) {
+        // The provider callback is terminal for this recognition session. Stop every
+        // background producer before publishing the final UI state so the 1-second
+        // listening ticker cannot overwrite Matched/NoMatch/Error with Listening.
+        if (recognitionFinished) return
+        recognitionFinished = true
+        listeningTickerJob?.cancel()
+        listeningTickerJob = null
+        nativeVolumeJob?.cancel()
+        nativeVolumeJob = null
+        nativeRecognizer?.stopRecognition()
+        activeJob?.cancel()
+        activeJob = null
+        _liveAmplitude.value = 0f
+        _livePitchHz.value = 0f
+
         val diagnostics = when (result) {
             is RecognitionResult.Match -> result.diagnostics
             is RecognitionResult.NoMatch -> result.diagnostics
@@ -190,6 +219,9 @@ class HummingRecognitionEngine(private val scope: CoroutineScope) {
     }
 
     fun stopListening() {
+        recognitionFinished = true
+        listeningTickerJob?.cancel()
+        listeningTickerJob = null
         nativeVolumeJob?.cancel()
         nativeVolumeJob = null
         activeJob?.cancel()
