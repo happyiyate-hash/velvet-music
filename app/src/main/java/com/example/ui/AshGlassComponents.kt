@@ -277,17 +277,11 @@ fun AshGlassMiniPlayerBar(
                             .background(Color(0xFFE51B3E)),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (isPlaying) {
-                            PlayerPauseIcon(
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.White
-                            )
-                        } else {
-                            PlayerPlayIcon(
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.White
-                            )
-                        }
+                        MorphingPlayPauseIcon(
+                            isPlaying = isPlaying,
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.White
+                        )
                     }
                 }
                 IconButton(modifier = Modifier.size(34.dp).testTag("mini_player_skip_next"), onClick = onSkipNext) {

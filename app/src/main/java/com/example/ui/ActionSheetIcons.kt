@@ -181,38 +181,44 @@ fun ActionFavoriteIcon(
             val ox = (size.width - 32f * scale) / 2f
             val oy = (size.height - 32f * scale) / 2f
 
-            // Harmonious rounded heart path
+            // Wide, elegant modern heart path with graceful curves
             val path = Path().apply {
-                moveTo(ox + 16f * scale, oy + 25.5f * scale)
+                moveTo(ox + 16f * scale, oy + 25.8f * scale)
+                // Left flank up
                 cubicTo(
-                    ox + 14.5f * scale, oy + 24.2f * scale,
-                    ox + 6.5f * scale, oy + 18.2f * scale,
-                    ox + 6.5f * scale, oy + 12.8f * scale
+                    ox + 10.0f * scale, oy + 21.5f * scale,
+                    ox + 3.5f * scale, oy + 17.2f * scale,
+                    ox + 3.5f * scale, oy + 12.2f * scale
                 )
+                // Left shoulder curve
                 cubicTo(
-                    ox + 6.5f * scale, oy + 8.8f * scale,
-                    ox + 9.8f * scale, oy + 6.2f * scale,
-                    ox + 13.5f * scale, oy + 6.2f * scale
+                    ox + 3.5f * scale, oy + 8.2f * scale,
+                    ox + 6.6f * scale, oy + 5.8f * scale,
+                    ox + 10.5f * scale, oy + 5.8f * scale
                 )
+                // Dip into center cleft
                 cubicTo(
-                    ox + 15.2f * scale, oy + 6.2f * scale,
-                    ox + 16.5f * scale, oy + 7.2f * scale,
-                    ox + 16f * scale, oy + 8.2f * scale
+                    ox + 12.8f * scale, oy + 5.8f * scale,
+                    ox + 14.8f * scale, oy + 7.0f * scale,
+                    ox + 16f * scale, oy + 9.2f * scale
                 )
+                // Right lobe out from center cleft
                 cubicTo(
-                    ox + 15.5f * scale, oy + 7.2f * scale,
-                    ox + 16.8f * scale, oy + 6.2f * scale,
-                    ox + 18.5f * scale, oy + 6.2f * scale
+                    ox + 17.2f * scale, oy + 7.0f * scale,
+                    ox + 19.2f * scale, oy + 5.8f * scale,
+                    ox + 21.5f * scale, oy + 5.8f * scale
                 )
+                // Right shoulder curve
                 cubicTo(
-                    ox + 22.2f * scale, oy + 6.2f * scale,
-                    ox + 25.5f * scale, oy + 8.8f * scale,
-                    ox + 25.5f * scale, oy + 12.8f * scale
+                    ox + 25.4f * scale, oy + 5.8f * scale,
+                    ox + 28.5f * scale, oy + 8.2f * scale,
+                    ox + 28.5f * scale, oy + 12.2f * scale
                 )
+                // Right flank down to bottom tip
                 cubicTo(
-                    ox + 25.5f * scale, oy + 18.2f * scale,
-                    ox + 17.5f * scale, oy + 24.2f * scale,
-                    ox + 16f * scale, oy + 25.5f * scale
+                    ox + 28.5f * scale, oy + 17.2f * scale,
+                    ox + 22.0f * scale, oy + 21.5f * scale,
+                    ox + 16f * scale, oy + 25.8f * scale
                 )
                 close()
             }
@@ -220,11 +226,12 @@ fun ActionFavoriteIcon(
             if (isFavorite) {
                 drawPath(path = path, color = tint)
             } else {
+                // Slim, refined 1.5dp stroke (not fat)
                 drawPath(
                     path = path,
                     color = tint,
                     style = Stroke(
-                        width = 2.4f * scale,
+                        width = 1.5f * scale,
                         cap = StrokeCap.Round,
                         join = StrokeJoin.Round
                     )

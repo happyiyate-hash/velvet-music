@@ -529,7 +529,7 @@ fun PlayerSheet(
                                 .weight(1f)
                                 .fillMaxWidth()
                                 .padding(horizontal = 24.dp)
-                                .padding(top = 18.dp, bottom = 8.dp),
+                                .padding(top = 24.dp, bottom = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -585,13 +585,13 @@ fun PlayerSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // 2. CONTROLS ROW (Directly underneath the upper surface)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(68.dp)
+                        .height(64.dp)
                         .padding(horizontal = 18.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -648,17 +648,11 @@ fun PlayerSheet(
                             .testTag("player_play_pause_button"),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (isPlaying) {
-                            PlayerPauseIcon(
-                                modifier = Modifier.size(34.dp),
-                                tint = Color(0xFF08090C)
-                            )
-                        } else {
-                            PlayerPlayIcon(
-                                modifier = Modifier.size(38.dp),
-                                tint = Color(0xFF08090C)
-                            )
-                        }
+                        MorphingPlayPauseIcon(
+                            isPlaying = isPlaying,
+                            modifier = Modifier.size(38.dp),
+                            tint = Color(0xFF08090C)
+                        )
                     }
 
                     // Next
@@ -691,13 +685,13 @@ fun PlayerSheet(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
-                // 4. DISCREET UP NEXT SWIPE-UP HANDLE (Longer, modern gesture pill)
+                // 4. DISCREET UP NEXT SWIPE-UP HANDLE (Longer, modern gesture pill dragged down)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(34.dp)
+                        .height(24.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -727,7 +721,7 @@ fun PlayerSheet(
                     )
                 }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
         }
 
         // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed on swipe-up or handle tap)

@@ -1,9 +1,13 @@
 package com.example.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -16,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import kotlin.math.sin
 
 /**
  * Custom player icons matching the bold, rounded design language:
@@ -23,6 +28,189 @@ import androidx.compose.ui.unit.dp
  * - Rounded triangle vertices and rounded pause/skip bars
  * - Scaled to a 64x64 canonical viewBox
  */
+
+/**
+ * Liquid morphing Play / Pause Icon:
+ * - Liquid geometric transformation between a Play triangle and Pause dual bars.
+ * - Single continuous shape system: Play triangle is split along its central seam into two
+ *   complementary geometric halves that cleanly separate and straighten into two vertical pause bars.
+ * - Seamless reverse: Pause bars slide toward each other, fuse along their inner seam,
+ *   and form the unified rounded play triangle.
+ * - No disappearing/cross-fading: actual dynamic polygon restructuring.
+ */
+@Composable
+fun MorphingPlayPauseIcon(
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    tint: Color = Color(0xFF08090C),
+    contentDescription: String? = if (isPlaying) "Pause" else "Play"
+) {
+    // 0f = Play triangle, 1f = Pause dual bars
+    val morphProgress by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = 440,
+            easing = FastOutSlowInEasing
+        ),
+        label = "morphPlayPause"
+    )
+
+    Box(
+        modifier = modifier.semantics {
+            if (contentDescription != null) {
+                this.contentDescription = contentDescription
+            }
+            this.role = Role.Image
+        },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val scale = size.minDimension / 64f
+            val offsetX = (size.width - 64f * scale) / 2f
+            val offsetY = (size.height - 64f * scale) / 2f
+
+            val t = morphProgress
+
+            // Iconic 2-Stage Choreography with perceptible hold beat:
+            // Forward (Play -> Pause):
+            //   1. [0.00 .. 0.36]: Play triangle splits into two half-triangles and separates with clear gap
+            //   2. [0.36 .. 0.52]: HOLD BEAT — stays as two distinct separated half-triangles floating in space
+            //   3. [0.52 .. 1.00]: The two halves straighten and morph their geometry into the two rounded pause bars
+            // Reverse (Pause -> Play):
+            //   1. [1.00 .. 0.52]: Pause bars morph into the two half-play buttons with gap open
+            //   2. [0.52 .. 0.36]: HOLD BEAT — stays as two half-play buttons separated
+            //   3. [0.36 .. 0.00]: The two halves slide together and fuse seamlessly into the solid play triangle
+            val gapProgress = if (t <= 0.36f) {
+                val r = (t / 0.36f).coerceIn(0f, 1f)
+                sin((r - 0.5f) * Math.PI.toFloat()) * 0.5f + 0.5f
+            } else {
+                1f
+            }
+
+            val shapeProgress = if (t <= 0.52f) {
+                0f
+            } else {
+                val r = ((t - 0.52f) / 0.48f).coerceIn(0f, 1f)
+                sin((r - 0.5f) * Math.PI.toFloat()) * 0.5f + 0.5f
+            }
+
+            val rCorner = 4.25f * scale
+            // Inner seam radius: 0 when joined for zero-seam fusion; softly rounded when separated
+            val innerR = 4.25f * scale * gapProgress * (0.35f + 0.65f * shapeProgress)
+
+            // Subtle scale breathing during transformation (contracting slightly at midpoint)
+            val pulseScale = 1f - sin(t * Math.PI.toFloat()) * 0.035f
+
+            // Canonical 64x64 coordinates (cohesive 10-unit center gap, dragged together):
+            // Left bar: x = 17 to 27 (width 10, y = 15 to 49)
+            // Right bar: x = 37 to 47 (width 10, y = 15 to 49)
+            // Gap = 10 units (between x = 27 and x = 37)
+            val p0 = Offset(17f, lerp(13.5f, 15f, shapeProgress))
+            val p1 = Offset(lerp(32f, 27f, gapProgress), lerp(22f, 15f, shapeProgress))
+            val p2 = Offset(lerp(32f, 27f, gapProgress), lerp(42f, 49f, shapeProgress))
+            val p3 = Offset(17f, lerp(50.5f, 49f, shapeProgress))
+
+            val tipX = lerp(47f, 52f, gapProgress)
+            val q0 = Offset(lerp(32f, 37f, gapProgress), lerp(22f, 15f, shapeProgress))
+            val q1 = Offset(lerp(tipX, 47f, shapeProgress), lerp(32f, 15f, shapeProgress))
+            val q2 = Offset(lerp(tipX, 47f, shapeProgress), lerp(32f, 49f, shapeProgress))
+            val q3 = Offset(lerp(32f, 37f, gapProgress), lerp(42f, 49f, shapeProgress))
+
+            val center = Offset(size.width / 2f, size.height / 2f)
+
+            // Convert canonical coordinates to canvas coordinates with scale and offset
+            fun toCanvas(pt: Offset): Offset {
+                val cx = offsetX + pt.x * scale
+                val cy = offsetY + pt.y * scale
+                return Offset(
+                    center.x + (cx - center.x) * pulseScale,
+                    center.y + (cy - center.y) * pulseScale
+                )
+            }
+
+            val canvasP0 = toCanvas(p0)
+            val canvasP1 = toCanvas(p1)
+            val canvasP2 = toCanvas(p2)
+            val canvasP3 = toCanvas(p3)
+
+            val canvasQ0 = toCanvas(q0)
+            val canvasQ1 = toCanvas(q1)
+            val canvasQ2 = toCanvas(q2)
+            val canvasQ3 = toCanvas(q3)
+
+            // Draw Left piece
+            val leftPath = buildRoundedPolygonPath(
+                points = listOf(canvasP0, canvasP1, canvasP2, canvasP3),
+                radii = listOf(rCorner, innerR, innerR, rCorner)
+            )
+            drawPath(path = leftPath, color = tint)
+
+            // Draw Right piece
+            val tipDist = (canvasQ2 - canvasQ1).getDistance()
+            val rightPath = if (tipDist < 1.2f) {
+                // Collapsed tip (single rounded apex point for triangle half)
+                val apex = Offset((canvasQ1.x + canvasQ2.x) / 2f, (canvasQ1.y + canvasQ2.y) / 2f)
+                buildRoundedPolygonPath(
+                    points = listOf(canvasQ0, apex, canvasQ3),
+                    radii = listOf(innerR, rCorner, innerR)
+                )
+            } else {
+                // Splitting / separated dual corners
+                buildRoundedPolygonPath(
+                    points = listOf(canvasQ0, canvasQ1, canvasQ2, canvasQ3),
+                    radii = listOf(innerR, rCorner, rCorner, innerR)
+                )
+            }
+            drawPath(path = rightPath, color = tint)
+        }
+    }
+}
+
+private fun lerp(start: Float, stop: Float, fraction: Float): Float =
+    start + (stop - start) * fraction
+
+private fun buildRoundedPolygonPath(
+    points: List<Offset>,
+    radii: List<Float>
+): Path {
+    val n = points.size
+    val path = Path()
+    if (n < 3) return path
+
+    val lastEdgeMid = Offset(
+        (points[n - 1].x + points[0].x) / 2f,
+        (points[n - 1].y + points[0].y) / 2f
+    )
+    path.moveTo(lastEdgeMid.x, lastEdgeMid.y)
+
+    for (i in 0 until n) {
+        val p = points[i]
+        val prev = points[(i - 1 + n) % n]
+        val next = points[(i + 1) % n]
+        val r = radii[i]
+
+        val v1 = prev - p
+        val len1 = v1.getDistance()
+        val v2 = next - p
+        val len2 = v2.getDistance()
+
+        if (r <= 0.2f || len1 < 0.5f || len2 < 0.5f) {
+            path.lineTo(p.x, p.y)
+        } else {
+            val u1 = v1 / len1
+            val u2 = v2 / len2
+            val effectiveR = minOf(r, len1 * 0.45f, len2 * 0.45f)
+            val start = p + u1 * effectiveR
+            val end = p + u2 * effectiveR
+
+            path.lineTo(start.x, start.y)
+            path.quadraticBezierTo(p.x, p.y, end.x, end.y)
+        }
+    }
+
+    path.close()
+    return path
+}
 
 @Composable
 fun PlayerPlayIcon(
