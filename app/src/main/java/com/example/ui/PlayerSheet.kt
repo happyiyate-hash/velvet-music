@@ -116,6 +116,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
@@ -347,17 +348,37 @@ fun PlayerSheet(
         queueDragTargetIndex = -1
     }
 
+    // Use the actual artwork color as the source, heavily darkened so the
+    // player feels saturated rather than washed out. The artwork itself stays untouched.
+    val cardColor by animateColorAsState(
+        targetValue = Color(
+            red = (themeColors.dominant.red * 0.45f).coerceIn(0f, 1f),
+            green = (themeColors.dominant.green * 0.45f).coerceIn(0f, 1f),
+            blue = (themeColors.dominant.blue * 0.45f).coerceIn(0f, 1f),
+            alpha = 1f
+        ),
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "dark_artwork_color"
+    )
+
+    val playerSheetGradient = remember(cardColor) {
+        Brush.verticalGradient(
+            colors = listOf(
+                cardColor,
+                Color(
+                    red = (cardColor.red * 0.80f).coerceIn(0f, 1f),
+                    green = (cardColor.green * 0.80f).coerceIn(0f, 1f),
+                    blue = (cardColor.blue * 0.80f).coerceIn(0f, 1f),
+                    alpha = 1f
+                )
+            )
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF20242C),
-                        Color(0xFF171A20)
-                    )
-                )
-            ) // Premium neutral charcoal glass-like control surface
+            .background(playerSheetGradient)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -374,18 +395,6 @@ fun PlayerSheet(
         ) {
             val totalHeight = maxHeight
             val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-            // Use the actual artwork color as the source, but heavily darken it so the
-            // player feels saturated rather than washed out. The artwork itself stays untouched.
-            val cardColor by animateColorAsState(
-                targetValue = Color(
-                    red = (themeColors.dominant.red * 0.45f).coerceIn(0f, 1f),
-                    green = (themeColors.dominant.green * 0.45f).coerceIn(0f, 1f),
-                    blue = (themeColors.dominant.blue * 0.45f).coerceIn(0f, 1f),
-                    alpha = 1f
-                ),
-                animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-                label = "dark_artwork_color"
-            )
 
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -405,24 +414,11 @@ fun PlayerSheet(
                             indication = null
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
-                    // Artwork-derived atmosphere: saturated enough to feel intentional,
-                    // dark enough that the album art and controls remain the focus.
+                    // Artwork-derived atmosphere matching player sheet
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        cardColor,
-                                        Color(
-                                            red = (cardColor.red * 0.80f).coerceIn(0f, 1f),
-                                            green = (cardColor.green * 0.80f).coerceIn(0f, 1f),
-                                            blue = (cardColor.blue * 0.80f).coerceIn(0f, 1f),
-                                            alpha = 1f
-                                        )
-                                    )
-                                )
-                            )
+                            .background(playerSheetGradient)
                     )
 
                     Column(
@@ -471,7 +467,7 @@ fun PlayerSheet(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Hero artwork: larger, rounded and intentionally dominant.
+                        // Hero artwork: restored to original height, centered in middle, rounded and dominant
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -515,7 +511,6 @@ fun PlayerSheet(
                         }
 
                         // Song identity sits immediately under the artwork.
-                        // Keying by track makes the entrance animation replay for every new song.
                         key(track.id) {
                             Column(
                                 modifier = Modifier
@@ -599,7 +594,7 @@ fun PlayerSheet(
 
                         Spacer(modifier = Modifier.height(5.dp))
 
-                        // Waveform Visualizer
+                        // Waveform Visualizer hugging bottom of the upper surface
                         DarkSilhouetteWaveform(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
@@ -655,7 +650,7 @@ fun PlayerSheet(
                         )
                     }
 
-                    // Circular Play / Pause Button (Scaled down, elegant proportions)
+                    // Circular Play / Pause Button
                     Box(
                         modifier = Modifier
                             .size(62.dp)
@@ -713,11 +708,11 @@ fun PlayerSheet(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // 4. DISCREET UP NEXT SWIPE-UP HANDLE (Longer, modern gesture pill dragged down)
+                // 4. DISCREET UP NEXT SWIPE-UP HANDLE
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(24.dp)
+                        .height(28.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -747,84 +742,86 @@ fun PlayerSheet(
                     )
                 }
 
-            Spacer(modifier = Modifier.height(2.dp))
-        }
+                Spacer(modifier = Modifier.height(2.dp))
+            }
 
-        // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed on swipe-up or handle tap)
-        if (upNextP > 0.001f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        translationY = (1f - upNextP) * totalHeight.toPx()
-                        alpha = upNextP.coerceIn(0f, 1f)
-                    }
-                    .background(Color(0xFF14151C))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { /* Absorb clicks on empty space of up next queue */ }
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxSize()
+            // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed on swipe-up or handle tap)
+            if (upNextP > 0.001f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = (1f - upNextP) * totalHeight.toPx()
+                            alpha = upNextP.coerceIn(0f, 1f)
+                        }
+                        .background(playerSheetGradient)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { /* Absorb clicks on empty space of up next queue */ }
                 ) {
-                    // Header
-                    Row(
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .fillMaxSize()
+                            .statusBarsPadding()
                     ) {
-                        IconButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    upNextExpanded.animateTo(0f)
+                        // Header
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        upNextExpanded.animateTo(0f)
+                                    }
                                 }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Collapse Queue",
+                                    tint = Color.White
+                                )
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Collapse Queue",
-                                tint = Color.White
-                            )
-                        }
 
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Playing from Queue",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "${orderedQueueItems.size} tracks",
-                                fontSize = 12.sp,
-                                color = Color.White.copy(alpha = 0.60f)
-                            )
-                        }
-
-                        TextButton(
-                            onClick = {
-                                Toast.makeText(context, "Queue saved to playlist", Toast.LENGTH_SHORT).show()
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "Playing from Queue",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "${orderedQueueItems.size} tracks",
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.60f)
+                                )
                             }
-                        ) {
-                            Text(
-                                text = "Save",
-                                color = themeColors.accent,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
 
-                    // Pull-down handle to collapse back to player
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(20.dp)
-                            .pointerInput(Unit) {
+                            TextButton(
+                                onClick = {
+                                    Toast.makeText(context, "Queue saved to playlist", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Text(
+                                    text = "Save",
+                                    color = themeColors.accent,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+
+                        // Pull-down handle to collapse back to player
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(20.dp)
+                                .pointerInput(Unit) {
                                 detectVerticalDragGestures { _, dragAmount ->
                                     if (dragAmount > 15f) {
                                         coroutineScope.launch {
@@ -833,86 +830,86 @@ fun PlayerSheet(
                                     }
                                 }
                             },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(36.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color.White.copy(alpha = 0.30f))
-                        )
-                    }
-
-                    // Full interactive reorderable/swipeable queue
-                    LazyColumn(
-                        state = queueListState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp)
-                    ) {
-                        itemsIndexed(
-                            items = orderedQueueItems,
-                            key = { _, item -> item.id }
-                        ) { queueIndex, queueTrack ->
-                            val isCurrent = queueTrack.id == track.id
-                            val isDragging = queueTrack.id == activeQueueDragId
-
-                            UpNextTrackRow(
-                                track = queueTrack,
-                                isCurrent = isCurrent,
-                                isPlaying = isPlaying,
-                                accentColor = themeColors.accent,
-                                surfaceColor = Color(0xFF1E2028),
-                                onClick = { onSelectQueueTrack(queueTrack) },
-                                onPlayNext = {
-                                    val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
-                                    val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
-                                    if (currentIndex >= 0) {
-                                        val destination = if (playingIndex >= 0) playingIndex + 1 else 0
-                                        val updated = orderedQueueItems.toMutableList().apply {
-                                            val moved = removeAt(currentIndex)
-                                            add(destination.coerceAtMost(size), moved)
-                                        }
-                                        orderedQueueItems = updated
-                                        onUpdateQueue?.invoke(updated)
-                                        coroutineScope.launch {
-                                            queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
-                                        }
-                                    }
-                                },
-                                onDelete = {
-                                    if (!isCurrent && activeQueueDragId == null) {
-                                        val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
-                                        orderedQueueItems = updated
-                                        onUpdateQueue?.invoke(updated)
-                                    }
-                                },
-                                onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
-                                onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
-                                onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
-                                isDragging = isDragging,
-                                dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
-                                virtualDisplacementY = run {
-                                    val dragId = activeQueueDragId ?: return@run 0f
-                                    if (isDragging) return@run 0f
-                                    val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
-                                    if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
-                                    val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
-                                    when {
-                                        dragStartIndex < queueDragTargetIndex -> {
-                                            if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
-                                        }
-                                        dragStartIndex > queueDragTargetIndex -> {
-                                            if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
-                                        }
-                                        else -> 0f
-                                    }
-                                },
-                                isDropTarget = false
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(36.dp)
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(Color.White.copy(alpha = 0.30f))
                             )
+                        }
+
+                        // Full-width interactive queue: zero horizontal padding, matching background
+                        LazyColumn(
+                            state = queueListState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentPadding = PaddingValues(bottom = 24.dp)
+                        ) {
+                            itemsIndexed(
+                                items = orderedQueueItems,
+                                key = { _, item -> item.id }
+                            ) { queueIndex, queueTrack ->
+                                val isCurrent = queueTrack.id == track.id
+                                val isDragging = queueTrack.id == activeQueueDragId
+
+                                UpNextTrackRow(
+                                    track = queueTrack,
+                                    isCurrent = isCurrent,
+                                    isPlaying = isPlaying,
+                                    accentColor = themeColors.accent,
+                                    surfaceColor = cardColor,
+                                    onClick = { onSelectQueueTrack(queueTrack) },
+                                    onPlayNext = {
+                                        val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
+                                        val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
+                                        if (currentIndex >= 0) {
+                                            val destination = if (playingIndex >= 0) playingIndex + 1 else 0
+                                            val updated = orderedQueueItems.toMutableList().apply {
+                                                val moved = removeAt(currentIndex)
+                                                add(destination.coerceAtMost(size), moved)
+                                            }
+                                            orderedQueueItems = updated
+                                            onUpdateQueue?.invoke(updated)
+                                            coroutineScope.launch {
+                                                queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
+                                            }
+                                        }
+                                    },
+                                    onDelete = {
+                                        if (!isCurrent && activeQueueDragId == null) {
+                                            val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
+                                            orderedQueueItems = updated
+                                            onUpdateQueue?.invoke(updated)
+                                        }
+                                    },
+                                    onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
+                                    onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
+                                    onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
+                                    isDragging = isDragging,
+                                    dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
+                                    virtualDisplacementY = run {
+                                        val dragId = activeQueueDragId ?: return@run 0f
+                                        if (isDragging) return@run 0f
+                                        val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
+                                        if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
+                                        val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
+                                        when {
+                                            dragStartIndex < queueDragTargetIndex -> {
+                                                if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
+                                            }
+                                            dragStartIndex > queueDragTargetIndex -> {
+                                                if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
+                                            }
+                                            else -> 0f
+                                        }
+                                    },
+                                    isDropTarget = false
+                                )
+                            }
                         }
                     }
                 }
@@ -997,7 +994,6 @@ fun PlayerSheet(
             )
         }
     }
-}
 }
 
 
@@ -1328,10 +1324,10 @@ private fun UpNextTrackRow(
     }
 
     // Dynamic background transition during swipe:
-    // Initial drag state: Standard dark/black (#141418).
+    // Initial drag state: Matches player sheet background (surfaceColor).
     // Threshold trigger state: Transitions to vibrant green (#22C55E) for Play Next and vibrant red (#EF4444) for Delete.
     val targetActionColor = when {
-        !isPastThreshold -> Color(0xFF141418)
+        !isPastThreshold -> surfaceColor
         swipeOffset > 0f -> Color(0xFF22C55E)
         else -> Color(0xFFEF4444)
     }
@@ -1369,15 +1365,15 @@ private fun UpNextTrackRow(
     val elevation by animateFloatAsState(if (isDragging) 4f else 0f, tween(120), label = "queue_drag_elevation")
 
     // Active Item Highlight:
-    // Solid, fully opaque surface color (#121214) prevents any background bleeding through the card.
-    // Dragged item has a subtle flat dark surface lift (#24242A), matching YouTube Music aesthetic.
+    // Matches the exact background color of the player sheet itself (surfaceColor).
+    // Dragged item has a subtle lift, active current track has accent highlight.
     val activeRowBg = when {
-        isDragging -> Color(0xFF24242A)
-        isCurrent -> accentColor.copy(alpha = 0.16f).compositeOver(Color(0xFF121214))
-        else -> Color(0xFF121214)
+        isDragging -> Color.White.copy(alpha = 0.16f).compositeOver(surfaceColor)
+        isCurrent -> accentColor.copy(alpha = 0.20f).compositeOver(surfaceColor)
+        else -> surfaceColor
     }
 
-    // Full-Bleed Surface Layer: Spans 100% width, no border, subtle flat elevation
+    // Full-Bleed Surface Layer: Spans 100% width, no border, zero padding cutoffs
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1391,7 +1387,7 @@ private fun UpNextTrackRow(
             .zIndex(if (isDragging) 5f else 0f)
             .shadow(
                 elevation = elevation.dp,
-                shape = RoundedCornerShape(4.dp),
+                shape = RectangleShape,
                 ambientColor = Color.Black.copy(alpha = 0.45f),
                 spotColor = Color.Black.copy(alpha = 0.45f),
                 clip = false
@@ -1504,7 +1500,7 @@ private fun UpNextTrackRow(
                     indication = null,
                     onClick = onClick
                 )
-                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Album Art with rounded corners
