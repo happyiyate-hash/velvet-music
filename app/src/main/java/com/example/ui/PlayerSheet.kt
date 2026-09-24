@@ -348,37 +348,63 @@ fun PlayerSheet(
         queueDragTargetIndex = -1
     }
 
-    // Use the actual artwork color as the source, heavily darkened so the
-    // player feels saturated rather than washed out. The artwork itself stays untouched.
-    val cardColor by animateColorAsState(
-        targetValue = Color(
-            red = (themeColors.dominant.red * 0.45f).coerceIn(0f, 1f),
-            green = (themeColors.dominant.green * 0.45f).coerceIn(0f, 1f),
-            blue = (themeColors.dominant.blue * 0.45f).coerceIn(0f, 1f),
-            alpha = 1f
-        ),
+    // Lighter, bright extracted color for the card (preserving pure saturation, never washed out with white)
+    val animatedCardBgTop by animateColorAsState(
+        targetValue = themeColors.cardBackground,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "dark_artwork_color"
+        label = "card_bg_top"
+    )
+    val animatedCardBgBottom by animateColorAsState(
+        targetValue = themeColors.cardBackgroundBottom,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "card_bg_bottom"
     )
 
-    val playerSheetGradient = remember(cardColor) {
+    // Dark shade of the extracted color for the main player sheet background
+    val animatedMainBgTop by animateColorAsState(
+        targetValue = themeColors.playerSheetBackground,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "main_bg_top"
+    )
+    val animatedMainBgBottom by animateColorAsState(
+        targetValue = themeColors.playerSheetBackgroundBottom,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "main_bg_bottom"
+    )
+
+    // Sleek border accent derived from the extracted color
+    val animatedCardBorderColor by animateColorAsState(
+        targetValue = themeColors.cardBorder,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "card_border_color"
+    )
+
+    val cardColor = animatedCardBgTop
+
+    val cardGradient = remember(animatedCardBgTop, animatedCardBgBottom) {
         Brush.verticalGradient(
             colors = listOf(
-                cardColor,
-                Color(
-                    red = (cardColor.red * 0.80f).coerceIn(0f, 1f),
-                    green = (cardColor.green * 0.80f).coerceIn(0f, 1f),
-                    blue = (cardColor.blue * 0.80f).coerceIn(0f, 1f),
-                    alpha = 1f
-                )
+                animatedCardBgTop,
+                animatedCardBgBottom
             )
         )
     }
 
+    val mainBackgroundGradient = remember(animatedMainBgTop, animatedMainBgBottom) {
+        Brush.verticalGradient(
+            colors = listOf(
+                animatedMainBgTop,
+                animatedMainBgBottom
+            )
+        )
+    }
+
+    val playerSheetGradient = mainBackgroundGradient
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(playerSheetGradient)
+            .background(mainBackgroundGradient)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -401,37 +427,83 @@ fun PlayerSheet(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // 1. FULL-WIDTH IMMERSIVE UPPER PLAYER SURFACE
-                // Stretches from the absolute top of the screen (behind status bar) to the bottom endpoint above controls
-                // Edge-to-edge: No left/right margins, no visible side or top borders, seamless unbordered bottom curve
+                // Stretches from the absolute top of the screen (behind status bar) to the bottom endpoint above controls.
+                // Bright, genuine extracted color with a sleek luminous border wrapping the bottom boundary
+                val cardBottomCornerRadius = 30.dp
+                val cardShape = RoundedCornerShape(
+                    bottomStart = cardBottomCornerRadius,
+                    bottomEnd = cardBottomCornerRadius
+                )
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-                        .background(cardColor)
+                        .shadow(
+                            elevation = 14.dp,
+                            shape = cardShape,
+                            spotColor = Color.Black.copy(alpha = 0.70f),
+                            ambientColor = Color.Black.copy(alpha = 0.35f)
+                        )
+                        .clip(cardShape)
+                        .background(cardGradient)
+                        .drawWithContent {
+                            drawContent()
+                            val r = cardBottomCornerRadius.toPx()
+                            val strokeWidth = 2.dp.toPx()
+                            val sideExtension = 20.dp.toPx()
+                            val path = Path().apply {
+                                moveTo(0f, size.height - r - sideExtension)
+                                lineTo(0f, size.height - r)
+                                arcTo(
+                                    rect = Rect(0f, size.height - 2 * r, 2 * r, size.height),
+                                    startAngleDegrees = 180f,
+                                    sweepAngleDegrees = -90f,
+                                    forceMoveTo = false
+                                )
+                                lineTo(size.width - r, size.height)
+                                arcTo(
+                                    rect = Rect(size.width - 2 * r, size.height - 2 * r, size.width, size.height),
+                                    startAngleDegrees = 90f,
+                                    sweepAngleDegrees = -90f,
+                                    forceMoveTo = false
+                                )
+                                lineTo(size.width, size.height - r - sideExtension)
+                            }
+                            // Sleek luminous accent border wrapping the bottom of the card
+                            drawPath(
+                                path = path,
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        animatedCardBorderColor.copy(alpha = 0.35f),
+                                        animatedCardBorderColor.copy(alpha = 0.95f),
+                                        animatedCardBorderColor.copy(alpha = 0.35f)
+                                    )
+                                ),
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                            )
+                            // Refined fine inner highlight line for sleek polished boundary
+                            drawPath(
+                                path = path,
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.15f),
+                                        Color.White.copy(alpha = 0.65f),
+                                        Color.White.copy(alpha = 0.15f)
+                                    )
+                                ),
+                                style = Stroke(width = 0.9.dp.toPx(), cap = StrokeCap.Round)
+                            )
+                        }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
-                    // Artwork-derived atmosphere: saturated enough to feel intentional,
-                    // dark enough that the album art and controls remain the focus.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        cardColor,
-                                        Color(
-                                            red = (cardColor.red * 0.80f).coerceIn(0f, 1f),
-                                            green = (cardColor.green * 0.80f).coerceIn(0f, 1f),
-                                            blue = (cardColor.blue * 0.80f).coerceIn(0f, 1f),
-                                            alpha = 1f
-                                        )
-                                    )
-                                )
-                            )
+                            .background(cardGradient)
                     )
 
                     Column(
@@ -615,7 +687,7 @@ fun PlayerSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(36.dp)
-                                .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+                                .clip(cardShape)
                         )
                     }
                 }
@@ -1273,9 +1345,9 @@ private fun DarkSilhouetteWaveform(
             val barTop = size.height - barHeight
             val barX = i * (barWidth + barGap)
 
-            // Translucent clean white tones so they don't cast a dark shadow over the extracted card color
-            val tipColor = Color.White.copy(alpha = 0.28f)
-            val baseColor = Color.White.copy(alpha = 0.08f)
+            // Translucent clean white tones so they pop cleanly over the lighter extracted card color
+            val tipColor = Color.White.copy(alpha = 0.45f)
+            val baseColor = Color.White.copy(alpha = 0.16f)
 
             val barBrush = Brush.verticalGradient(
                 colors = listOf(tipColor, baseColor),

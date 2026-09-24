@@ -31,7 +31,13 @@ data class TrackThemeColors(
     val ambient1: Color = dominant,
     val ambient2: Color = secondary,
     val ambient3: Color = accent,
-    val ambientCharcoal: Color = Color(0xFF101117)
+    val ambientCharcoal: Color = Color(0xFF101117),
+    val rawExtractedColor: Color = dominant,
+    val cardBackground: Color = dominant,
+    val cardBackgroundBottom: Color = dominant,
+    val cardBorder: Color = accent,
+    val playerSheetBackground: Color = darkBackground,
+    val playerSheetBackgroundBottom: Color = bgBottom
 )
 
 object ArtworkColorExtractor {
@@ -190,28 +196,44 @@ object ArtworkColorExtractor {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(baseColor.toArgb(), hsv)
         val hue = hsv[0]
-        val sat = hsv[1].coerceIn(0.35f, 0.85f)
-        // The player surface uses a very deep, subtle, and premium dark tone
-        // rather than bright/shining all over the screen.
-        val surfaceSat = (sat * 0.50f).coerceIn(0.22f, 0.48f)
-        val dominant = Color.hsv(hue, surfaceSat, 0.18f)
-        val secondary = Color.hsv(hue, (sat * 0.85f).coerceIn(0.40f, 0.90f), 0.14f)
-        val accent = Color.hsv(hue, (sat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
-        val glow = Color.hsv(hue, sat, 0.88f)
-        val bgTop = Color.hsv(hue, (sat * 0.72f).coerceIn(0.40f, 0.82f), 0.32f)
-        val bgMidUpper = Color.hsv(hue, (sat * 0.65f).coerceIn(0.36f, 0.76f), 0.22f)
-        val bgMidLower = Color.hsv(hue, (sat * 0.60f).coerceIn(0.32f, 0.70f), 0.15f)
-        val bgBottom = Color.hsv(hue, (sat * 0.55f).coerceIn(0.28f, 0.65f), 0.09f)
+        // Saturation: keep the exact color rich and authentic, never mix with white so it does not wash out
+        val pureSat = hsv[1].coerceIn(0.55f, 0.95f)
+
+        // 1. Card background:
+        // Lighter and bright, but not too shiny (value ~0.50f), retaining true saturated hue
+        val cardSat = pureSat.coerceIn(0.65f, 0.95f)
+        val cardValTop = 0.52f
+        val cardValBottom = 0.44f
+        val cardBgTop = Color.hsv(hue, cardSat, cardValTop)
+        val cardBgBottom = Color.hsv(hue, cardSat, cardValBottom)
+        val cardBackground = Color.hsv(hue, cardSat, 0.48f)
+
+        // 2. Main player sheet background:
+        // Dark shade of the extracted color, distinctly different in brightness from the card
+        val mainBgSat = (pureSat * 0.85f).coerceIn(0.45f, 0.85f)
+        val bgTop = Color.hsv(hue, mainBgSat, 0.17f)
+        val bgMidUpper = Color.hsv(hue, mainBgSat, 0.14f)
+        val bgMidLower = Color.hsv(hue, mainBgSat, 0.11f)
+        val bgBottom = Color.hsv(hue, mainBgSat, 0.08f)
         val darkBackground = bgBottom
-        val atmosphericBloom = Color.hsv(hue, (sat * 0.78f).coerceIn(0.45f, 0.88f), 0.40f)
-        val playPauseGradTop = Color.hsv(hue, (sat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
-        val playPauseGradBottom = Color.hsv(hue, (sat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
+
+        // 3. Sleek border wrapping the bottom of the card
+        val borderSat = (pureSat * 0.55f).coerceIn(0.25f, 0.65f)
+        val cardBorder = Color.hsv(hue, borderSat, 0.88f)
+
+        val dominant = cardBackground
+        val secondary = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.40f, 0.90f), 0.25f)
+        val accent = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
+        val glow = Color.hsv(hue, pureSat, 0.88f)
+        val atmosphericBloom = Color.hsv(hue, (pureSat * 0.78f).coerceIn(0.45f, 0.88f), 0.40f)
+        val playPauseGradTop = Color.hsv(hue, (pureSat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
+        val playPauseGradBottom = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
         val playPauseCircle = playPauseGradTop
-        val playPauseBorder = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.40f)
+        val playPauseBorder = Color.hsv(hue, pureSat, 0.68f).copy(alpha = 0.40f)
 
         val amb1 = dominant
-        val amb2 = Color.hsv((hue + 36f) % 360f, (sat * 0.85f).coerceIn(0.40f, 0.90f), 0.70f)
-        val amb3 = Color.hsv((hue + 160f) % 360f, (sat * 0.75f).coerceIn(0.35f, 0.85f), 0.65f)
+        val amb2 = Color.hsv((hue + 36f) % 360f, (pureSat * 0.85f).coerceIn(0.40f, 0.90f), 0.70f)
+        val amb3 = Color.hsv((hue + 160f) % 360f, (pureSat * 0.75f).coerceIn(0.35f, 0.85f), 0.65f)
         val ambientCharcoal = Color(0xFF101117)
 
         return TrackThemeColors(
@@ -232,7 +254,13 @@ object ArtworkColorExtractor {
             ambient1 = amb1,
             ambient2 = amb2,
             ambient3 = amb3,
-            ambientCharcoal = ambientCharcoal
+            ambientCharcoal = ambientCharcoal,
+            rawExtractedColor = baseColor,
+            cardBackground = cardBgTop,
+            cardBackgroundBottom = cardBgBottom,
+            cardBorder = cardBorder,
+            playerSheetBackground = bgTop,
+            playerSheetBackgroundBottom = bgBottom
         )
     }
 
