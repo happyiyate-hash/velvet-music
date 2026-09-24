@@ -200,26 +200,25 @@ object ArtworkColorExtractor {
         val pureSat = hsv[1].coerceIn(0.55f, 0.95f)
 
         // 1. Card background:
-        // Premium, deep, non-shiny glassmorphic tone (brightness ~0.24f-0.28f instead of 0.50f)
+        // Use the exact dark side brightness (~0.20f) uniformly across the entire card
         val cardSat = (pureSat * 0.75f).coerceIn(0.38f, 0.75f)
-        val cardValTop = 0.28f
-        val cardValBottom = 0.20f
-        val cardBgTop = Color.hsv(hue, cardSat, cardValTop)
-        val cardBgBottom = Color.hsv(hue, cardSat, cardValBottom)
-        val cardBackground = Color.hsv(hue, cardSat, 0.24f)
+        val cardVal = 0.20f
+        val cardBackground = Color.hsv(hue, cardSat, cardVal)
+        val cardBgTop = cardBackground
+        val cardBgBottom = cardBackground
 
         // 2. Main player sheet background:
-        // Ultra-deep dark shade of the extracted color (~0.08f-0.12f)
+        // Ultra-deep dark shade of the extracted color (~0.06f-0.10f)
         val mainBgSat = (pureSat * 0.70f).coerceIn(0.30f, 0.65f)
-        val bgTop = Color.hsv(hue, mainBgSat, 0.12f)
-        val bgMidUpper = Color.hsv(hue, mainBgSat, 0.10f)
-        val bgMidLower = Color.hsv(hue, mainBgSat, 0.08f)
-        val bgBottom = Color.hsv(hue, mainBgSat, 0.06f)
+        val bgTop = Color.hsv(hue, mainBgSat, 0.10f)
+        val bgMidUpper = Color.hsv(hue, mainBgSat, 0.08f)
+        val bgMidLower = Color.hsv(hue, mainBgSat, 0.07f)
+        val bgBottom = Color.hsv(hue, mainBgSat, 0.05f)
         val darkBackground = bgBottom
 
-        // 3. Sleek glass rim border wrapping the bottom of the card
+        // 3. Sleek border wrapping the bottom of the card
         val borderSat = (pureSat * 0.50f).coerceIn(0.20f, 0.55f)
-        val cardBorder = Color.hsv(hue, borderSat, 0.75f)
+        val cardBorder = Color.hsv(hue, borderSat, 0.65f)
 
         val dominant = cardBackground
         val secondary = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.40f, 0.90f), 0.20f)

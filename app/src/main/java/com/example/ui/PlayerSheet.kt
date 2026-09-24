@@ -477,31 +477,17 @@ fun PlayerSheet(
                                 )
                                 lineTo(size.width, size.height - r - sideExtension)
                             }
-                            // Sleek glass rim border wrapping the bottom of the card
+                            // Sleek border wrapping the bottom of the card
                             drawPath(
                                 path = path,
                                 brush = Brush.horizontalGradient(
                                     colors = listOf(
-                                        Color.White.copy(alpha = 0.08f),
-                                        animatedCardBorderColor.copy(alpha = 0.50f),
-                                        Color.White.copy(alpha = 0.28f),
-                                        animatedCardBorderColor.copy(alpha = 0.50f),
-                                        Color.White.copy(alpha = 0.08f)
+                                        animatedCardBorderColor.copy(alpha = 0.20f),
+                                        animatedCardBorderColor.copy(alpha = 0.55f),
+                                        animatedCardBorderColor.copy(alpha = 0.20f)
                                     )
                                 ),
                                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
-                            // Refined fine inner highlight line for sleek polished glass boundary
-                            drawPath(
-                                path = path,
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.White.copy(alpha = 0.35f),
-                                        Color.Transparent
-                                    )
-                                ),
-                                style = Stroke(width = 0.8.dp.toPx(), cap = StrokeCap.Round)
                             )
                         }
                         .clickable(
@@ -509,60 +495,11 @@ fun PlayerSheet(
                             indication = null
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
-                    // Multi-layer glassmorphism: base deep tone + atmospheric radial glow + frosted glass specular sheen
+                    // Uniform, solid dark color across the entire card surface
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .drawBehind {
-                                // 1. Base deep, non-shiny glass tone
-                                drawRect(brush = cardGradient)
-
-                                // 2. Diffused atmospheric radial bloom behind hero artwork (rich depth, never flat)
-                                val centerX = size.width / 2f
-                                val centerY = size.height * 0.38f
-                                val bloomRadius = size.width * 0.72f
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(
-                                            animatedAtmosphericBloom.copy(alpha = 0.32f),
-                                            animatedAtmosphericBloom.copy(alpha = 0.10f),
-                                            Color.Transparent
-                                        ),
-                                        center = Offset(centerX, centerY),
-                                        radius = bloomRadius
-                                    ),
-                                    radius = bloomRadius,
-                                    center = Offset(centerX, centerY)
-                                )
-
-                                // 3. Frosted glass specular reflection sheen (angled top-left to bottom-right)
-                                drawRect(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(
-                                            Color.White.copy(alpha = 0.09f),
-                                            Color.White.copy(alpha = 0.02f),
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.15f)
-                                        ),
-                                        start = Offset(0f, 0f),
-                                        end = Offset(size.width, size.height)
-                                    )
-                                )
-
-                                // 4. Subtle top specular hairline for tactile glass realism
-                                drawLine(
-                                    brush = Brush.horizontalGradient(
-                                        listOf(
-                                            Color.Transparent,
-                                            Color.White.copy(alpha = 0.18f),
-                                            Color.Transparent
-                                        )
-                                    ),
-                                    start = Offset(size.width * 0.14f, 0f),
-                                    end = Offset(size.width * 0.86f, 0f),
-                                    strokeWidth = 1.dp.toPx()
-                                )
-                            }
+                            .background(cardColor)
                     )
 
                     Column(
