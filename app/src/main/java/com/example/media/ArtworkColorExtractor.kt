@@ -200,32 +200,32 @@ object ArtworkColorExtractor {
         val pureSat = hsv[1].coerceIn(0.55f, 0.95f)
 
         // 1. Card background:
-        // Lighter and bright, but not too shiny (value ~0.50f), retaining true saturated hue
-        val cardSat = pureSat.coerceIn(0.65f, 0.95f)
-        val cardValTop = 0.52f
-        val cardValBottom = 0.44f
+        // Premium, deep, non-shiny glassmorphic tone (brightness ~0.24f-0.28f instead of 0.50f)
+        val cardSat = (pureSat * 0.75f).coerceIn(0.38f, 0.75f)
+        val cardValTop = 0.28f
+        val cardValBottom = 0.20f
         val cardBgTop = Color.hsv(hue, cardSat, cardValTop)
         val cardBgBottom = Color.hsv(hue, cardSat, cardValBottom)
-        val cardBackground = Color.hsv(hue, cardSat, 0.48f)
+        val cardBackground = Color.hsv(hue, cardSat, 0.24f)
 
         // 2. Main player sheet background:
-        // Dark shade of the extracted color, distinctly different in brightness from the card
-        val mainBgSat = (pureSat * 0.85f).coerceIn(0.45f, 0.85f)
-        val bgTop = Color.hsv(hue, mainBgSat, 0.17f)
-        val bgMidUpper = Color.hsv(hue, mainBgSat, 0.14f)
-        val bgMidLower = Color.hsv(hue, mainBgSat, 0.11f)
-        val bgBottom = Color.hsv(hue, mainBgSat, 0.08f)
+        // Ultra-deep dark shade of the extracted color (~0.08f-0.12f)
+        val mainBgSat = (pureSat * 0.70f).coerceIn(0.30f, 0.65f)
+        val bgTop = Color.hsv(hue, mainBgSat, 0.12f)
+        val bgMidUpper = Color.hsv(hue, mainBgSat, 0.10f)
+        val bgMidLower = Color.hsv(hue, mainBgSat, 0.08f)
+        val bgBottom = Color.hsv(hue, mainBgSat, 0.06f)
         val darkBackground = bgBottom
 
-        // 3. Sleek border wrapping the bottom of the card
-        val borderSat = (pureSat * 0.55f).coerceIn(0.25f, 0.65f)
-        val cardBorder = Color.hsv(hue, borderSat, 0.88f)
+        // 3. Sleek glass rim border wrapping the bottom of the card
+        val borderSat = (pureSat * 0.50f).coerceIn(0.20f, 0.55f)
+        val cardBorder = Color.hsv(hue, borderSat, 0.75f)
 
         val dominant = cardBackground
-        val secondary = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.40f, 0.90f), 0.25f)
-        val accent = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.50f, 0.95f), 0.98f)
-        val glow = Color.hsv(hue, pureSat, 0.88f)
-        val atmosphericBloom = Color.hsv(hue, (pureSat * 0.78f).coerceIn(0.45f, 0.88f), 0.40f)
+        val secondary = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.40f, 0.90f), 0.20f)
+        val accent = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.50f, 0.95f), 0.95f)
+        val glow = Color.hsv(hue, pureSat, 0.80f)
+        val atmosphericBloom = Color.hsv(hue, pureSat.coerceIn(0.45f, 0.85f), 0.40f)
         val playPauseGradTop = Color.hsv(hue, (pureSat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
         val playPauseGradBottom = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
         val playPauseCircle = playPauseGradTop

@@ -106,6 +106,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -379,6 +380,13 @@ fun PlayerSheet(
         label = "card_border_color"
     )
 
+    // Atmospheric bloom for diffused depth behind artwork
+    val animatedAtmosphericBloom by animateColorAsState(
+        targetValue = themeColors.atmosphericBloom,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "atmospheric_bloom"
+    )
+
     val cardColor = animatedCardBgTop
 
     val cardGradient = remember(animatedCardBgTop, animatedCardBgBottom) {
@@ -440,17 +448,16 @@ fun PlayerSheet(
                         .fillMaxWidth()
                         .weight(1f)
                         .shadow(
-                            elevation = 14.dp,
+                            elevation = 16.dp,
                             shape = cardShape,
-                            spotColor = Color.Black.copy(alpha = 0.70f),
-                            ambientColor = Color.Black.copy(alpha = 0.35f)
+                            spotColor = Color.Black.copy(alpha = 0.80f),
+                            ambientColor = Color.Black.copy(alpha = 0.45f)
                         )
                         .clip(cardShape)
-                        .background(cardGradient)
                         .drawWithContent {
                             drawContent()
                             val r = cardBottomCornerRadius.toPx()
-                            val strokeWidth = 2.dp.toPx()
+                            val strokeWidth = 1.6.dp.toPx()
                             val sideExtension = 20.dp.toPx()
                             val path = Path().apply {
                                 moveTo(0f, size.height - r - sideExtension)
@@ -470,29 +477,31 @@ fun PlayerSheet(
                                 )
                                 lineTo(size.width, size.height - r - sideExtension)
                             }
-                            // Sleek luminous accent border wrapping the bottom of the card
+                            // Sleek glass rim border wrapping the bottom of the card
                             drawPath(
                                 path = path,
                                 brush = Brush.horizontalGradient(
                                     colors = listOf(
-                                        animatedCardBorderColor.copy(alpha = 0.35f),
-                                        animatedCardBorderColor.copy(alpha = 0.95f),
-                                        animatedCardBorderColor.copy(alpha = 0.35f)
+                                        Color.White.copy(alpha = 0.08f),
+                                        animatedCardBorderColor.copy(alpha = 0.50f),
+                                        Color.White.copy(alpha = 0.28f),
+                                        animatedCardBorderColor.copy(alpha = 0.50f),
+                                        Color.White.copy(alpha = 0.08f)
                                     )
                                 ),
                                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                             )
-                            // Refined fine inner highlight line for sleek polished boundary
+                            // Refined fine inner highlight line for sleek polished glass boundary
                             drawPath(
                                 path = path,
                                 brush = Brush.horizontalGradient(
                                     colors = listOf(
-                                        Color.White.copy(alpha = 0.15f),
-                                        Color.White.copy(alpha = 0.65f),
-                                        Color.White.copy(alpha = 0.15f)
+                                        Color.Transparent,
+                                        Color.White.copy(alpha = 0.35f),
+                                        Color.Transparent
                                     )
                                 ),
-                                style = Stroke(width = 0.9.dp.toPx(), cap = StrokeCap.Round)
+                                style = Stroke(width = 0.8.dp.toPx(), cap = StrokeCap.Round)
                             )
                         }
                         .clickable(
@@ -500,10 +509,60 @@ fun PlayerSheet(
                             indication = null
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
+                    // Multi-layer glassmorphism: base deep tone + atmospheric radial glow + frosted glass specular sheen
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(cardGradient)
+                            .drawBehind {
+                                // 1. Base deep, non-shiny glass tone
+                                drawRect(brush = cardGradient)
+
+                                // 2. Diffused atmospheric radial bloom behind hero artwork (rich depth, never flat)
+                                val centerX = size.width / 2f
+                                val centerY = size.height * 0.38f
+                                val bloomRadius = size.width * 0.72f
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            animatedAtmosphericBloom.copy(alpha = 0.32f),
+                                            animatedAtmosphericBloom.copy(alpha = 0.10f),
+                                            Color.Transparent
+                                        ),
+                                        center = Offset(centerX, centerY),
+                                        radius = bloomRadius
+                                    ),
+                                    radius = bloomRadius,
+                                    center = Offset(centerX, centerY)
+                                )
+
+                                // 3. Frosted glass specular reflection sheen (angled top-left to bottom-right)
+                                drawRect(
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.09f),
+                                            Color.White.copy(alpha = 0.02f),
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.15f)
+                                        ),
+                                        start = Offset(0f, 0f),
+                                        end = Offset(size.width, size.height)
+                                    )
+                                )
+
+                                // 4. Subtle top specular hairline for tactile glass realism
+                                drawLine(
+                                    brush = Brush.horizontalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            Color.White.copy(alpha = 0.18f),
+                                            Color.Transparent
+                                        )
+                                    ),
+                                    start = Offset(size.width * 0.14f, 0f),
+                                    end = Offset(size.width * 0.86f, 0f),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
                     )
 
                     Column(
@@ -1345,9 +1404,9 @@ private fun DarkSilhouetteWaveform(
             val barTop = size.height - barHeight
             val barX = i * (barWidth + barGap)
 
-            // Translucent clean white tones so they pop cleanly over the lighter extracted card color
-            val tipColor = Color.White.copy(alpha = 0.45f)
-            val baseColor = Color.White.copy(alpha = 0.16f)
+            // Frosted translucent white bars harmonized with the dark glassmorphic card surface
+            val tipColor = Color.White.copy(alpha = 0.35f)
+            val baseColor = Color.White.copy(alpha = 0.10f)
 
             val barBrush = Brush.verticalGradient(
                 colors = listOf(tipColor, baseColor),
