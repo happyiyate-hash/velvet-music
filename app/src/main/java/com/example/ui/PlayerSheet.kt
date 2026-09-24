@@ -414,11 +414,24 @@ fun PlayerSheet(
                             indication = null
                         ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
-                    // Artwork-derived atmosphere matching player sheet
+                    // Artwork-derived atmosphere: saturated enough to feel intentional,
+                    // dark enough that the album art and controls remain the focus.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(playerSheetGradient)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        cardColor,
+                                        Color(
+                                            red = (cardColor.red * 0.80f).coerceIn(0f, 1f),
+                                            green = (cardColor.green * 0.80f).coerceIn(0f, 1f),
+                                            blue = (cardColor.blue * 0.80f).coerceIn(0f, 1f),
+                                            alpha = 1f
+                                        )
+                                    )
+                                )
+                            )
                     )
 
                     Column(
@@ -467,7 +480,7 @@ fun PlayerSheet(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Hero artwork: restored to original height, centered in middle, rounded and dominant
+                        // Hero artwork: larger, rounded and intentionally dominant.
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -511,6 +524,7 @@ fun PlayerSheet(
                         }
 
                         // Song identity sits immediately under the artwork.
+                        // Keying by track makes the entrance animation replay for every new song.
                         key(track.id) {
                             Column(
                                 modifier = Modifier
@@ -594,7 +608,7 @@ fun PlayerSheet(
 
                         Spacer(modifier = Modifier.height(5.dp))
 
-                        // Waveform Visualizer hugging bottom of the upper surface
+                        // Waveform Visualizer
                         DarkSilhouetteWaveform(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
@@ -650,7 +664,7 @@ fun PlayerSheet(
                         )
                     }
 
-                    // Circular Play / Pause Button
+                    // Circular Play / Pause Button (Scaled down, elegant proportions)
                     Box(
                         modifier = Modifier
                             .size(62.dp)
@@ -708,11 +722,11 @@ fun PlayerSheet(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // 4. DISCREET UP NEXT SWIPE-UP HANDLE
+                // 4. DISCREET UP NEXT SWIPE-UP HANDLE (Longer, modern gesture pill dragged down)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(28.dp)
+                        .height(24.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -742,86 +756,84 @@ fun PlayerSheet(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(2.dp))
-            }
+            Spacer(modifier = Modifier.height(2.dp))
+        }
 
-            // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed on swipe-up or handle tap)
-            if (upNextP > 0.001f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            translationY = (1f - upNextP) * totalHeight.toPx()
-                            alpha = upNextP.coerceIn(0f, 1f)
-                        }
-                        .background(playerSheetGradient)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { /* Absorb clicks on empty space of up next queue */ }
+        // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed on swipe-up or handle tap)
+        if (upNextP > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = (1f - upNextP) * totalHeight.toPx()
+                        alpha = upNextP.coerceIn(0f, 1f)
+                    }
+                    .background(playerSheetGradient)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { /* Absorb clicks on empty space of up next queue */ }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Column(
+                    // Header
+                    Row(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Header
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        IconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    upNextExpanded.animateTo(0f)
+                                }
+                            }
                         ) {
-                            IconButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        upNextExpanded.animateTo(0f)
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Collapse Queue",
-                                    tint = Color.White
-                                )
-                            }
-
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = "Playing from Queue",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "${orderedQueueItems.size} tracks",
-                                    fontSize = 12.sp,
-                                    color = Color.White.copy(alpha = 0.60f)
-                                )
-                            }
-
-                            TextButton(
-                                onClick = {
-                                    Toast.makeText(context, "Queue saved to playlist", Toast.LENGTH_SHORT).show()
-                                }
-                            ) {
-                                Text(
-                                    text = "Save",
-                                    color = themeColors.accent,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Collapse Queue",
+                                tint = Color.White
+                            )
                         }
 
-                        // Pull-down handle to collapse back to player
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(20.dp)
-                                .pointerInput(Unit) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Playing from Queue",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "${orderedQueueItems.size} tracks",
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = 0.60f)
+                            )
+                        }
+
+                        TextButton(
+                            onClick = {
+                                Toast.makeText(context, "Queue saved to playlist", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Text(
+                                text = "Save",
+                                color = themeColors.accent,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+
+                    // Pull-down handle to collapse back to player
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(20.dp)
+                            .pointerInput(Unit) {
                                 detectVerticalDragGestures { _, dragAmount ->
                                     if (dragAmount > 15f) {
                                         coroutineScope.launch {
@@ -830,86 +842,85 @@ fun PlayerSheet(
                                     }
                                 }
                             },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(36.dp)
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(Color.White.copy(alpha = 0.30f))
-                            )
-                        }
-
-                        // Full-width interactive queue: zero horizontal padding, matching background
-                        LazyColumn(
-                            state = queueListState,
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            itemsIndexed(
-                                items = orderedQueueItems,
-                                key = { _, item -> item.id }
-                            ) { queueIndex, queueTrack ->
-                                val isCurrent = queueTrack.id == track.id
-                                val isDragging = queueTrack.id == activeQueueDragId
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = 0.30f))
+                        )
+                    }
 
-                                UpNextTrackRow(
-                                    track = queueTrack,
-                                    isCurrent = isCurrent,
-                                    isPlaying = isPlaying,
-                                    accentColor = themeColors.accent,
-                                    surfaceColor = cardColor,
-                                    onClick = { onSelectQueueTrack(queueTrack) },
-                                    onPlayNext = {
-                                        val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
-                                        val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
-                                        if (currentIndex >= 0) {
-                                            val destination = if (playingIndex >= 0) playingIndex + 1 else 0
-                                            val updated = orderedQueueItems.toMutableList().apply {
-                                                val moved = removeAt(currentIndex)
-                                                add(destination.coerceAtMost(size), moved)
-                                            }
-                                            orderedQueueItems = updated
-                                            onUpdateQueue?.invoke(updated)
-                                            coroutineScope.launch {
-                                                queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
-                                            }
+                    // Full interactive reorderable/swipeable queue
+                    LazyColumn(
+                        state = queueListState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        itemsIndexed(
+                            items = orderedQueueItems,
+                            key = { _, item -> item.id }
+                        ) { queueIndex, queueTrack ->
+                            val isCurrent = queueTrack.id == track.id
+                            val isDragging = queueTrack.id == activeQueueDragId
+
+                            UpNextTrackRow(
+                                track = queueTrack,
+                                isCurrent = isCurrent,
+                                isPlaying = isPlaying,
+                                accentColor = themeColors.accent,
+                                surfaceColor = cardColor,
+                                onClick = { onSelectQueueTrack(queueTrack) },
+                                onPlayNext = {
+                                    val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
+                                    val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
+                                    if (currentIndex >= 0) {
+                                        val destination = if (playingIndex >= 0) playingIndex + 1 else 0
+                                        val updated = orderedQueueItems.toMutableList().apply {
+                                            val moved = removeAt(currentIndex)
+                                            add(destination.coerceAtMost(size), moved)
                                         }
-                                    },
-                                    onDelete = {
-                                        if (!isCurrent && activeQueueDragId == null) {
-                                            val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
-                                            orderedQueueItems = updated
-                                            onUpdateQueue?.invoke(updated)
+                                        orderedQueueItems = updated
+                                        onUpdateQueue?.invoke(updated)
+                                        coroutineScope.launch {
+                                            queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
                                         }
-                                    },
-                                    onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
-                                    onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
-                                    onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
-                                    isDragging = isDragging,
-                                    dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
-                                    virtualDisplacementY = run {
-                                        val dragId = activeQueueDragId ?: return@run 0f
-                                        if (isDragging) return@run 0f
-                                        val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
-                                        if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
-                                        val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
-                                        when {
-                                            dragStartIndex < queueDragTargetIndex -> {
-                                                if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
-                                            }
-                                            dragStartIndex > queueDragTargetIndex -> {
-                                                if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
-                                            }
-                                            else -> 0f
+                                    }
+                                },
+                                onDelete = {
+                                    if (!isCurrent && activeQueueDragId == null) {
+                                        val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
+                                        orderedQueueItems = updated
+                                        onUpdateQueue?.invoke(updated)
+                                    }
+                                },
+                                onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
+                                onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
+                                onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
+                                isDragging = isDragging,
+                                dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
+                                virtualDisplacementY = run {
+                                    val dragId = activeQueueDragId ?: return@run 0f
+                                    if (isDragging) return@run 0f
+                                    val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
+                                    if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
+                                    val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
+                                    when {
+                                        dragStartIndex < queueDragTargetIndex -> {
+                                            if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
                                         }
-                                    },
-                                    isDropTarget = false
-                                )
-                            }
+                                        dragStartIndex > queueDragTargetIndex -> {
+                                            if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
+                                        }
+                                        else -> 0f
+                                    }
+                                },
+                                isDropTarget = false
+                            )
                         }
                     }
                 }
@@ -994,6 +1005,7 @@ fun PlayerSheet(
             )
         }
     }
+}
 }
 
 
