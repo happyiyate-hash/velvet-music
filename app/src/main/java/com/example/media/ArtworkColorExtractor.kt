@@ -8,6 +8,7 @@ import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.palette.graphics.Palette
 import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.max
@@ -144,15 +145,75 @@ object ArtworkColorExtractor {
             val height = bitmap.height
             if (width <= 0 || height <= 0) return null
 
+            // 1. Use Android Palette's quantization if available
+            val palette = try {
+                Palette.from(bitmap).maximumColorCount(32).generate()
+            } catch (_: Throwable) {
+                null
+            }
+
+            if (palette != null) {
+                val swatches = palette.swatches
+                if (swatches.isNotEmpty()) {
+                    val hsv = FloatArray(3)
+
+                    // Find swatches that carry true visual color (filter out pure black/white)
+                    val coloredSwatches = swatches.filter { s ->
+                        android.graphics.Color.colorToHSV(s.rgb, hsv)
+                        val sat = hsv[1]
+                        val value = hsv[2]
+                        sat >= 0.16f && value in 0.12f..0.94f
+                    }
+
+                    if (coloredSwatches.isNotEmpty()) {
+                        // If dominantSwatch has clear visual saturation, use it
+                        val dominant = palette.dominantSwatch
+                        if (dominant != null) {
+                            android.graphics.Color.colorToHSV(dominant.rgb, hsv)
+                            if (hsv[1] >= 0.28f && hsv[2] in 0.15f..0.90f) {
+                                return Color(dominant.rgb)
+                            }
+                        }
+
+                        val vibrantCandidates = listOfNotNull(
+                            palette.vibrantSwatch,
+                            palette.darkVibrantSwatch,
+                            palette.lightVibrantSwatch
+                        ).filter { s ->
+                            android.graphics.Color.colorToHSV(s.rgb, hsv)
+                            hsv[1] >= 0.25f && hsv[2] in 0.15f..0.90f
+                        }
+
+                        // Score by population and saturation: pick the most prominent colored visual swatch
+                        val best = (coloredSwatches + vibrantCandidates).distinctBy { it.rgb }.maxByOrNull { s ->
+                            android.graphics.Color.colorToHSV(s.rgb, hsv)
+                            val sat = hsv[1]
+                            val isVibrantBonus = if (s == palette.vibrantSwatch || s == palette.darkVibrantSwatch) 1.5 else 1.0
+                            s.population.toDouble() * (sat.toDouble() + 0.35) * isVibrantBonus
+                        }
+
+                        if (best != null) {
+                            return Color(best.rgb)
+                        }
+                    } else {
+                        // Monochromatic/grayscale artwork: pick dominant swatch
+                        palette.dominantSwatch?.let { return Color(it.rgb) }
+                    }
+                }
+            }
+
+            // 2. Direct pixel sampling with hue clustering fallback
             var totalR = 0L
             var totalG = 0L
             var totalB = 0L
             var sampleCount = 0
-            var maxVibrancy = -1f
-            var vibrantColor: Color? = null
+            val hsvTemp = FloatArray(3)
 
-            val stepX = max(1, width / 12)
-            val stepY = max(1, height / 12)
+            class HueBucket(var count: Int = 0, var totalR: Long = 0, var totalG: Long = 0, var totalB: Long = 0, var maxSat: Float = 0f)
+            val buckets = Array(12) { HueBucket() }
+
+            val stepX = max(1, width / 16)
+            val stepY = max(1, height / 16)
             for (x in 0 until width step stepX) {
                 for (y in 0 until height step stepY) {
                     val pixel = bitmap.getPixel(x, y)
@@ -161,32 +222,40 @@ object ArtworkColorExtractor {
                     val r = (pixel ushr 16) and 0xFF
                     val g = (pixel ushr 8) and 0xFF
                     val b = pixel and 0xFF
-                    val brightness = r * 0.299f + g * 0.587f + b * 0.114f
-                    if (brightness in 35.0..225.0) {
-                        totalR += r
-                        totalG += g
-                        totalB += b
-                        sampleCount++
-                        val maxC = max(r, max(g, b)).toFloat()
-                        val minC = min(r, min(g, b)).toFloat()
-                        val saturation = if (maxC > 0f) (maxC - minC) / maxC else 0f
-                        if (saturation > maxVibrancy && saturation > 0.22f) {
-                            maxVibrancy = saturation
-                            vibrantColor = Color(r, g, b)
+                    android.graphics.Color.RGBToHSV(r, g, b, hsvTemp)
+                    val sat = hsvTemp[1]
+                    val value = hsvTemp[2]
+                    if (sat >= 0.18f && value in 0.12f..0.92f) {
+                        val bucketIdx = ((hsvTemp[0] / 30f).toInt()).coerceIn(0, 11)
+                        buckets[bucketIdx].count++
+                        buckets[bucketIdx].totalR += r
+                        buckets[bucketIdx].totalG += g
+                        buckets[bucketIdx].totalB += b
+                        if (sat > buckets[bucketIdx].maxSat) {
+                            buckets[bucketIdx].maxSat = sat
                         }
                     }
+                    totalR += r
+                    totalG += g
+                    totalB += b
+                    sampleCount++
                 }
             }
 
-            when {
-                vibrantColor != null && maxVibrancy > 0.28f -> vibrantColor
-                sampleCount > 0 -> Color(
+            val bestBucket = buckets.maxByOrNull { it.count * (it.maxSat + 0.2f) }
+            if (bestBucket != null && bestBucket.count > 0) {
+                Color(
+                    (bestBucket.totalR / bestBucket.count).toInt().coerceIn(0, 255),
+                    (bestBucket.totalG / bestBucket.count).toInt().coerceIn(0, 255),
+                    (bestBucket.totalB / bestBucket.count).toInt().coerceIn(0, 255)
+                )
+            } else if (sampleCount > 0) {
+                Color(
                     (totalR / sampleCount).toInt().coerceIn(0, 255),
                     (totalG / sampleCount).toInt().coerceIn(0, 255),
                     (totalB / sampleCount).toInt().coerceIn(0, 255)
                 )
-                else -> null
-            }
+            } else null
         } catch (_: Exception) {
             null
         }
@@ -196,43 +265,42 @@ object ArtworkColorExtractor {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(baseColor.toArgb(), hsv)
         val hue = hsv[0]
-        // Saturation: keep the exact color rich and authentic, never mix with white so it does not wash out
-        val pureSat = hsv[1].coerceIn(0.55f, 0.95f)
+        val rawSat = hsv[1]
 
-        // 1. Card background:
-        // Use the exact dark side brightness (~0.20f) uniformly across the entire card
-        val cardSat = (pureSat * 0.75f).coerceIn(0.38f, 0.75f)
-        val cardVal = 0.20f
-        val cardBackground = Color.hsv(hue, cardSat, cardVal)
-        val cardBgTop = cardBackground
-        val cardBgBottom = cardBackground
+        // YouTube Music Artwork Background Color System:
+        // 1. Preserve exact hue and character of the artwork. Do NOT blend with another color,
+        //    do NOT neutralize it, and do NOT replace it with generic dark/brown/red.
+        // 2. Preserve saturation: keep enough saturation so it never washes out or grays.
+        val sat = if (rawSat > 0.05f) rawSat.coerceIn(0.55f, 0.95f) else 0f
 
-        // 2. Main player sheet background:
-        // Ultra-deep dark shade of the extracted color (~0.06f-0.10f)
-        val mainBgSat = (pureSat * 0.70f).coerceIn(0.30f, 0.65f)
-        val bgTop = Color.hsv(hue, mainBgSat, 0.10f)
-        val bgMidUpper = Color.hsv(hue, mainBgSat, 0.08f)
-        val bgMidLower = Color.hsv(hue, mainBgSat, 0.07f)
-        val bgBottom = Color.hsv(hue, mainBgSat, 0.05f)
+        // 3. Reduce ONLY brightness/luminance to create a rich, dark player background.
+        //    Provide subtle tonal variation across the player sheet from top to bottom
+        //    using the EXACT same hue and saturation, creating natural atmospheric depth:
+        //    - Top (header & status bar): slightly more luminous (~0.22f)
+        //    - Mid-upper (around album art): ~0.18f
+        //    - Mid-lower (around title, artist, progress): ~0.14f
+        //    - Bottom (around playback controls & handle): ~0.10f
+        val bgTop = Color.hsv(hue, sat, 0.22f)
+        val bgMidUpper = Color.hsv(hue, sat, 0.18f)
+        val bgMidLower = Color.hsv(hue, sat, 0.14f)
+        val bgBottom = Color.hsv(hue, sat, 0.10f)
+
         val darkBackground = bgBottom
+        val dominant = bgTop
+        val secondary = bgMidLower
+        val accent = Color.hsv(hue, sat, 0.95f)
+        val glow = Color.hsv(hue, sat, 0.75f)
+        val atmosphericBloom = Color.hsv(hue, sat, 0.28f)
+        val cardBorder = Color.hsv(hue, sat, 0.35f).copy(alpha = 0.15f)
 
-        // 3. Sleek border wrapping the bottom of the card
-        val borderSat = (pureSat * 0.50f).coerceIn(0.20f, 0.55f)
-        val cardBorder = Color.hsv(hue, borderSat, 0.65f)
-
-        val dominant = cardBackground
-        val secondary = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.40f, 0.90f), 0.20f)
-        val accent = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.50f, 0.95f), 0.95f)
-        val glow = Color.hsv(hue, pureSat, 0.80f)
-        val atmosphericBloom = Color.hsv(hue, pureSat.coerceIn(0.45f, 0.85f), 0.40f)
-        val playPauseGradTop = Color.hsv(hue, (pureSat * 0.76f).coerceIn(0.45f, 0.88f), 0.48f)
-        val playPauseGradBottom = Color.hsv(hue, (pureSat * 0.85f).coerceIn(0.55f, 0.92f), 0.24f)
+        val playPauseGradTop = Color.hsv(hue, (sat * 0.85f).coerceIn(0.45f, 0.88f), 0.48f)
+        val playPauseGradBottom = Color.hsv(hue, (sat * 0.90f).coerceIn(0.55f, 0.92f), 0.24f)
         val playPauseCircle = playPauseGradTop
-        val playPauseBorder = Color.hsv(hue, pureSat, 0.68f).copy(alpha = 0.40f)
+        val playPauseBorder = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.40f)
 
         val amb1 = dominant
-        val amb2 = Color.hsv((hue + 36f) % 360f, (pureSat * 0.85f).coerceIn(0.40f, 0.90f), 0.70f)
-        val amb3 = Color.hsv((hue + 160f) % 360f, (pureSat * 0.75f).coerceIn(0.35f, 0.85f), 0.65f)
+        val amb2 = Color.hsv((hue + 25f) % 360f, (sat * 0.85f).coerceIn(0.40f, 0.90f), 0.70f)
+        val amb3 = Color.hsv((hue + 140f) % 360f, (sat * 0.75f).coerceIn(0.35f, 0.85f), 0.65f)
         val ambientCharcoal = Color(0xFF101117)
 
         return TrackThemeColors(
@@ -255,8 +323,8 @@ object ArtworkColorExtractor {
             ambient3 = amb3,
             ambientCharcoal = ambientCharcoal,
             rawExtractedColor = baseColor,
-            cardBackground = cardBgTop,
-            cardBackgroundBottom = cardBgBottom,
+            cardBackground = bgTop,
+            cardBackgroundBottom = bgMidLower,
             cardBorder = cardBorder,
             playerSheetBackground = bgTop,
             playerSheetBackgroundBottom = bgBottom

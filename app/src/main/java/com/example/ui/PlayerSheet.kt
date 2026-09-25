@@ -349,28 +349,28 @@ fun PlayerSheet(
         queueDragTargetIndex = -1
     }
 
-    // Lighter, bright extracted color for the card (preserving pure saturation, never washed out with white)
-    val animatedCardBgTop by animateColorAsState(
-        targetValue = themeColors.cardBackground,
+    // YouTube Music-style Artwork Background Color System:
+    // Preserves exact hue and saturation, reducing only brightness/luminance
+    // with subtle tonal variation from top to bottom.
+    val animatedBgTop by animateColorAsState(
+        targetValue = themeColors.bgTop,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "card_bg_top"
+        label = "bg_top"
     )
-    val animatedCardBgBottom by animateColorAsState(
-        targetValue = themeColors.cardBackgroundBottom,
+    val animatedBgMidUpper by animateColorAsState(
+        targetValue = themeColors.bgMidUpper,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "card_bg_bottom"
+        label = "bg_mid_upper"
     )
-
-    // Dark shade of the extracted color for the main player sheet background
-    val animatedMainBgTop by animateColorAsState(
-        targetValue = themeColors.playerSheetBackground,
+    val animatedBgMidLower by animateColorAsState(
+        targetValue = themeColors.bgMidLower,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "main_bg_top"
+        label = "bg_mid_lower"
     )
-    val animatedMainBgBottom by animateColorAsState(
-        targetValue = themeColors.playerSheetBackgroundBottom,
+    val animatedBgBottom by animateColorAsState(
+        targetValue = themeColors.bgBottom,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "main_bg_bottom"
+        label = "bg_bottom"
     )
 
     // Sleek border accent derived from the extracted color
@@ -387,32 +387,23 @@ fun PlayerSheet(
         label = "atmospheric_bloom"
     )
 
-    val cardColor = animatedCardBgTop
+    val cardColor = animatedBgTop
 
-    val cardGradient = remember(animatedCardBgTop, animatedCardBgBottom) {
+    val playerBackgroundGradient = remember(animatedBgTop, animatedBgMidUpper, animatedBgMidLower, animatedBgBottom) {
         Brush.verticalGradient(
-            colors = listOf(
-                animatedCardBgTop,
-                animatedCardBgBottom
-            )
+            0.0f to animatedBgTop,
+            0.35f to animatedBgMidUpper,
+            0.68f to animatedBgMidLower,
+            1.0f to animatedBgBottom
         )
     }
 
-    val mainBackgroundGradient = remember(animatedMainBgTop, animatedMainBgBottom) {
-        Brush.verticalGradient(
-            colors = listOf(
-                animatedMainBgTop,
-                animatedMainBgBottom
-            )
-        )
-    }
-
-    val playerSheetGradient = mainBackgroundGradient
+    val playerSheetGradient = playerBackgroundGradient
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(mainBackgroundGradient)
+            .background(playerBackgroundGradient)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -434,258 +425,191 @@ fun PlayerSheet(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. FULL-WIDTH IMMERSIVE UPPER PLAYER SURFACE
-                // Stretches from the absolute top of the screen (behind status bar) to the bottom endpoint above controls.
-                // Bright, genuine extracted color with a sleek luminous border wrapping the bottom boundary
-                val cardBottomCornerRadius = 30.dp
-                val cardShape = RoundedCornerShape(
-                    bottomStart = cardBottomCornerRadius,
-                    bottomEnd = cardBottomCornerRadius
-                )
-
-                Box(
+                // 1. UPPER HERO & TRACK CONTENT
+                // Seamlessly unified with the player background gradient preserving exact hue & saturation
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .shadow(
-                            elevation = 16.dp,
-                            shape = cardShape,
-                            spotColor = Color.Black.copy(alpha = 0.80f),
-                            ambientColor = Color.Black.copy(alpha = 0.45f)
-                        )
-                        .clip(cardShape)
-                        .drawWithContent {
-                            drawContent()
-                            val r = cardBottomCornerRadius.toPx()
-                            val strokeWidth = 1.6.dp.toPx()
-                            val sideExtension = 20.dp.toPx()
-                            val path = Path().apply {
-                                moveTo(0f, size.height - r - sideExtension)
-                                lineTo(0f, size.height - r)
-                                arcTo(
-                                    rect = Rect(0f, size.height - 2 * r, 2 * r, size.height),
-                                    startAngleDegrees = 180f,
-                                    sweepAngleDegrees = -90f,
-                                    forceMoveTo = false
-                                )
-                                lineTo(size.width - r, size.height)
-                                arcTo(
-                                    rect = Rect(size.width - 2 * r, size.height - 2 * r, size.width, size.height),
-                                    startAngleDegrees = 90f,
-                                    sweepAngleDegrees = -90f,
-                                    forceMoveTo = false
-                                )
-                                lineTo(size.width, size.height - r - sideExtension)
-                            }
-                            // Sleek border wrapping the bottom of the card
-                            drawPath(
-                                path = path,
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        animatedCardBorderColor.copy(alpha = 0.20f),
-                                        animatedCardBorderColor.copy(alpha = 0.55f),
-                                        animatedCardBorderColor.copy(alpha = 0.20f)
-                                    )
-                                ),
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                        .padding(top = statusBarTop + 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Minimal top bar: collapse on the left, actions on the right.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("player_collapse_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Collapse Player",
+                                tint = Color.White.copy(alpha = 0.82f),
+                                modifier = Modifier.size(26.dp)
                             )
                         }
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { /* Absorb clicks on empty space of main surface */ }
-                ) {
-                    // Uniform, solid dark color across the entire card surface
+
+                        IconButton(
+                            onClick = { showActionSheet = true },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("player_menu_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "More Options",
+                                tint = Color.White.copy(alpha = 0.88f),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Hero artwork: larger, rounded and intentionally dominant.
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .background(cardColor)
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = statusBarTop + 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        // Minimal top bar: collapse on the left, actions on the right.
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp)
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .testTag("player_collapse_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Collapse Player",
-                                    tint = Color.White.copy(alpha = 0.82f),
-                                    modifier = Modifier.size(26.dp)
-                                )
-                            }
-
-                            IconButton(
-                                onClick = { showActionSheet = true },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .testTag("player_menu_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreHoriz,
-                                    contentDescription = "More Options",
-                                    tint = Color.White.copy(alpha = 0.88f),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // Hero artwork: larger, rounded and intentionally dominant.
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        BoxWithConstraints(
+                            modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            BoxWithConstraints(
-                                modifier = Modifier.fillMaxSize(),
+                            val artSize = minOf(
+                                maxWidth - 16.dp,
+                                maxHeight * 0.98f
+                            ).coerceIn(210.dp, 320.dp)
+
+                            Box(
+                                modifier = Modifier
+                                    .size(artSize)
+                                    .graphicsLayer {
+                                        scaleX = artworkScale
+                                        scaleY = artworkScale
+                                    }
+                                    .shadow(
+                                        elevation = artworkElevation,
+                                        shape = RoundedCornerShape(artworkCornerRadius),
+                                        spotColor = Color.Black.copy(alpha = if (isPlaying) 0.78f else 0.52f),
+                                        ambientColor = Color.Black
+                                    )
+                                    .clip(RoundedCornerShape(artworkCornerRadius)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                val artSize = minOf(
-                                    maxWidth - 16.dp,
-                                    maxHeight * 0.98f
-                                ).coerceIn(210.dp, 320.dp)
-
-                                Box(
-                                    modifier = Modifier
-                                        .size(artSize)
-                                        .graphicsLayer {
-                                            scaleX = artworkScale
-                                            scaleY = artworkScale
-                                        }
-                                        .shadow(
-                                            elevation = artworkElevation,
-                                            shape = RoundedCornerShape(artworkCornerRadius),
-                                            spotColor = Color.Black.copy(alpha = if (isPlaying) 0.78f else 0.52f),
-                                            ambientColor = Color.Black
-                                        )
-                                        .clip(RoundedCornerShape(artworkCornerRadius)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    TrackArtworkImage(
-                                        track = track,
-                                        contentDescription = track.title,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
+                                TrackArtworkImage(
+                                    track = track,
+                                    contentDescription = track.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
                         }
-
-                        // Song identity sits immediately under the artwork.
-                        // Keying by track makes the entrance animation replay for every new song.
-                        key(track.id) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp),
-                                horizontalAlignment = Alignment.Start
-                            ) {
-                                AnimatedVisibility(
-                                    visible = true,
-                                    enter = slideInHorizontally(
-                                        initialOffsetX = { fullWidth -> fullWidth / 3 },
-                                        animationSpec = tween(
-                                            durationMillis = 430,
-                                            easing = FastOutSlowInEasing
-                                        )
-                                    ) + fadeIn(
-                                        animationSpec = tween(
-                                            durationMillis = 300,
-                                            easing = FastOutSlowInEasing
-                                        )
-                                    ),
-                                    label = "track_title_enter"
-                                ) {
-                                    MarqueeTrackTitle(
-                                        title = track.title,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .testTag("player_track_title")
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(3.dp))
-
-                                AnimatedVisibility(
-                                    visible = true,
-                                    enter = slideInHorizontally(
-                                        initialOffsetX = { fullWidth -> fullWidth / 3 },
-                                        animationSpec = tween(
-                                            durationMillis = 430,
-                                            delayMillis = 90,
-                                            easing = FastOutSlowInEasing
-                                        )
-                                    ) + fadeIn(
-                                        animationSpec = tween(
-                                            durationMillis = 300,
-                                            delayMillis = 90,
-                                            easing = FastOutSlowInEasing
-                                        )
-                                    ),
-                                    label = "track_artist_enter"
-                                ) {
-                                    Text(
-                                        text = track.artist.uppercase(),
-                                        fontSize = 12.5.sp,
-                                        letterSpacing = 1.6.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.White.copy(alpha = 0.62f),
-                                        textAlign = TextAlign.Start,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .testTag("player_track_artist")
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Progress Bar & Timestamps
-                        NowPlayingProgressBar(
-                            positionMs = playbackPositionMs,
-                            durationMs = track.durationMs,
-                            isPlaying = isPlaying,
-                            onSeekTo = onSeekTo,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(5.dp))
-
-                        // Waveform Visualizer
-                        DarkSilhouetteWaveform(
-                            isPlaying = isPlaying,
-                            telemetry = telemetry,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                                .clip(cardShape)
-                        )
                     }
+
+                    // Song identity sits immediately under the artwork.
+                    // Keying by track makes the entrance animation replay for every new song.
+                    key(track.id) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    initialOffsetX = { fullWidth -> fullWidth / 3 },
+                                    animationSpec = tween(
+                                        durationMillis = 430,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                ) + fadeIn(
+                                    animationSpec = tween(
+                                        durationMillis = 300,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                ),
+                                label = "track_title_enter"
+                            ) {
+                                MarqueeTrackTitle(
+                                    title = track.title,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("player_track_title")
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(3.dp))
+
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = slideInHorizontally(
+                                    initialOffsetX = { fullWidth -> fullWidth / 3 },
+                                    animationSpec = tween(
+                                        durationMillis = 430,
+                                        delayMillis = 90,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                ) + fadeIn(
+                                    animationSpec = tween(
+                                        durationMillis = 300,
+                                        delayMillis = 90,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                ),
+                                label = "track_artist_enter"
+                            ) {
+                                Text(
+                                    text = track.artist.uppercase(),
+                                    fontSize = 12.5.sp,
+                                    letterSpacing = 1.6.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White.copy(alpha = 0.62f),
+                                    textAlign = TextAlign.Start,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("player_track_artist")
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Progress Bar & Timestamps
+                    NowPlayingProgressBar(
+                        positionMs = playbackPositionMs,
+                        durationMs = track.durationMs,
+                        isPlaying = isPlaying,
+                        onSeekTo = onSeekTo,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(5.dp))
+
+                    // Waveform Visualizer
+                    DarkSilhouetteWaveform(
+                        isPlaying = isPlaying,
+                        telemetry = telemetry,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
