@@ -2125,20 +2125,20 @@ fun NowPlayingActionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 24.dp)
+                .padding(bottom = 12.dp)
                 .testTag("now_playing_action_sheet")
         ) {
-            // Track Header: crisp, album-jacket thumbnail (10dp radius, no border/shadow)
+            // Track Header: sharp, album-jacket thumbnail at the very left edge
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(start = 12.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(50.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(4.dp))
                 ) {
                     TrackArtworkImage(
                         track = track,
@@ -2147,11 +2147,11 @@ fun NowPlayingActionSheet(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                Spacer(modifier = Modifier.width(14.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = track.title.substringBefore(" - "),
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = ActionIconAshWhite,
                         maxLines = 1,
@@ -2160,7 +2160,7 @@ fun NowPlayingActionSheet(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "${track.artist} • ${track.album}",
-                        fontSize = 13.sp,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.Normal,
                         color = ActionIconSecondary,
                         maxLines = 1,
@@ -2173,74 +2173,62 @@ fun NowPlayingActionSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                    .padding(start = 12.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
                     .height(0.6.dp)
                     .background(ActionSheetDivider)
             )
 
-            // 1. Playback Group
+            // Compact action rows tightly packed to reduce overall sheet height
             SheetActionRow(
                 title = "Play next",
-                icon = { ActionPlayNextIcon(modifier = Modifier.size(24.dp)) },
+                icon = { ActionPlayNextIcon(modifier = Modifier.size(22.dp)) },
                 onClick = onPlayNext
             )
             SheetActionRow(
                 title = "Add to queue",
-                icon = { ActionQueueIcon(modifier = Modifier.size(24.dp)) },
+                icon = { ActionQueueIcon(modifier = Modifier.size(22.dp)) },
                 onClick = onQueue
             )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // 2. Library Group
             SheetActionRow(
                 title = if (isFavorite) "Remove from favourites" else "Add to favourites",
                 icon = {
                     ActionFavoriteIcon(
                         isFavorite = isFavorite,
                         tint = if (isFavorite) accentColor else ActionIconSecondary,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 },
                 onClick = onToggleFavorite
             )
             SheetActionRow(
                 title = "Add to playlist",
-                icon = { ActionPlaylistIcon(modifier = Modifier.size(24.dp)) },
+                icon = { ActionPlaylistIcon(modifier = Modifier.size(22.dp)) },
                 onClick = onAddToPlaylist
             )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // 3. Experience Group
             SheetActionRow(
                 title = "Audio Visualizer",
-                icon = { ActionVisualizerIcon(modifier = Modifier.size(24.dp)) },
+                icon = { ActionVisualizerIcon(modifier = Modifier.size(22.dp)) },
                 onClick = onOpenVisualizer
             )
             SheetActionRow(
                 title = "Synced Lyrics",
-                icon = { ActionLyricsIcon(modifier = Modifier.size(24.dp)) },
+                icon = { ActionLyricsIcon(modifier = Modifier.size(22.dp)) },
                 onClick = onOpenLyrics
             )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // 4. Management / Destructive Group
             SheetActionRow(
                 title = "Share song",
-                icon = { ActionShareIcon(modifier = Modifier.size(24.dp)) },
+                icon = { ActionShareIcon(modifier = Modifier.size(22.dp)) },
                 onClick = onShare
             )
             SheetActionRow(
                 title = "Song information",
-                icon = { ActionInfoIcon(modifier = Modifier.size(24.dp)) },
+                icon = { ActionInfoIcon(modifier = Modifier.size(22.dp)) },
                 onClick = onSongInfo
             )
             SheetActionRow(
                 title = "Delete from library",
                 textColor = ActionIconDestructive,
-                icon = { ActionDeleteIcon(modifier = Modifier.size(24.dp), tint = ActionIconDestructive) },
+                icon = { ActionDeleteIcon(modifier = Modifier.size(22.dp), tint = ActionIconDestructive) },
                 onClick = onDelete
             )
         }
@@ -2360,21 +2348,21 @@ private fun SheetActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(38.dp)
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp),
+            .padding(start = 12.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size(24.dp),
             contentAlignment = Alignment.Center
         ) {
             icon()
         }
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         Text(
             text = title,
-            fontSize = 15.sp,
+            fontSize = 14.5.sp,
             fontWeight = FontWeight.Normal,
             color = textColor,
             maxLines = 1,

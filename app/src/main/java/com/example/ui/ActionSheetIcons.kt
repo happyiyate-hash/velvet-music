@@ -183,44 +183,45 @@ fun ActionFavoriteIcon(
             val oy = (size.height - 32f * scale) / 2f
             val strokeW = 2.4f * scale
 
-            // Balanced, proportional heart path (thinner than previous wide version, perfectly centered)
+            // Generous, wide-bodied heart with smooth round curves and optical breathing room
             val path = Path().apply {
-                moveTo(ox + 16f * scale, oy + 25.5f * scale)
-                // Left flank up
+                // Bottom tip
+                moveTo(ox + 16f * scale, oy + 26f * scale)
+                // Left flank curving wide outward
                 cubicTo(
-                    ox + 11.2f * scale, oy + 21.2f * scale,
-                    ox + 6.0f * scale, oy + 17.5f * scale,
-                    ox + 6.0f * scale, oy + 13.0f * scale
+                    ox + 9.5f * scale, oy + 21f * scale,
+                    ox + 3.2f * scale, oy + 16f * scale,
+                    ox + 3.2f * scale, oy + 11.8f * scale
                 )
-                // Left shoulder curve
+                // Wide left shoulder top curve
                 cubicTo(
-                    ox + 6.0f * scale, oy + 8.8f * scale,
-                    ox + 9.2f * scale, oy + 6.5f * scale,
-                    ox + 12.5f * scale, oy + 6.5f * scale
+                    ox + 3.2f * scale, oy + 7.2f * scale,
+                    ox + 7.2f * scale, oy + 5.2f * scale,
+                    ox + 11.5f * scale, oy + 5.2f * scale
                 )
-                // Dip into center cleft
+                // Gracefully dips into center cleft
                 cubicTo(
-                    ox + 14.2f * scale, oy + 6.5f * scale,
-                    ox + 15.4f * scale, oy + 7.6f * scale,
-                    ox + 16f * scale, oy + 9.5f * scale
+                    ox + 13.8f * scale, oy + 5.2f * scale,
+                    ox + 15.3f * scale, oy + 6.8f * scale,
+                    ox + 16f * scale, oy + 9.0f * scale
                 )
-                // Right lobe out from center cleft
+                // Right shoulder curves out from center cleft
                 cubicTo(
-                    ox + 16.6f * scale, oy + 7.6f * scale,
-                    ox + 17.8f * scale, oy + 6.5f * scale,
-                    ox + 19.5f * scale, oy + 6.5f * scale
+                    ox + 16.7f * scale, oy + 6.8f * scale,
+                    ox + 18.2f * scale, oy + 5.2f * scale,
+                    ox + 20.5f * scale, oy + 5.2f * scale
                 )
-                // Right shoulder curve
+                // Wide right shoulder top curve
                 cubicTo(
-                    ox + 22.8f * scale, oy + 6.5f * scale,
-                    ox + 26.0f * scale, oy + 8.8f * scale,
-                    ox + 26.0f * scale, oy + 13.0f * scale
+                    ox + 24.8f * scale, oy + 5.2f * scale,
+                    ox + 28.8f * scale, oy + 7.2f * scale,
+                    ox + 28.8f * scale, oy + 11.8f * scale
                 )
-                // Right flank down to bottom tip
+                // Right flank curving wide down to bottom tip
                 cubicTo(
-                    ox + 26.0f * scale, oy + 17.5f * scale,
-                    ox + 20.8f * scale, oy + 21.2f * scale,
-                    ox + 16f * scale, oy + 25.5f * scale
+                    ox + 28.8f * scale, oy + 16f * scale,
+                    ox + 22.5f * scale, oy + 21f * scale,
+                    ox + 16f * scale, oy + 26f * scale
                 )
                 close()
             }
