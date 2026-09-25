@@ -53,6 +53,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -136,8 +137,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -260,32 +264,12 @@ fun PlayerSheet(
     val haptic = LocalHapticFeedback.current
     val queueDragDensity = LocalDensity.current
 
-    // Dynamic Bouncing Artwork Animation:
-    // When playing, the artwork enlarges by ~30% with a spring bounce (overshooting and settling).
-    // When paused, it shrinks back down to its rest state with an elastic bounce.
-    // The artwork is the hero element. Keep it visually large in both playback states;
-    // only give it a subtle breathing scale while paused/playing.
-    val artworkScale by animateFloatAsState(
-        targetValue = if (isPlaying) 1.0f else 0.94f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = 340f
-        ),
-        label = "artwork_scale"
-    )
-    val artworkElevation by animateDpAsState(
-        targetValue = if (isPlaying) 20.dp else 12.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = 340f
-        ),
-        label = "artwork_elevation"
-    )
-    val artworkCornerRadius by animateDpAsState(
-        targetValue = 28.dp,
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "artwork_corner_radius"
-    )
+    // Artwork presentation:
+    // User requirement: Removed play/pause shrink/expand animation so artwork remains expanded at all times.
+    // Sharp modern corners (10.dp) and steady premium glass elevation (18.dp).
+    val artworkScale = 1.0f
+    val artworkElevation = 18.dp
+    val artworkCornerRadius = 10.dp
 
     // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
     // YouTube Music Hierarchy: Index 0 is currently playing track, Index 1 is Up Next, etc.
@@ -544,46 +528,90 @@ fun PlayerSheet(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                    // Hero artwork: larger, rounded and intentionally dominant.
+                    // Hero artwork: shifted toward the top with sharp modern edges and premium glass wrap
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 8.dp),
+                        contentAlignment = Alignment.TopCenter
                     ) {
                         BoxWithConstraints(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 2.dp),
+                            contentAlignment = Alignment.TopCenter
                         ) {
                             val artSize = minOf(
                                 maxWidth - 16.dp,
                                 maxHeight * 0.98f
                             ).coerceIn(210.dp, 320.dp)
 
+                            val artworkShape = RoundedCornerShape(artworkCornerRadius)
+
                             Box(
                                 modifier = Modifier
                                     .size(artSize)
-                                    .graphicsLayer {
-                                        scaleX = artworkScale
-                                        scaleY = artworkScale
-                                    }
                                     .shadow(
                                         elevation = artworkElevation,
-                                        shape = RoundedCornerShape(artworkCornerRadius),
-                                        spotColor = Color.Black.copy(alpha = if (isPlaying) 0.78f else 0.52f),
-                                        ambientColor = Color.Black
+                                        shape = artworkShape,
+                                        spotColor = Color.Black.copy(alpha = 0.72f),
+                                        ambientColor = Color.Black.copy(alpha = 0.45f)
                                     )
-                                    .clip(RoundedCornerShape(artworkCornerRadius)),
+                                    .clip(artworkShape),
                                 contentAlignment = Alignment.Center
                             ) {
+                                // 1. Base album artwork
                                 TrackArtworkImage(
                                     track = track,
                                     contentDescription = track.title,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
+                                )
+
+                                // 2. Premium glass surface: specular reflection sheen
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.linearGradient(
+                                                0.0f to Color.White.copy(alpha = 0.16f),
+                                                0.25f to Color.White.copy(alpha = 0.05f),
+                                                0.50f to Color.Transparent,
+                                                1.0f to Color.White.copy(alpha = 0.03f)
+                                            )
+                                        )
+                                )
+
+                                // 3. Glass depth vignette
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.radialGradient(
+                                                0.0f to Color.Transparent,
+                                                0.80f to Color.Transparent,
+                                                1.0f to Color.Black.copy(alpha = 0.24f)
+                                            )
+                                        )
+                                )
+
+                                // 4. Premium chamfered glass border
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .border(
+                                            width = 1.2.dp,
+                                            brush = Brush.linearGradient(
+                                                0.0f to Color.White.copy(alpha = 0.45f),
+                                                0.35f to Color.White.copy(alpha = 0.18f),
+                                                0.70f to Color.White.copy(alpha = 0.08f),
+                                                1.0f to Color.White.copy(alpha = 0.30f)
+                                            ),
+                                            shape = artworkShape
+                                        )
                                 )
                             }
                         }
@@ -2272,54 +2300,101 @@ private fun MarqueeTrackTitle(
     title: String,
     modifier: Modifier = Modifier
 ) {
-    var isOverflowing by remember(title) { mutableStateOf(false) }
-    var textWidthPx by remember(title) { mutableFloatStateOf(0f) }
-    val marqueeOffset = remember(title) { Animatable(0f) }
+    val textMeasurer = rememberTextMeasurer()
+    val textStyle = TextStyle(
+        fontSize = 21.sp,
+        fontWeight = FontWeight.Bold,
+        color = Color.White,
+        textAlign = TextAlign.Start,
+        letterSpacing = (-0.2).sp
+    )
 
-    LaunchedEffect(title, isOverflowing, textWidthPx) {
-        marqueeOffset.stop()
-        marqueeOffset.snapTo(0f)
-
-        if (!isOverflowing || textWidthPx <= 0f) return@LaunchedEffect
-
-        // Let the title settle briefly, then keep it moving left in a readable marquee.
-        delay(900L)
-
-        while (isActive) {
-            marqueeOffset.animateTo(
-                targetValue = -textWidthPx,
-                animationSpec = tween(
-                    durationMillis = (textWidthPx * 18f).roundToInt().coerceIn(2600, 9000),
-                    easing = LinearEasing
-                )
-            )
-            delay(450L)
-            marqueeOffset.snapTo(0f)
-            delay(650L)
-        }
+    // Unconstrained measurement of the entire title string without truncation
+    val textLayoutResult = remember(title, textStyle) {
+        textMeasurer.measure(
+            text = AnnotatedString(title),
+            style = textStyle,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 
-    Box(
+    val textWidthPx = textLayoutResult.size.width.toFloat()
+    val density = LocalDensity.current
+    val spacingPx = with(density) { 56.dp.toPx() }
+
+    BoxWithConstraints(
         modifier = modifier.clipToBounds(),
         contentAlignment = Alignment.CenterStart
     ) {
-        Text(
-            text = title,
-            fontSize = 21.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            textAlign = TextAlign.Start,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Clip,
-            onTextLayout = { layout ->
-                isOverflowing = layout.hasVisualOverflow
-                textWidthPx = layout.getLineRight(0)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(marqueeOffset.value.roundToInt(), 0) }
-        )
+        val containerWidthPx = with(density) { maxWidth.toPx() }
+        val isOverflowing = textWidthPx > containerWidthPx
+
+        if (!isOverflowing || containerWidthPx <= 0f) {
+            Text(
+                text = title,
+                style = textStyle,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
+            )
+        } else {
+            val cycleDistance = textWidthPx + spacingPx
+            val animatable = remember(title, cycleDistance) { Animatable(0f) }
+
+            LaunchedEffect(title, cycleDistance) {
+                animatable.snapTo(0f)
+                // Brief pause so the user can easily read the start of the title
+                delay(1200L)
+
+                // Smooth linear continuous drift: ~36 dp per second
+                val speedPxPerSec = with(density) { 36.dp.toPx() }
+                val durationMs = ((cycleDistance / speedPxPerSec) * 1000f).roundToInt().coerceIn(2500, 18000)
+
+                while (isActive) {
+                    animatable.animateTo(
+                        targetValue = cycleDistance,
+                        animationSpec = tween(
+                            durationMillis = durationMs,
+                            easing = LinearEasing
+                        )
+                    )
+                    // Continuous recycling: when the text drifts to the left and finishes,
+                    // it wraps seamlessly to 0 without any jump because the second copy has reached 0!
+                    animatable.snapTo(0f)
+                }
+            }
+
+            val offset = animatable.value
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentWidth(align = Alignment.Start, unbounded = true)
+            ) {
+                // First copy drifting to the left
+                Text(
+                    text = title,
+                    style = textStyle,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .wrapContentWidth(align = Alignment.Start, unbounded = true)
+                        .offset { IntOffset((-offset).roundToInt(), 0) }
+                )
+
+                // Second copy entering from the right, recycling the drift continuously
+                Text(
+                    text = title,
+                    style = textStyle,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .wrapContentWidth(align = Alignment.Start, unbounded = true)
+                        .offset { IntOffset((cycleDistance - offset).roundToInt(), 0) }
+                )
+            }
+        }
     }
 }
 
