@@ -291,7 +291,7 @@ object ArtworkColorExtractor {
         val accent = Color.hsv(hue, sat, 0.95f)
         val glow = Color.hsv(hue, sat, 0.75f)
         val atmosphericBloom = Color.hsv(hue, sat, 0.28f)
-        val cardBorder = Color.hsv(hue, sat, 0.35f).copy(alpha = 0.15f)
+        val cardBorder = Color.hsv(hue, sat, 0.65f).copy(alpha = 0.45f)
 
         val playPauseGradTop = Color.hsv(hue, (sat * 0.85f).coerceIn(0.45f, 0.88f), 0.48f)
         val playPauseGradBottom = Color.hsv(hue, (sat * 0.90f).coerceIn(0.55f, 0.92f), 0.24f)

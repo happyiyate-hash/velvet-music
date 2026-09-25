@@ -125,6 +125,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -380,6 +381,13 @@ fun PlayerSheet(
         label = "card_border_color"
     )
 
+    // Saturated, brighter waveform color derived from extracted artwork color
+    val animatedWaveformColor by animateColorAsState(
+        targetValue = themeColors.accent,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "waveform_color"
+    )
+
     // Atmospheric bloom for diffused depth behind artwork
     val animatedAtmosphericBloom by animateColorAsState(
         targetValue = themeColors.atmosphericBloom,
@@ -388,6 +396,19 @@ fun PlayerSheet(
     )
 
     val cardColor = animatedBgTop
+
+    val cardBottomCornerRadius = 30.dp
+    val cardShape = RoundedCornerShape(
+        bottomStart = cardBottomCornerRadius,
+        bottomEnd = cardBottomCornerRadius
+    )
+
+    val cardGradient = remember(animatedBgTop, animatedBgMidLower) {
+        Brush.verticalGradient(
+            0.0f to animatedBgTop,
+            1.0f to animatedBgMidLower
+        )
+    }
 
     val playerBackgroundGradient = remember(animatedBgTop, animatedBgMidUpper, animatedBgMidLower, animatedBgBottom) {
         Brush.verticalGradient(
@@ -425,15 +446,66 @@ fun PlayerSheet(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. UPPER HERO & TRACK CONTENT
-                // Seamlessly unified with the player background gradient preserving exact hue & saturation
-                Column(
+                // 1. UPPER HERO & TRACK CONTENT (With restored curved bottom)
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(top = statusBarTop + 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .shadow(
+                            elevation = 16.dp,
+                            shape = cardShape,
+                            spotColor = Color.Black.copy(alpha = 0.80f),
+                            ambientColor = Color.Black.copy(alpha = 0.45f)
+                        )
+                        .clip(cardShape)
+                        .background(cardGradient)
+                        .drawWithContent {
+                            drawContent()
+                            val r = cardBottomCornerRadius.toPx()
+                            val strokeWidth = 1.6.dp.toPx()
+                            val sideExtension = 20.dp.toPx()
+                            val path = Path().apply {
+                                moveTo(0f, size.height - r - sideExtension)
+                                lineTo(0f, size.height - r)
+                                arcTo(
+                                    rect = Rect(0f, size.height - 2 * r, 2 * r, size.height),
+                                    startAngleDegrees = 180f,
+                                    sweepAngleDegrees = -90f,
+                                    forceMoveTo = false
+                                )
+                                lineTo(size.width - r, size.height)
+                                arcTo(
+                                    rect = Rect(size.width - 2 * r, size.height - 2 * r, size.width, size.height),
+                                    startAngleDegrees = 90f,
+                                    sweepAngleDegrees = -90f,
+                                    forceMoveTo = false
+                                )
+                                lineTo(size.width, size.height - r - sideExtension)
+                            }
+                            // Sleek border wrapping the curved bottom of the card
+                            drawPath(
+                                path = path,
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        animatedCardBorderColor.copy(alpha = 0.20f),
+                                        animatedCardBorderColor.copy(alpha = 0.65f),
+                                        animatedCardBorderColor.copy(alpha = 0.20f)
+                                    )
+                                ),
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                            )
+                        }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { /* Absorb clicks on empty space of main surface */ }
                 ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = statusBarTop + 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                     // Minimal top bar: collapse on the left, actions on the right.
                     Row(
                         modifier = Modifier
@@ -606,11 +678,14 @@ fun PlayerSheet(
                     DarkSilhouetteWaveform(
                         isPlaying = isPlaying,
                         telemetry = telemetry,
+                        waveformColor = animatedWaveformColor,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(36.dp)
+                            .height(38.dp)
+                            .clip(cardShape)
                     )
                 }
+            }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -1199,17 +1274,19 @@ private fun NowPlayingProgressBar(
 private fun DarkSilhouetteWaveform(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
+    waveformColor: Color,
     modifier: Modifier = Modifier
 ) {
-    // 76 compact, dense vertical bars forming continuous audio texture at bottom of card
-    val barCount = 76
+    // 52 substantial, energetic vertical bars forming visible music visualizer
+    val barCount = 52
     val restingProfile = remember(barCount) {
-        FloatArray(barCount) { i ->            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+        FloatArray(barCount) { i ->
+            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
             // Multi-harmonic natural undulating wave silhouette
             val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.35f
             val wave2 = abs(sin(norm * 3.14159f * 3.6f)) * 0.20f
             val wave3 = abs(cos(norm * 3.14159f * 6.5f)) * 0.12f
-            (0.18f + wave1 + wave2 + wave3).coerceIn(0.15f, 0.70f)
+            (0.20f + wave1 + wave2 + wave3).coerceIn(0.18f, 0.75f)
         }
     }
     val liveAmplitudes = remember(barCount) {
@@ -1238,15 +1315,29 @@ private fun DarkSilhouetteWaveform(
         val targetHeights = calculateCompressedWaveform(rawFft, barCount, subBassEnergy)
 
         val totalWidth = size.width
-        val barWidth = 2.4.dp.toPx()
-        val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceAtLeast(1.2.dp.toPx())
+        val barWidth = 3.6.dp.toPx()
+        val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceAtLeast(1.6.dp.toPx())
 
-        val minBarHeight = 3.dp.toPx()
-        val maxBarHeight = size.height * 0.85f
+        val minBarHeight = 4.dp.toPx()
+        val maxBarHeight = size.height * 0.90f
         val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
 
         val attackRate = 0.45f
         val decayRate = 0.16f
+
+        val hsv = FloatArray(3)
+        android.graphics.Color.RGBToHSV(
+            (waveformColor.red * 255f).toInt().coerceIn(0, 255),
+            (waveformColor.green * 255f).toInt().coerceIn(0, 255),
+            (waveformColor.blue * 255f).toInt().coerceIn(0, 255),
+            hsv
+        )
+        val hue = hsv[0]
+        val sat = hsv[1].coerceIn(0.65f, 0.95f)
+
+        // Brighter, saturated, and highly visible extracted artwork color gradient
+        val tipColor = Color.hsv(hue, sat, 0.98f)
+        val baseColor = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.88f)
 
         for (i in 0 until barCount) {
             if (isPlaying) {
@@ -1264,10 +1355,6 @@ private fun DarkSilhouetteWaveform(
             val barHeight = (minBarHeight + usableRange * clampedFraction).coerceIn(minBarHeight, maxBarHeight)
             val barTop = size.height - barHeight
             val barX = i * (barWidth + barGap)
-
-            // Frosted translucent white bars harmonized with the dark glassmorphic card surface
-            val tipColor = Color.White.copy(alpha = 0.35f)
-            val baseColor = Color.White.copy(alpha = 0.10f)
 
             val barBrush = Brush.verticalGradient(
                 colors = listOf(tipColor, baseColor),
