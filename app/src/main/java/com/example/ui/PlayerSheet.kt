@@ -365,13 +365,6 @@ fun PlayerSheet(
         label = "card_border_color"
     )
 
-    // Saturated, brighter waveform color derived from extracted artwork color
-    val animatedWaveformColor by animateColorAsState(
-        targetValue = themeColors.accent,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "waveform_color"
-    )
-
     // Atmospheric bloom for diffused depth behind artwork
     val animatedAtmosphericBloom by animateColorAsState(
         targetValue = themeColors.atmosphericBloom,
@@ -528,26 +521,26 @@ fun PlayerSheet(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    // Hero artwork: shifted toward the top with sharp modern edges and premium glass wrap
+                    // Hero artwork: positioned down with increased size, sharp edges, and premium glass wrap
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 8.dp),
-                        contentAlignment = Alignment.TopCenter
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         BoxWithConstraints(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(top = 2.dp),
-                            contentAlignment = Alignment.TopCenter
+                                .padding(top = 4.dp, bottom = 4.dp),
+                            contentAlignment = Alignment.Center
                         ) {
                             val artSize = minOf(
-                                maxWidth - 16.dp,
-                                maxHeight * 0.98f
-                            ).coerceIn(210.dp, 320.dp)
+                                maxWidth - 4.dp,
+                                maxHeight
+                            ).coerceIn(240.dp, 360.dp)
 
                             val artworkShape = RoundedCornerShape(artworkCornerRadius)
 
@@ -702,14 +695,13 @@ fun PlayerSheet(
 
                     Spacer(modifier = Modifier.height(5.dp))
 
-                    // Waveform Visualizer
+                    // Tiny, tightly packed black micro-waveform visualizer
                     DarkSilhouetteWaveform(
                         isPlaying = isPlaying,
                         telemetry = telemetry,
-                        waveformColor = animatedWaveformColor,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(38.dp)
+                            .height(18.dp)
                             .clip(cardShape)
                     )
                 }
@@ -1302,11 +1294,10 @@ private fun NowPlayingProgressBar(
 private fun DarkSilhouetteWaveform(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
-    waveformColor: Color,
     modifier: Modifier = Modifier
 ) {
-    // 52 substantial, energetic vertical bars forming visible music visualizer
-    val barCount = 52
+    // 92 tiny, tightly packed vertical bars with minimal gap, in pure black
+    val barCount = 92
     val restingProfile = remember(barCount) {
         FloatArray(barCount) { i ->
             val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
@@ -1314,7 +1305,7 @@ private fun DarkSilhouetteWaveform(
             val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.35f
             val wave2 = abs(sin(norm * 3.14159f * 3.6f)) * 0.20f
             val wave3 = abs(cos(norm * 3.14159f * 6.5f)) * 0.12f
-            (0.20f + wave1 + wave2 + wave3).coerceIn(0.18f, 0.75f)
+            (0.18f + wave1 + wave2 + wave3).coerceIn(0.15f, 0.70f)
         }
     }
     val liveAmplitudes = remember(barCount) {
@@ -1343,29 +1334,19 @@ private fun DarkSilhouetteWaveform(
         val targetHeights = calculateCompressedWaveform(rawFft, barCount, subBassEnergy)
 
         val totalWidth = size.width
-        val barWidth = 3.6.dp.toPx()
-        val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceAtLeast(1.6.dp.toPx())
+        // Very tiny bars brought tightly together so there is minimal space between them
+        val barWidth = 1.8.dp.toPx()
+        val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceIn(0.8.dp.toPx(), 1.5.dp.toPx())
 
-        val minBarHeight = 4.dp.toPx()
-        val maxBarHeight = size.height * 0.90f
+        val minBarHeight = 1.8.dp.toPx()
+        val maxBarHeight = size.height * 0.85f
         val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
 
         val attackRate = 0.45f
         val decayRate = 0.16f
 
-        val hsv = FloatArray(3)
-        android.graphics.Color.RGBToHSV(
-            (waveformColor.red * 255f).toInt().coerceIn(0, 255),
-            (waveformColor.green * 255f).toInt().coerceIn(0, 255),
-            (waveformColor.blue * 255f).toInt().coerceIn(0, 255),
-            hsv
-        )
-        val hue = hsv[0]
-        val sat = hsv[1].coerceIn(0.65f, 0.95f)
-
-        // Brighter, saturated, and highly visible extracted artwork color gradient
-        val tipColor = Color.hsv(hue, sat, 0.98f)
-        val baseColor = Color.hsv(hue, sat, 0.68f).copy(alpha = 0.88f)
+        // Pure solid black color
+        val barColor = Color.Black
 
         for (i in 0 until barCount) {
             if (isPlaying) {
@@ -1384,14 +1365,8 @@ private fun DarkSilhouetteWaveform(
             val barTop = size.height - barHeight
             val barX = i * (barWidth + barGap)
 
-            val barBrush = Brush.verticalGradient(
-                colors = listOf(tipColor, baseColor),
-                startY = barTop,
-                endY = size.height
-            )
-
             drawRoundRect(
-                brush = barBrush,
+                color = barColor,
                 topLeft = Offset(barX, barTop),
                 size = Size(barWidth, barHeight),
                 cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)

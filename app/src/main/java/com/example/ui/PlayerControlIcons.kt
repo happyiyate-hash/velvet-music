@@ -94,27 +94,29 @@ fun MorphingPlayPauseIcon(
                 sin((r - 0.5f) * Math.PI.toFloat()) * 0.5f + 0.5f
             }
 
-            val rCorner = 4.25f * scale
+            val rCorner = 4.0f * scale
             // Inner seam radius: 0 when joined for zero-seam fusion; softly rounded when separated
-            val innerR = 4.25f * scale * gapProgress * (0.35f + 0.65f * shapeProgress)
+            val innerR = 4.0f * scale * gapProgress * (0.35f + 0.65f * shapeProgress)
 
             // Subtle scale breathing during transformation (contracting slightly at midpoint)
             val pulseScale = 1f - sin(t * Math.PI.toFloat()) * 0.035f
 
-            // Canonical 64x64 coordinates (cohesive 10-unit center gap, dragged together):
-            // Left bar: x = 17 to 27 (width 10, y = 15 to 49)
-            // Right bar: x = 37 to 47 (width 10, y = 15 to 49)
-            // Gap = 10 units (between x = 27 and x = 37)
-            val p0 = Offset(17f, lerp(13.5f, 15f, shapeProgress))
-            val p1 = Offset(lerp(32f, 27f, gapProgress), lerp(22f, 15f, shapeProgress))
-            val p2 = Offset(lerp(32f, 27f, gapProgress), lerp(42f, 49f, shapeProgress))
-            val p3 = Offset(17f, lerp(50.5f, 49f, shapeProgress))
+            // Canonical 64x64 coordinates with bilateral symmetrical division:
+            // 1. Play icon is optically centered in the white circle (base at x=21f, tip at x=49f, seam at x=33f).
+            // 2. On pause, BOTH halves divide and move symmetrically:
+            //    - Left half shifts LEFT from [21..33] to [18..27]
+            //    - Right half shifts RIGHT from [33..49] to [37..46]
+            // 3. On play, both halves slide back toward center to fuse at x=33f, keeping play icon dead-center.
+            val p0 = Offset(lerp(21f, 18f, gapProgress), lerp(15f, 16f, shapeProgress))
+            val p1 = Offset(lerp(33f, 27f, gapProgress), lerp(22.3f, 16f, shapeProgress))
+            val p2 = Offset(lerp(33f, 27f, gapProgress), lerp(41.7f, 48f, shapeProgress))
+            val p3 = Offset(lerp(21f, 18f, gapProgress), lerp(49f, 48f, shapeProgress))
 
-            val tipX = lerp(47f, 52f, gapProgress)
-            val q0 = Offset(lerp(32f, 37f, gapProgress), lerp(22f, 15f, shapeProgress))
-            val q1 = Offset(lerp(tipX, 47f, shapeProgress), lerp(32f, 15f, shapeProgress))
-            val q2 = Offset(lerp(tipX, 47f, shapeProgress), lerp(32f, 49f, shapeProgress))
-            val q3 = Offset(lerp(32f, 37f, gapProgress), lerp(42f, 49f, shapeProgress))
+            val tipX = lerp(49f, 50.5f, gapProgress)
+            val q0 = Offset(lerp(33f, 37f, gapProgress), lerp(22.3f, 16f, shapeProgress))
+            val q1 = Offset(lerp(tipX, 46f, shapeProgress), lerp(32f, 16f, shapeProgress))
+            val q2 = Offset(lerp(tipX, 46f, shapeProgress), lerp(32f, 48f, shapeProgress))
+            val q3 = Offset(lerp(33f, 37f, gapProgress), lerp(41.7f, 48f, shapeProgress))
 
             val center = Offset(size.width / 2f, size.height / 2f)
 
