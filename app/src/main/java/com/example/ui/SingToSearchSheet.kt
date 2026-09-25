@@ -1312,10 +1312,10 @@ private fun SeamlessMatchedResultView(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(94.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .size(78.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(Color(0x12121518))
-                            .shadow(10.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.45f)),
+                            .shadow(8.dp, RoundedCornerShape(12.dp), spotColor = Color.Black.copy(alpha = 0.45f)),
                         contentAlignment = Alignment.Center
                     ) {
                         if (!resolvedArtworkUrl.isNullOrBlank()) {
@@ -1339,17 +1339,17 @@ private fun SeamlessMatchedResultView(
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            modifier = Modifier.padding(bottom = 6.dp)
+                            modifier = Modifier.padding(bottom = 4.dp)
                         ) {
-                            Box(modifier = Modifier.size(3.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
-                            Box(modifier = Modifier.size(3.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
-                            Box(modifier = Modifier.size(3.dp, 20.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
-                            Box(modifier = Modifier.size(3.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
-                            Box(modifier = Modifier.size(3.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(2.5.dp, 7.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(2.5.dp, 12.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(2.5.dp, 16.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(2.5.dp, 12.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
+                            Box(modifier = Modifier.size(2.5.dp, 7.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFFF2448)))
                         }
                         Text(
                             text = result.artist,
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                             letterSpacing = (-0.3).sp,
@@ -1359,7 +1359,7 @@ private fun SeamlessMatchedResultView(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = result.title,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Normal,
                             color = Color.White.copy(alpha = 0.92f),
                             maxLines = 1,
@@ -1369,7 +1369,7 @@ private fun SeamlessMatchedResultView(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = result.album,
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 color = Color(0xFF8E8E93),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -1378,7 +1378,7 @@ private fun SeamlessMatchedResultView(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
                     modifier = Modifier
@@ -1393,8 +1393,8 @@ private fun SeamlessMatchedResultView(
                     Box(
                         modifier = Modifier
                             .weight(1.05f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(24.dp))
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(20.dp))
                             .background(
                                 Brush.horizontalGradient(
                                     listOf(
@@ -1403,25 +1403,25 @@ private fun SeamlessMatchedResultView(
                                     )
                                 )
                             )
-                            .shadow(8.dp, RoundedCornerShape(24.dp), spotColor = Color(0x55FF2448))
+                            .shadow(6.dp, RoundedCornerShape(20.dp), spotColor = Color(0x55FF2448))
                             .clickable(enabled = playbackReady, onClick = onPlayInVelvet)
                             .testTag("sing_play_button"),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(21.dp))
+                            Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(19.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Play", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            Text("Play", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                         }
                     }
 
                     Box(
                         modifier = Modifier
                             .weight(1.18f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(24.dp))
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(20.dp))
                             .background(Color.White.copy(alpha = 0.075f))
-                            .shadow(7.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.35f))
+                            .shadow(5.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.35f))
                             .clickable {
                                 val textToCopy = result.artist + " - " + result.title
                                 clipboardManager.setText(AnnotatedString(textToCopy))
@@ -1431,18 +1431,18 @@ private fun SeamlessMatchedResultView(
                         contentAlignment = Alignment.Center
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ContentCopy, "Copy Title", tint = Color(0xFFE9E4E6), modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(7.dp))
-                            Text("Copy title", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE9E4E6))
+                            Icon(Icons.Default.ContentCopy, "Copy Title", tint = Color(0xFFE9E4E6), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Copy title", fontSize = 13.5.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE9E4E6))
                         }
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(Color.White.copy(alpha = 0.075f))
-                            .shadow(7.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.35f))
+                            .shadow(5.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.35f))
                             .clickable {
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
@@ -1459,47 +1459,41 @@ private fun SeamlessMatchedResultView(
                             .testTag("sing_share_button"),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Share, "Share", tint = Color(0xFFE9E4E6), modifier = Modifier.size(19.dp))
+                        Icon(Icons.Default.Share, "Share", tint = Color(0xFFE9E4E6), modifier = Modifier.size(17.dp))
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
                     text = "Available on",
-                    fontSize = 18.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Open in your preferred music app",
-                    fontSize = 13.sp,
+                    fontSize = 12.5.sp,
                     color = Color(0xFF8E8E93)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                BoxWithConstraints(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .offset(x = (-16).dp)
+                        .verticalScroll(rememberScrollState())
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .width(maxWidth + 32.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        platforms.forEachIndexed { index, platform ->
-                            NativePlatformRow(
-                                platform = platform,
-                                alpha = platformAlphas[index].value,
-                                offsetY = platformOffsetsY[index].value,
-                                onClick = { platform.launch(context) }
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
+                    platforms.forEachIndexed { index, platform ->
+                        NativePlatformRow(
+                            platform = platform,
+                            alpha = platformAlphas[index].value,
+                            offsetY = platformOffsetsY[index].value,
+                            onClick = { platform.launch(context) }
+                        )
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
@@ -1755,7 +1749,8 @@ private fun PlatformLogoView(
 }
 
 /**
- * Full-width native platform row stretching edge-to-edge with prominent icon, typography, and chevron.
+ * Clean native platform row with consistent left column for icons, uniform horizontal
+ * alignment for text, and right-aligned chevron with comfortable padding.
  */
 @Composable
 private fun NativePlatformRow(
@@ -1767,12 +1762,11 @@ private fun NativePlatformRow(
 ) {
     Surface(
         onClick = onClick,
-        shape = RectangleShape,
-        // Transparent row: no contrasting strip behind each platform.
+        shape = RoundedCornerShape(10.dp),
         color = Color.Transparent,
         modifier = modifier
             .fillMaxWidth()
-            .height(58.dp)
+            .height(52.dp)
             .graphicsLayer {
                 this.alpha = alpha
                 this.translationY = offsetY
@@ -1781,17 +1775,26 @@ private fun NativePlatformRow(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 0.dp),
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PlatformLogoView(
-                platform = platform
-            )
+            // Fixed 38.dp column for platform icon ensures absolute left alignment across all rows
+            Box(
+                modifier = Modifier.size(38.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                PlatformLogoView(
+                    platform = platform,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
 
-            Spacer(modifier = Modifier .width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
+            // Platform name & subtitle start at the exact same horizontal position
             Column(
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = platform.name,
@@ -1811,11 +1814,14 @@ private fun NativePlatformRow(
                 )
             }
 
+            // Right-aligned chevron with fixed size and comfortable right padding
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = Color(0xFF6B6B75),
-                modifier = Modifier.size(16.dp)
+                tint = Color(0xFF7E7E8B),
+                modifier = Modifier
+                    .padding(end = 6.dp)
+                    .size(18.dp)
             )
         }
     }
