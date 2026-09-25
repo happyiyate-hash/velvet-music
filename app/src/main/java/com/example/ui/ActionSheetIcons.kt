@@ -30,10 +30,10 @@ import androidx.compose.ui.unit.dp
 
 val ActionIconAshWhite = Color(0xFFF4F4F2)
 val ActionIconSecondary = Color(0xFFAEB0B5)
-val ActionIconDestructive = Color(0xFFFF6B72)
+val ActionIconDestructive = Color(0xFFFF5252)
 val ActionFavoriteRed = Color(0xFFFF3358)
-val ActionSheetBackground = Color(0xFF232427)
-val ActionSheetDivider = Color(0xFF34363A)
+val ActionSheetBackground = Color(0xFF16171A)
+val ActionSheetDivider = Color(0xFF27292E)
 
 @Composable
 fun ActionPlayNextIcon(

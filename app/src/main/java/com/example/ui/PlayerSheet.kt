@@ -495,28 +495,28 @@ fun PlayerSheet(
                         IconButton(
                             onClick = onDismiss,
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(44.dp)
                                 .testTag("player_collapse_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowDown,
                                 contentDescription = "Collapse Player",
-                                tint = Color.White.copy(alpha = 0.82f),
-                                modifier = Modifier.size(26.dp)
+                                tint = Color.White.copy(alpha = 0.88f),
+                                modifier = Modifier.size(30.dp)
                             )
                         }
 
                         IconButton(
                             onClick = { showActionSheet = true },
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(44.dp)
                                 .testTag("player_menu_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Default.MoreHoriz,
+                                imageVector = Icons.Default.MoreVert,
                                 contentDescription = "More Options",
                                 tint = Color.White.copy(alpha = 0.88f),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
@@ -2107,61 +2107,38 @@ fun NowPlayingActionSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         containerColor = ActionSheetBackground,
         contentColor = ActionIconAshWhite,
-        scrimColor = Color(0xFF111216).copy(alpha = 0.72f),
+        scrimColor = Color.Black.copy(alpha = 0.65f),
         dragHandle = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Subtle top specular highlight on the curved sheet rim
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.04f),
-                                    Color.White.copy(alpha = 0.16f),
-                                    Color.White.copy(alpha = 0.04f)
-                                )
-                            )
-                        )
-                )
-                Box(
-                    modifier = Modifier
-                        .padding(top = 8.dp, bottom = 6.dp)
-                        .width(36.dp)
-                        .height(3.5.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF4E5056))
-                )
-            }
+            Box(
+                modifier = Modifier
+                    .padding(top = 10.dp, bottom = 8.dp)
+                    .width(38.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF42444A))
+            )
         }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-                .padding(bottom = 12.dp)
+                .padding(bottom = 24.dp)
                 .testTag("now_playing_action_sheet")
         ) {
-            // Track Header (Compact, tight padding)
+            // Track Header: crisp, album-jacket thumbnail (10dp radius, no border/shadow)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
-                        .shadow(4.dp, RoundedCornerShape(10.dp), spotColor = Color.Black.copy(alpha = 0.4f))
+                        .size(50.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.06f))
                 ) {
                     TrackArtworkImage(
                         track = track,
@@ -2170,20 +2147,20 @@ fun NowPlayingActionSheet(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = track.title.substringBefore(" - "),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = ActionIconAshWhite,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(1.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "${track.artist} • ${track.album}",
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Normal,
                         color = ActionIconSecondary,
                         maxLines = 1,
@@ -2192,28 +2169,28 @@ fun NowPlayingActionSheet(
                 }
             }
 
-            // Hairline separator below header
+            // Single subtle hairline separator below header
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-                    .height(0.8.dp)
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                    .height(0.6.dp)
                     .background(ActionSheetDivider)
             )
 
             // 1. Playback Group
             SheetActionRow(
                 title = "Play next",
-                icon = { ActionPlayNextIcon(modifier = Modifier.size(30.dp)) },
+                icon = { ActionPlayNextIcon(modifier = Modifier.size(24.dp)) },
                 onClick = onPlayNext
             )
             SheetActionRow(
                 title = "Add to queue",
-                icon = { ActionQueueIcon(modifier = Modifier.size(30.dp)) },
+                icon = { ActionQueueIcon(modifier = Modifier.size(24.dp)) },
                 onClick = onQueue
             )
 
-            ActionGroupDivider()
+            Spacer(modifier = Modifier.height(6.dp))
 
             // 2. Library Group
             SheetActionRow(
@@ -2221,49 +2198,49 @@ fun NowPlayingActionSheet(
                 icon = {
                     ActionFavoriteIcon(
                         isFavorite = isFavorite,
-                        tint = ActionFavoriteRed,
-                        modifier = Modifier.size(30.dp)
+                        tint = if (isFavorite) accentColor else ActionIconSecondary,
+                        modifier = Modifier.size(24.dp)
                     )
                 },
                 onClick = onToggleFavorite
             )
             SheetActionRow(
                 title = "Add to playlist",
-                icon = { ActionPlaylistIcon(modifier = Modifier.size(30.dp)) },
+                icon = { ActionPlaylistIcon(modifier = Modifier.size(24.dp)) },
                 onClick = onAddToPlaylist
             )
 
-            ActionGroupDivider()
+            Spacer(modifier = Modifier.height(6.dp))
 
             // 3. Experience Group
             SheetActionRow(
                 title = "Audio Visualizer",
-                icon = { ActionVisualizerIcon(modifier = Modifier.size(30.dp)) },
+                icon = { ActionVisualizerIcon(modifier = Modifier.size(24.dp)) },
                 onClick = onOpenVisualizer
             )
             SheetActionRow(
                 title = "Synced Lyrics",
-                icon = { ActionLyricsIcon(modifier = Modifier.size(30.dp)) },
+                icon = { ActionLyricsIcon(modifier = Modifier.size(24.dp)) },
                 onClick = onOpenLyrics
             )
 
-            ActionGroupDivider()
+            Spacer(modifier = Modifier.height(6.dp))
 
             // 4. Management / Destructive Group
             SheetActionRow(
                 title = "Share song",
-                icon = { ActionShareIcon(modifier = Modifier.size(30.dp)) },
+                icon = { ActionShareIcon(modifier = Modifier.size(24.dp)) },
                 onClick = onShare
             )
             SheetActionRow(
                 title = "Song information",
-                icon = { ActionInfoIcon(modifier = Modifier.size(30.dp)) },
+                icon = { ActionInfoIcon(modifier = Modifier.size(24.dp)) },
                 onClick = onSongInfo
             )
             SheetActionRow(
                 title = "Delete from library",
                 textColor = ActionIconDestructive,
-                icon = { ActionDeleteIcon(modifier = Modifier.size(30.dp), tint = ActionIconDestructive) },
+                icon = { ActionDeleteIcon(modifier = Modifier.size(24.dp), tint = ActionIconDestructive) },
                 onClick = onDelete
             )
         }
@@ -2383,39 +2360,27 @@ private fun SheetActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .height(50.dp)
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(34.dp),
+            modifier = Modifier.size(28.dp),
             contentAlignment = Alignment.Center
         ) {
             icon()
         }
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(16.dp))
         Text(
             text = title,
             fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Normal,
             color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
-}
-
-@Composable
-private fun ActionGroupDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .height(0.8.dp)
-            .background(ActionSheetDivider)
-    )
 }
 
 @Composable
