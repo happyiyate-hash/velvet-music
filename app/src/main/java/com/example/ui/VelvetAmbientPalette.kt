@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -21,15 +22,24 @@ import kotlin.math.sin
 /**
  * Quiet, continuously drifting ambient palette for the upper Velvet player card.
  *
- * Palette changes crossfade over 500 ms while the spatial phase keeps running.
- * There is intentionally no RepeatMode.Reverse / ping-pong animation.
+ * Palette changes crossfade over [crossfadeDurationMs]. The duration is clamped
+ * to 300..700 ms so the effect remains subtle and responsive.
+ *
+ * Spatial phase never resets when the palette changes. There is intentionally
+ * no RepeatMode.Reverse / ping-pong animation.
  */
 @Composable
 fun VelvetAmbientPalette(
     colors: List<Color>,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    crossfadeDurationMs: Int = DEFAULT_PALETTE_CROSSFADE_MS,
 ) {
+    val durationMs = crossfadeDurationMs.coerceIn(
+        MIN_PALETTE_CROSSFADE_MS,
+        MAX_PALETTE_CROSSFADE_MS,
+    )
+
     val targetPalette = remember(colors) {
         normalizePalette(colors)
     }
@@ -48,13 +58,13 @@ fun VelvetAmbientPalette(
             return@LaunchedEffect
         }
 
-        // Capture the currently displayed palette so a rapid track change never
-        // jumps back to the previous track's original colors.
+        // Start from the palette currently visible on screen. This avoids a
+        // jump back to the old track's original palette during rapid changes.
         previousPalette = displayedPalette
         paletteTransitionStartNanos = Long.MIN_VALUE
     }
 
-    LaunchedEffect(enabled) {
+    LaunchedEffect(enabled, durationMs) {
         if (!enabled) return@LaunchedEffect
 
         while (true) {
@@ -65,12 +75,12 @@ fun VelvetAmbientPalette(
                     paletteTransitionStartNanos = frameNanos
                 }
 
+                val durationNanos = durationMs * NANOS_PER_MILLISECOND
                 val progress = (
-                    (frameNanos - paletteTransitionStartNanos).toFloat() / PALETTE_CROSSFADE_NANOS
+                    (frameNanos - paletteTransitionStartNanos).toFloat() / durationNanos
                 ).coerceIn(0f, 1f)
 
-                // Smoothstep gives the palette a gentle arrival/departure instead
-                // of a mechanical linear color swap.
+                // Smoothstep avoids a mechanical-looking color swap.
                 val eased = progress * progress * (3f - 2f * progress)
                 displayedPalette = blendPalette(previousPalette, targetPalette, eased)
             }
@@ -85,7 +95,10 @@ fun VelvetAmbientPalette(
     }
 }
 
-private const val PALETTE_CROSSFADE_NANOS = 500_000_000f
+const val DEFAULT_PALETTE_CROSSFADE_MS = 500
+const val MIN_PALETTE_CROSSFADE_MS = 300
+const val MAX_PALETTE_CROSSFADE_MS = 700
+private const val NANOS_PER_MILLISECOND = 1_000_000L
 
 private fun normalizePalette(colors: List<Color>): List<Color> = buildList {
     colors.filter { it != Color.Transparent }.take(4).forEach(::add)
