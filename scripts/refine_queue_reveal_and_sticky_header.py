@@ -20,5 +20,20 @@ text = text.replace(
     1,
 )
 
+# stickyHeader is currently an experimental foundation API in the Compose version
+# used by Velvet. Opt in at the file level so the generated PlayerSheet compiles.
+if 'import androidx.compose.foundation.ExperimentalFoundationApi' not in text:
+    text = text.replace(
+        'import androidx.compose.foundation.Canvas\n',
+        'import androidx.compose.foundation.ExperimentalFoundationApi\nimport androidx.compose.foundation.Canvas\n',
+        1,
+    )
+
+text = text.replace(
+    '@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nfun PlayerSheet(',
+    '@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)\n@Composable\nfun PlayerSheet(',
+    1,
+)
+
 PLAYER.write_text(text, encoding="utf-8")
-print("Applied continuous queue reveal + sticky queue header refinement.")
+print("Applied continuous queue reveal + sticky queue header refinement with Foundation API opt-in.")
