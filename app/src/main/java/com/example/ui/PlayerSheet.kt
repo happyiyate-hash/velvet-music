@@ -445,13 +445,13 @@ fun PlayerSheet(
             // The card ends right below the waveform. The controls row (64dp) + handle (24dp) + margins (12dp) = 100dp
             // sit outside at the bottom, matching the exact original Velvet player boundary without extra height or empty gap.
             val collapsedCardHeight = totalHeight - 100.dp
-            val collapsedWaveformY = collapsedCardHeight - 26.dp
-            val collapsedProgressY = collapsedWaveformY - 32.dp
-            val collapsedMetadataY = collapsedProgressY - 52.dp
-            val collapsedArtworkBottom = collapsedMetadataY - 14.dp
-            val collapsedArtworkHeight = (minOf(totalWidth - 36.dp, collapsedArtworkBottom - (statusBarTop + 48.dp) - 8.dp)).coerceIn(230.dp, 330.dp)
+            val collapsedWaveformY = collapsedCardHeight - 24.dp
+            val collapsedProgressY = collapsedWaveformY - 28.dp
+            val collapsedMetadataY = collapsedProgressY - 46.dp
+            val collapsedArtworkBottom = collapsedMetadataY - 10.dp
+            val collapsedArtworkHeight = (minOf(totalWidth - 28.dp, collapsedArtworkBottom - (statusBarTop + 46.dp) - 6.dp)).coerceIn(250.dp, 350.dp)
             val collapsedArtworkWidth = collapsedArtworkHeight * artworkAspectRatio
-            val collapsedArtworkTop = ((statusBarTop + 48.dp) + (collapsedArtworkBottom - (statusBarTop + 48.dp) - collapsedArtworkHeight) / 2f)
+            val collapsedArtworkTop = ((statusBarTop + 46.dp) + (collapsedArtworkBottom - (statusBarTop + 46.dp) - collapsedArtworkHeight) / 2f)
             val collapsedArtworkLeft = (totalWidth - collapsedArtworkWidth) / 2f
             val collapsedArtworkRadius = 14.dp
 
@@ -492,22 +492,23 @@ fun PlayerSheet(
             val metadataY = lerp(collapsedMetadataY, expandedMetadataY, p)
             val progressY = lerp(collapsedProgressY, expandedProgressY, p)
             val waveformY = lerp(collapsedWaveformY, expandedWaveformY, p)
-            val contentPaddingHorizontal = lerp(24.dp, 18.dp, p)
+            val contentPaddingHorizontal = lerp(22.dp, 18.dp, p)
 
             // Transport Controls, Handle, and Queue sit OUTSIDE (UNDER) the Card:
-            val controlsHeight = lerp(64.dp, 54.dp, p)
-            val controlsY = cardHeight + lerp(8.dp, 6.dp, p)
+            // Controls maintain their constant full size (do NOT shrink or reduce when dragging):
+            val controlsHeight = 64.dp
+            val controlsY = cardHeight + 8.dp
             val handleHeight = 24.dp
-            val handleY = controlsY + controlsHeight + lerp(4.dp, 2.dp, p)
-            val queueY = handleY + handleHeight + lerp(4.dp, 2.dp, p)
+            val handleY = controlsY + controlsHeight + 4.dp
+            val queueY = handleY + handleHeight + 4.dp
             val queueHeight = (totalHeight - queueY).coerceAtLeast(0.dp)
 
-            val playButtonSize = lerp(62.dp, 50.dp, p)
-            val playIconSize = lerp(38.dp, 30.dp, p)
-            val secondaryIconTouchSize = lerp(46.dp, 40.dp, p)
-            val secondaryIconSize = lerp(26.dp, 22.dp, p)
-            val skipButtonSize = lerp(48.dp, 42.dp, p)
-            val skipIconSize = lerp(32.dp, 26.dp, p)
+            val playButtonSize = 62.dp
+            val playIconSize = 38.dp
+            val secondaryIconTouchSize = 46.dp
+            val secondaryIconSize = 26.dp
+            val skipButtonSize = 48.dp
+            val skipIconSize = 32.dp
 
             val dragRangePx = with(density) { (collapsedCardHeight - expandedCardHeight).toPx() }.coerceAtLeast(100f)
             val velocityTracker = remember { VelocityTracker() }
@@ -889,7 +890,7 @@ fun PlayerSheet(
                         telemetry = telemetry,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(lerp(18.dp, 14.dp, p))
+                            .height(18.dp)
                             .clip(RoundedCornerShape(8.dp))
                     )
                 }

@@ -3,9 +3,9 @@ from pathlib import Path
 path = Path("app/src/main/java/com/example/ui/PlayerSheet.kt")
 s = path.read_text(encoding="utf-8")
 
-# If second-stage transition is already present, exit cleanly without modifying
-if "queueFocusProgress" in s and "queueFocusArtworkShiftX" in s:
-    print("Second-stage queue transition already present in PlayerSheet.kt; skipping patch.")
+# If second-stage transition or continuous player controller is already present, exit cleanly without modifying
+if ("queueFocusProgress" in s and "queueFocusArtworkShiftX" in s) or ("val expansionProgress = remember { Animatable(0f) }" in s):
+    print("Continuous queue controller or second-stage transition already present in PlayerSheet.kt; skipping patch.")
     raise SystemExit(0)
 
 # The continuous queue controller is extended to a second, queue-focused stage:
