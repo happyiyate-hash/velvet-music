@@ -52,5 +52,38 @@ if count == 0:
     )
     s, count = simple.subn(replacement, s, count=1)
 
+# Player artwork refinement: reduce the rendered artwork by ~7% and move it
+# upward ~24dp without changing its centered horizontal alignment or the
+# surrounding song-information layout. The source remains the single place
+# that defines the actual player UI; this build-time patch keeps the release
+# compile-fix pipeline deterministic and idempotent.
+artwork_pattern = re.compile(
+    r"(?P<indent>\s*)val artSize = minOf\(\s*"
+    r"maxWidth - 4\.dp,\s*"
+    r"maxHeight\s*\)\.coerceIn\(240\.dp, 360\.dp\)",
+    re.MULTILINE,
+)
+artwork_replacement = (
+    r"\g<indent>val artSize = (minOf(\n"
+    r"\g<indent>    maxWidth - 4.dp,\n"
+    r"\g<indent>    maxHeight\n"
+    r"\g<indent> ) * 0.93f).coerceIn(224.dp, 336.dp)"
+)
+s, artwork_count = artwork_pattern.subn(artwork_replacement, s, count=1)
+
+# Keep the artwork horizontally centered while applying only a visual upward
+# translation. Offset does not consume layout space, so title/artist spacing
+# remains comfortable and the existing rounded frame is untouched.
+if artwork_count > 0 and ".size(artSize)\n                                    .offset(y = (-24).dp)" not in s:
+    s = s.replace(
+        ".size(artSize)\n                                    .shadow(",
+        ".size(artSize)\n                                    .offset(y = (-24).dp)\n                                    .shadow(",
+        1,
+    )
+
 player.write_text(s, encoding="utf-8")
-print(f"Latest release compile fixes applied; queue conversion count={count}.")
+print(
+    "Latest release compile fixes applied; "
+    f"queue conversion count={count}, "
+    f"artwork layout count={artwork_count}."
+)
