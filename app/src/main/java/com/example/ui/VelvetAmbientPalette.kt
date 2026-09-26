@@ -1,18 +1,19 @@
 package com.example.ui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.foundation.Canvas
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -42,8 +43,13 @@ fun VelvetAmbientPalette(
 
     var elapsedNanos by remember { mutableLongStateOf(0L) }
 
-    if (enabled) {
-        androidx.compose.runtime.LaunchedEffect(Unit) {
+    LaunchedEffect(enabled) {
+        if (!enabled) {
+            elapsedNanos = 0L
+            return@LaunchedEffect
+        }
+
+        while (true) {
             withInfiniteAnimationFrameNanos { frameNanos ->
                 elapsedNanos = frameNanos
             }
@@ -80,11 +86,14 @@ private fun DrawScope.drawAmbientFields(
         if (color == Color.Transparent) return@forEachIndexed
 
         // Continuous normalized phase in [0, 1). The path never reverses.
-        val phase = positiveModulo(timeSeconds / periods[index] + phases[index] / (2f * PI.toFloat()), 1f)
+        val phase = positiveModulo(
+            timeSeconds / periods[index] + phases[index] / (2f * PI.toFloat()),
+            1f,
+        )
         val angle = phase * 2f * PI.toFloat()
 
         // A slow elliptical orbit gives organic movement without a visible ping-pong.
-        val center = androidx.compose.ui.geometry.Offset(
+        val center = Offset(
             x = centerX + cos(angle) * width * orbitRadii[index],
             y = centerY + sin(angle) * height * (orbitRadii[index] * 0.62f),
         )
