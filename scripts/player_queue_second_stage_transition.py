@@ -3,6 +3,11 @@ from pathlib import Path
 path = Path("app/src/main/java/com/example/ui/PlayerSheet.kt")
 s = path.read_text(encoding="utf-8")
 
+# If second-stage transition is already present, exit cleanly without modifying
+if "queueFocusProgress" in s and "queueFocusArtworkShiftX" in s:
+    print("Second-stage queue transition already present in PlayerSheet.kt; skipping patch.")
+    raise SystemExit(0)
+
 # The continuous queue controller is extended to a second, queue-focused stage:
 # 0 = collapsed player, 1 = queue revealed, 2 = queue focused.
 s = s.replace(

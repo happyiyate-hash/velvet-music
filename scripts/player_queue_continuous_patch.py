@@ -4,6 +4,11 @@ import re
 path = Path("app/src/main/java/com/example/ui/PlayerSheet.kt")
 s = path.read_text(encoding="utf-8")
 
+# If the continuous queue controller is already present, exit cleanly without modifying
+if "val expansionProgress = remember { Animatable(0f) }" in s:
+    print("Continuous queue controller already present in PlayerSheet.kt; skipping patch.")
+    raise SystemExit(0)
+
 # The queue is already rendered inside PlayerSheet; keep it there and make the existing
 # expansion value the single source of truth for the player -> queue transition.
 anchor = "    val upNextExpanded = remember { Animatable(0f) }"

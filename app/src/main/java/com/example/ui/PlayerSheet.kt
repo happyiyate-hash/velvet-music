@@ -259,10 +259,20 @@ fun PlayerSheet(
         }
     }
 
-    val upNextExpanded = remember { Animatable(0f) }
-    val upNextP = upNextExpanded.value
+    // One continuous controller for the player and its in-flow queue.
+    // 0f = collapsed player, 1f = queue-focused player.
+    val expansionProgress = remember { Animatable(0f) }
+    val upNextP = expansionProgress.value
     val haptic = LocalHapticFeedback.current
     val queueDragDensity = LocalDensity.current
+
+    // VELVET SECOND-STAGE QUEUE TRANSITION
+    // 0..1 is the normal player-to-queue reveal; 1..2 focuses the queue.
+    val queueFocusProgress = ((expansionProgress.value - 1f) / 1f).coerceIn(0f, 1f)
+    val queueFocusArtworkShiftX = with(queueDragDensity) { 120.dp.toPx() }
+    val queueFocusArtworkShiftY = with(queueDragDensity) { 70.dp.toPx() }
+    val queueFocusMetadataShiftX = with(queueDragDensity) { 72.dp.toPx() }
+    val queueFocusMetadataShiftY = with(queueDragDensity) { 48.dp.toPx() }
 
     // Artwork presentation:
     // User requirement: Removed play/pause shrink/expand animation so artwork remains expanded at all times.
@@ -537,16 +547,20 @@ fun PlayerSheet(
                                 .padding(top = 4.dp, bottom = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            val artSize = minOf(
+                            val artSize = (minOf(
+
                                 maxWidth - 4.dp,
+
                                 maxHeight
-                            ).coerceIn(240.dp, 360.dp)
+
+                             ) * 0.93f).coerceIn(224.dp, 336.dp)
 
                             val artworkShape = RoundedCornerShape(artworkCornerRadius)
 
                             Box(
                                 modifier = Modifier
                                     .size(artSize)
+                                    .offset(y = (-24).dp)
                                     .shadow(
                                         elevation = artworkElevation,
                                         shape = artworkShape,
@@ -819,7 +833,17 @@ fun PlayerSheet(
                             indication = null,
                             onClick = {
                                 coroutineScope.launch {
-                                    upNextExpanded.animateTo(1f)
+                                    expansionProgress.animateTo(
+                                        when {
+                                            expansionProgress.value < 0.5f -> 1f
+                                            expansionProgress.value < 1.5f -> 2f
+                                            else -> 0f
+                                        },
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
                                 }
                             }
                         )
@@ -827,7 +851,7 @@ fun PlayerSheet(
                             detectVerticalDragGestures { _, dragAmount ->
                                 if (dragAmount < -12f) {
                                     coroutineScope.launch {
-                                        upNextExpanded.animateTo(1f)
+                                        expansionProgress.animateTo(1f)
                                     }
                                 }
                             }
@@ -874,7 +898,7 @@ fun PlayerSheet(
                         IconButton(
                             onClick = {
                                 coroutineScope.launch {
-                                    upNextExpanded.animateTo(0f)
+                                    expansionProgress.animateTo(0f)
                                 }
                             }
                         ) {
@@ -921,13 +945,50 @@ fun PlayerSheet(
                             .fillMaxWidth()
                             .height(20.dp)
                             .pointerInput(Unit) {
-                                detectVerticalDragGestures { _, dragAmount ->
-                                    if (dragAmount > 15f) {
+                                val dragRangePx = with(queueDragDensity) { 420.dp.toPx() }
+
+                                detectVerticalDragGestures(
+                                    onDragStart = {
+                                        coroutineScope.launch { expansionProgress.stop() }
+                                    },
+                                    onVerticalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        // Dragging up increases expansion; dragging down collapses it.
+                                        val next = (expansionProgress.value - (dragAmount / dragRangePx))
+                                            .coerceIn(0f, 2f)
                                         coroutineScope.launch {
-                                            upNextExpanded.animateTo(0f)
+                                            expansionProgress.snapTo(next)
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        coroutineScope.launch {
+                                            val target = when {
+                                                expansionProgress.value < 0.5f -> 0f
+                                                expansionProgress.value < 1.5f -> 1f
+                                                else -> 2f
+                                            }
+                                            expansionProgress.animateTo(
+                                                target,
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow
+                                                )
+                                            )
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        coroutineScope.launch {
+                                            val target = if (expansionProgress.value >= 0.48f) 1f else 0f
+                                            expansionProgress.animateTo(
+                                                target,
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow
+                                                )
+                                            )
                                         }
                                     }
-                                }
+                                )
                             },
                         contentAlignment = Alignment.Center
                     ) {
