@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.SystemClock
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInHorizontally
@@ -129,7 +130,12 @@ import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -260,26 +266,24 @@ fun PlayerSheet(
     }
 
     // One continuous controller for the player and its in-flow queue.
-    // 0f = collapsed player, 1f = queue-focused player.
+    // 0f = collapsed player, 0.55f = player + queue peek, 1f = queue-focused player.
     val expansionProgress = remember { Animatable(0f) }
-    val upNextP = expansionProgress.value
+    val p = expansionProgress.value.coerceIn(0f, 1f)
     val haptic = LocalHapticFeedback.current
-    val queueDragDensity = LocalDensity.current
+    val density = LocalDensity.current
 
-    // VELVET SECOND-STAGE QUEUE TRANSITION
-    // 0..1 is the normal player-to-queue reveal; 1..2 focuses the queue.
-    val queueFocusProgress = ((expansionProgress.value - 1f) / 1f).coerceIn(0f, 1f)
-    val queueFocusArtworkShiftX = with(queueDragDensity) { 120.dp.toPx() }
-    val queueFocusArtworkShiftY = with(queueDragDensity) { 70.dp.toPx() }
-    val queueFocusMetadataShiftX = with(queueDragDensity) { 72.dp.toPx() }
-    val queueFocusMetadataShiftY = with(queueDragDensity) { 48.dp.toPx() }
-
-    // Artwork presentation:
-    // User requirement: Removed play/pause shrink/expand animation so artwork remains expanded at all times.
-    // Sharp modern corners (10.dp) and steady premium glass elevation (18.dp).
-    val artworkScale = 1.0f
-    val artworkElevation = 18.dp
-    val artworkCornerRadius = 10.dp
+    BackHandler {
+        if (expansionProgress.value > 0.1f) {
+            coroutineScope.launch {
+                expansionProgress.animateTo(
+                    0f,
+                    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+                )
+            }
+        } else {
+            onDismiss()
+        }
+    }
 
     // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
     // YouTube Music Hierarchy: Index 0 is currently playing track, Index 1 is Up Next, etc.
@@ -317,7 +321,7 @@ fun PlayerSheet(
         val startIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
         if (startIndex < 0) return
         queueDragOffsetY += deltaY
-        val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
+        val itemHeightPx = with(density) { 60.dp.toPx() }
         val slots = (queueDragOffsetY / itemHeightPx).roundToInt()
         val newTarget = (startIndex + slots).coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
         if (newTarget != queueDragTargetIndex) {
@@ -426,589 +430,658 @@ fun PlayerSheet(
                 .fillMaxSize()
                 .navigationBarsPadding()
         ) {
+            val totalWidth = maxWidth
             val totalHeight = maxHeight
             val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally
+            // One continuous progress value drives everything: 0f (collapsed full player) to 1f (stage 1 endpoint)
+            val p = expansionProgress.value.coerceIn(0f, 1f)
+
+            // 1. Artwork Geometry
+            // Aspect ratio is strictly preserved (1:1 square artwork).
+            val artworkAspectRatio = 1.0f
+
+            // Collapsed state (p = 0f):
+            // The card ends right below the waveform. The controls row (64dp) + handle (24dp) + margins (12dp) = 100dp
+            // sit outside at the bottom, matching the exact original Velvet player boundary without extra height or empty gap.
+            val collapsedCardHeight = totalHeight - 100.dp
+            val collapsedWaveformY = collapsedCardHeight - 26.dp
+            val collapsedProgressY = collapsedWaveformY - 32.dp
+            val collapsedMetadataY = collapsedProgressY - 52.dp
+            val collapsedArtworkBottom = collapsedMetadataY - 14.dp
+            val collapsedArtworkHeight = (minOf(totalWidth - 36.dp, collapsedArtworkBottom - (statusBarTop + 48.dp) - 8.dp)).coerceIn(230.dp, 330.dp)
+            val collapsedArtworkWidth = collapsedArtworkHeight * artworkAspectRatio
+            val collapsedArtworkTop = ((statusBarTop + 48.dp) + (collapsedArtworkBottom - (statusBarTop + 48.dp) - collapsedArtworkHeight) / 2f)
+            val collapsedArtworkLeft = (totalWidth - collapsedArtworkWidth) / 2f
+            val collapsedArtworkRadius = 14.dp
+
+            // Expanded state (p = 1f):
+            // Artwork expands horizontally to full screen width and top (behind status bar).
+            val expandedArtworkWidth = totalWidth
+            val expandedArtworkHeight = expandedArtworkWidth / artworkAspectRatio
+            val expandedArtworkTop = 0.dp
+            val expandedArtworkLeft = 0.dp
+            val expandedArtworkRadius = 0.dp
+            val expandedArtworkBottom = expandedArtworkTop + expandedArtworkHeight // = totalWidth
+
+            // The card bottom boundary tracks the bottom boundary of the artwork!
+            val expandedCardHeight = expandedArtworkBottom
+
+            // In expanded state, metadata, progress, and waveform move into the lower region of the artwork:
+            val expandedWaveformY = expandedArtworkBottom - 26.dp
+            val expandedProgressY = expandedWaveformY - 26.dp
+            val expandedMetadataY = expandedProgressY - 44.dp
+
+            // Continuous lerp for Artwork and Card:
+            val artworkWidth = lerp(collapsedArtworkWidth, expandedArtworkWidth, p)
+            val artworkHeight = artworkWidth / artworkAspectRatio
+            val artworkTop = lerp(collapsedArtworkTop, expandedArtworkTop, p)
+            val artworkLeft = lerp(collapsedArtworkLeft, expandedArtworkLeft, p)
+            val artworkRadius = lerp(collapsedArtworkRadius, expandedArtworkRadius, p)
+            val artworkBottom = artworkTop + artworkHeight
+
+            val cardHeight = lerp(collapsedCardHeight, expandedCardHeight, p)
+
+            val currentCardCornerRadius = lerp(30.dp, 22.dp, p)
+            val dynamicCardShape = RoundedCornerShape(
+                bottomStart = currentCardCornerRadius,
+                bottomEnd = currentCardCornerRadius
+            )
+
+            // Continuous lerp for elements inside the Card:
+            val metadataY = lerp(collapsedMetadataY, expandedMetadataY, p)
+            val progressY = lerp(collapsedProgressY, expandedProgressY, p)
+            val waveformY = lerp(collapsedWaveformY, expandedWaveformY, p)
+            val contentPaddingHorizontal = lerp(24.dp, 18.dp, p)
+
+            // Transport Controls, Handle, and Queue sit OUTSIDE (UNDER) the Card:
+            val controlsHeight = lerp(64.dp, 54.dp, p)
+            val controlsY = cardHeight + lerp(8.dp, 6.dp, p)
+            val handleHeight = 24.dp
+            val handleY = controlsY + controlsHeight + lerp(4.dp, 2.dp, p)
+            val queueY = handleY + handleHeight + lerp(4.dp, 2.dp, p)
+            val queueHeight = (totalHeight - queueY).coerceAtLeast(0.dp)
+
+            val playButtonSize = lerp(62.dp, 50.dp, p)
+            val playIconSize = lerp(38.dp, 30.dp, p)
+            val secondaryIconTouchSize = lerp(46.dp, 40.dp, p)
+            val secondaryIconSize = lerp(26.dp, 22.dp, p)
+            val skipButtonSize = lerp(48.dp, 42.dp, p)
+            val skipIconSize = lerp(32.dp, 26.dp, p)
+
+            val dragRangePx = with(density) { (collapsedCardHeight - expandedCardHeight).toPx() }.coerceAtLeast(100f)
+            val velocityTracker = remember { VelocityTracker() }
+
+            fun settleExpansion(velocity: Float = 0f) {
+                coroutineScope.launch {
+                    val current = expansionProgress.value
+                    val target = when {
+                        velocity < -500f -> 1.0f  // Fast upward swipe -> snap to compressed player & revealed queue
+                        velocity > 500f -> 0.0f   // Fast downward swipe -> snap to full player card
+                        current > 0.45f -> 1.0f   // Past halfway -> snap to stage 1 endpoint
+                        else -> 0.0f              // Otherwise snap back to full collapsed player
+                    }
+                    expansionProgress.animateTo(
+                        targetValue = target,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+                }
+            }
+
+            val nestedScrollConnection = remember(dragRangePx) {
+                object : NestedScrollConnection {
+                    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                        val dy = available.y
+                        if (dy < 0f && expansionProgress.value < 1f) {
+                            val deltaP = -dy / dragRangePx
+                            val newP = (expansionProgress.value + deltaP).coerceAtMost(1f)
+                            val consumedP = newP - expansionProgress.value
+                            val consumedY = -consumedP * dragRangePx
+                            coroutineScope.launch { expansionProgress.snapTo(newP) }
+                            return Offset(0f, consumedY)
+                        }
+                        if (dy > 0f && queueListState.firstVisibleItemIndex == 0 && queueListState.firstVisibleItemScrollOffset == 0 && expansionProgress.value > 0f) {
+                            val deltaP = -dy / dragRangePx
+                            val newP = (expansionProgress.value + deltaP).coerceAtLeast(0f)
+                            val consumedP = expansionProgress.value - newP
+                            val consumedY = consumedP * dragRangePx
+                            coroutineScope.launch { expansionProgress.snapTo(newP) }
+                            return Offset(0f, consumedY)
+                        }
+                        return Offset.Zero
+                    }
+
+                    override fun onPostScroll(
+                        consumed: Offset,
+                        available: Offset,
+                        source: NestedScrollSource
+                    ): Offset {
+                        val dy = available.y
+                        if (dy > 0f && expansionProgress.value > 0f) {
+                            val deltaP = -dy / dragRangePx
+                            val newP = (expansionProgress.value + deltaP).coerceAtLeast(0f)
+                            val consumedP = expansionProgress.value - newP
+                            val consumedY = consumedP * dragRangePx
+                            coroutineScope.launch { expansionProgress.snapTo(newP) }
+                            return Offset(0f, consumedY)
+                        }
+                        return Offset.Zero
+                    }
+
+                    override suspend fun onPreFling(available: Velocity): Velocity {
+                        if (expansionProgress.value > 0f && expansionProgress.value < 1f) {
+                            settleExpansion(available.y)
+                            return available
+                        }
+                        return Velocity.Zero
+                    }
+
+                    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                        if (expansionProgress.value > 0f && expansionProgress.value < 1f) {
+                            settleExpansion(available.y)
+                            return available
+                        }
+                        return Velocity.Zero
+                    }
+                }
+            }
+
+            // 1. THE RESHAPING PLAYER CARD (Contains TopBar, Artwork, Metadata, Progress, Waveform; compresses upward)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(cardHeight)
+                    .shadow(
+                        elevation = lerp(16.dp, 8.dp, p),
+                        shape = dynamicCardShape,
+                        spotColor = Color.Black.copy(alpha = 0.80f),
+                        ambientColor = Color.Black.copy(alpha = 0.45f)
+                    )
+                    .clip(dynamicCardShape)
+                    .background(cardGradient)
+                    .drawWithContent {
+                        drawContent()
+                        val r = currentCardCornerRadius.toPx()
+                        val strokeWidth = 1.6.dp.toPx()
+                        val sideExtension = 20.dp.toPx()
+                        val path = Path().apply {
+                            moveTo(0f, size.height - r - sideExtension)
+                            lineTo(0f, size.height - r)
+                            arcTo(
+                                rect = Rect(0f, size.height - 2 * r, 2 * r, size.height),
+                                startAngleDegrees = 180f,
+                                sweepAngleDegrees = -90f,
+                                forceMoveTo = false
+                            )
+                            lineTo(size.width - r, size.height)
+                            arcTo(
+                                rect = Rect(size.width - 2 * r, size.height - 2 * r, size.width, size.height),
+                                startAngleDegrees = 90f,
+                                sweepAngleDegrees = -90f,
+                                forceMoveTo = false
+                            )
+                            lineTo(size.width, size.height - r - sideExtension)
+                        }
+                        drawPath(
+                            path = path,
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    animatedCardBorderColor.copy(alpha = 0.20f),
+                                    animatedCardBorderColor.copy(alpha = 0.65f),
+                                    animatedCardBorderColor.copy(alpha = 0.20f)
+                                )
+                            ),
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                velocityTracker.resetTracking()
+                                coroutineScope.launch { expansionProgress.stop() }
+                            },
+                            onVerticalDrag = { change, dragAmount ->
+                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                change.consume()
+                                val deltaP = -dragAmount / dragRangePx
+                                val newP = (expansionProgress.value + deltaP).coerceIn(0f, 1f)
+                                coroutineScope.launch { expansionProgress.snapTo(newP) }
+                            },
+                            onDragEnd = {
+                                val velocityY = velocityTracker.calculateVelocity().y
+                                settleExpansion(velocityY)
+                                velocityTracker.resetTracking()
+                            },
+                            onDragCancel = {
+                                settleExpansion(0f)
+                                velocityTracker.resetTracking()
+                            }
+                        )
+                    }
+                    .zIndex(5f)
             ) {
-                // 1. UPPER HERO & TRACK CONTENT (With restored curved bottom)
+                // ALBUM ARTWORK (Continuous positioning, aspect ratio strictly preserved, extends behind status bar at p=1f)
+                val dynamicArtworkShape = RoundedCornerShape(artworkRadius)
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
+                        .offset { IntOffset(artworkLeft.roundToPx(), artworkTop.roundToPx()) }
+                        .size(width = artworkWidth, height = artworkHeight)
                         .shadow(
-                            elevation = 16.dp,
-                            shape = cardShape,
-                            spotColor = Color.Black.copy(alpha = 0.80f),
+                            elevation = lerp(18.dp, 0.dp, p),
+                            shape = dynamicArtworkShape,
+                            spotColor = Color.Black.copy(alpha = 0.72f),
                             ambientColor = Color.Black.copy(alpha = 0.45f)
                         )
-                        .clip(cardShape)
-                        .background(cardGradient)
-                        .drawWithContent {
-                            drawContent()
-                            val r = cardBottomCornerRadius.toPx()
-                            val strokeWidth = 1.6.dp.toPx()
-                            val sideExtension = 20.dp.toPx()
-                            val path = Path().apply {
-                                moveTo(0f, size.height - r - sideExtension)
-                                lineTo(0f, size.height - r)
-                                arcTo(
-                                    rect = Rect(0f, size.height - 2 * r, 2 * r, size.height),
-                                    startAngleDegrees = 180f,
-                                    sweepAngleDegrees = -90f,
-                                    forceMoveTo = false
-                                )
-                                lineTo(size.width - r, size.height)
-                                arcTo(
-                                    rect = Rect(size.width - 2 * r, size.height - 2 * r, size.width, size.height),
-                                    startAngleDegrees = 90f,
-                                    sweepAngleDegrees = -90f,
-                                    forceMoveTo = false
-                                )
-                                lineTo(size.width, size.height - r - sideExtension)
-                            }
-                            // Sleek border wrapping the curved bottom of the card
-                            drawPath(
-                                path = path,
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        animatedCardBorderColor.copy(alpha = 0.20f),
-                                        animatedCardBorderColor.copy(alpha = 0.65f),
-                                        animatedCardBorderColor.copy(alpha = 0.20f)
-                                    )
-                                ),
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
-                        }
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { /* Absorb clicks on empty space of main surface */ }
+                        .clip(dynamicArtworkShape)
                 ) {
-                    Column(
+                    TrackArtworkImage(
+                        track = track,
+                        contentDescription = track.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Specular reflection sheen (subtle glass highlight)
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(top = statusBarTop + 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                    // Minimal top bar: collapse on the left, actions on the right.
-                    Row(
+                            .background(
+                                Brush.linearGradient(
+                                    0.0f to Color.White.copy(alpha = 0.16f),
+                                    0.25f to Color.White.copy(alpha = 0.05f),
+                                    0.50f to Color.Transparent,
+                                    1.0f to Color.White.copy(alpha = 0.03f)
+                                )
+                            )
+                    )
+
+                    // Glass depth vignette
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = onDismiss,
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0.0f to Color.Transparent,
+                                    0.80f to Color.Transparent,
+                                    1.0f to Color.Black.copy(alpha = 0.24f)
+                                )
+                            )
+                    )
+
+                    // Chamfered glass border (fades as artwork reaches screen edges)
+                    if (p < 0.95f) {
+                        Box(
                             modifier = Modifier
-                                .size(44.dp)
-                                .testTag("player_collapse_button")
+                                .fillMaxSize()
+                                .border(
+                                    width = 1.2.dp,
+                                    brush = Brush.linearGradient(
+                                        0.0f to Color.White.copy(alpha = 0.45f * (1f - p)),
+                                        0.35f to Color.White.copy(alpha = 0.18f * (1f - p)),
+                                        0.70f to Color.White.copy(alpha = 0.08f * (1f - p)),
+                                        1.0f to Color.White.copy(alpha = 0.30f * (1f - p))
+                                    ),
+                                    shape = dynamicArtworkShape
+                                )
+                        )
+                    }
+
+                    // Scrim gradient in lower portion to guarantee crystal-clear contrast as metadata/progress/waveform move in
+                    if (p > 0.02f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        0.0f to Color.Transparent,
+                                        0.50f to Color.Transparent,
+                                        0.70f to Color.Black.copy(alpha = 0.45f * p),
+                                        0.85f to Color.Black.copy(alpha = 0.72f * p),
+                                        1.0f to Color.Black.copy(alpha = 0.88f * p)
+                                    )
+                                )
+                        )
+                    }
+                }
+
+                // TOP BAR (Stays at status bar level, sits cleanly above artwork with .zIndex(10f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset { IntOffset(0, (statusBarTop + 4.dp).roundToPx()) }
+                        .height(44.dp)
+                        .padding(horizontal = 16.dp)
+                        .zIndex(10f),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (expansionProgress.value > 0.05f) {
+                                coroutineScope.launch {
+                                    expansionProgress.animateTo(
+                                        0f,
+                                        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+                                    )
+                                }
+                            } else {
+                                onDismiss()
+                            }
+                        },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .testTag("player_collapse_button")
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.28f * p)),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowDown,
                                 contentDescription = "Collapse Player",
-                                tint = Color.White.copy(alpha = 0.88f),
-                                modifier = Modifier.size(30.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { showActionSheet = true },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .testTag("player_menu_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More Options",
-                                tint = Color.White.copy(alpha = 0.88f),
+                                tint = Color.White.copy(alpha = 0.92f),
                                 modifier = Modifier.size(28.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    if (p > 0.65f) {
+                        Text(
+                            text = "UP NEXT",
+                            fontSize = 12.sp,
+                            letterSpacing = 1.6.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = ((p - 0.65f) / 0.35f).coerceIn(0f, 1f))
+                        )
+                    }
 
-                    // Hero artwork: positioned down with increased size, sharp edges, and premium glass wrap
-                    Box(
+                    IconButton(
+                        onClick = { showActionSheet = true },
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        contentAlignment = Alignment.Center
+                            .size(44.dp)
+                            .testTag("player_menu_button")
                     ) {
-                        BoxWithConstraints(
+                        Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(top = 4.dp, bottom = 4.dp),
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.28f * p)),
                             contentAlignment = Alignment.Center
                         ) {
-                            val artSize = (minOf(
-
-                                maxWidth - 4.dp,
-
-                                maxHeight
-
-                             ) * 0.93f).coerceIn(224.dp, 336.dp)
-
-                            val artworkShape = RoundedCornerShape(artworkCornerRadius)
-
-                            Box(
-                                modifier = Modifier
-                                    .size(artSize)
-                                    .offset(y = (-24).dp)
-                                    .shadow(
-                                        elevation = artworkElevation,
-                                        shape = artworkShape,
-                                        spotColor = Color.Black.copy(alpha = 0.72f),
-                                        ambientColor = Color.Black.copy(alpha = 0.45f)
-                                    )
-                                    .clip(artworkShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // 1. Base album artwork
-                                TrackArtworkImage(
-                                    track = track,
-                                    contentDescription = track.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-
-                                // 2. Premium glass surface: specular reflection sheen
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            Brush.linearGradient(
-                                                0.0f to Color.White.copy(alpha = 0.16f),
-                                                0.25f to Color.White.copy(alpha = 0.05f),
-                                                0.50f to Color.Transparent,
-                                                1.0f to Color.White.copy(alpha = 0.03f)
-                                            )
-                                        )
-                                )
-
-                                // 3. Glass depth vignette
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            Brush.radialGradient(
-                                                0.0f to Color.Transparent,
-                                                0.80f to Color.Transparent,
-                                                1.0f to Color.Black.copy(alpha = 0.24f)
-                                            )
-                                        )
-                                )
-
-                                // 4. Premium chamfered glass border
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .border(
-                                            width = 1.2.dp,
-                                            brush = Brush.linearGradient(
-                                                0.0f to Color.White.copy(alpha = 0.45f),
-                                                0.35f to Color.White.copy(alpha = 0.18f),
-                                                0.70f to Color.White.copy(alpha = 0.08f),
-                                                1.0f to Color.White.copy(alpha = 0.30f)
-                                            ),
-                                            shape = artworkShape
-                                        )
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More Options",
+                                tint = Color.White.copy(alpha = 0.92f),
+                                modifier = Modifier.size(26.dp)
+                            )
                         }
                     }
+                }
 
-                    // Song identity sits immediately under the artwork.
-                    // Keying by track makes the entrance animation replay for every new song.
-                    key(track.id) {
-                        Column(
+                // TRACK IDENTITY (Title & Artist, moves continuously into lower artwork region)
+                key(track.id) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset { IntOffset(0, metadataY.roundToPx()) }
+                            .padding(horizontal = contentPaddingHorizontal)
+                            .zIndex(6f),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        MarqueeTrackTitle(
+                            title = track.title,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp),
-                            horizontalAlignment = Alignment.Start
-                        ) {
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    initialOffsetX = { fullWidth -> fullWidth / 3 },
-                                    animationSpec = tween(
-                                        durationMillis = 430,
-                                        easing = FastOutSlowInEasing
-                                    )
-                                ) + fadeIn(
-                                    animationSpec = tween(
-                                        durationMillis = 300,
-                                        easing = FastOutSlowInEasing
-                                    )
-                                ),
-                                label = "track_title_enter"
-                            ) {
-                                MarqueeTrackTitle(
-                                    title = track.title,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("player_track_title")
-                                )
-                            }
+                                .testTag("player_track_title")
+                        )
 
-                            Spacer(modifier = Modifier.height(3.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
 
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = slideInHorizontally(
-                                    initialOffsetX = { fullWidth -> fullWidth / 3 },
-                                    animationSpec = tween(
-                                        durationMillis = 430,
-                                        delayMillis = 90,
-                                        easing = FastOutSlowInEasing
-                                    )
-                                ) + fadeIn(
-                                    animationSpec = tween(
-                                        durationMillis = 300,
-                                        delayMillis = 90,
-                                        easing = FastOutSlowInEasing
-                                    )
-                                ),
-                                label = "track_artist_enter"
-                            ) {
-                                Text(
-                                    text = track.artist.uppercase(),
-                                    fontSize = 12.5.sp,
-                                    letterSpacing = 1.6.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color.White.copy(alpha = 0.62f),
-                                    textAlign = TextAlign.Start,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("player_track_artist")
-                                )
-                            }
-                        }
+                        Text(
+                            text = track.artist.uppercase(),
+                            fontSize = 12.sp,
+                            letterSpacing = 1.4.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.68f),
+                            textAlign = TextAlign.Start,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("player_track_artist")
+                        )
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Progress Bar & Timestamps
+                // PROGRESS BAR & TIMESTAMPS
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset { IntOffset(0, progressY.roundToPx()) }
+                        .padding(horizontal = contentPaddingHorizontal)
+                        .zIndex(6f)
+                ) {
                     NowPlayingProgressBar(
                         positionMs = playbackPositionMs,
                         durationMs = track.durationMs,
                         isPlaying = isPlaying,
                         onSeekTo = onSeekTo,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp)
+                        modifier = Modifier.fillMaxWidth()
                     )
+                }
 
-                    Spacer(modifier = Modifier.height(5.dp))
-
-                    // Tiny, tightly packed black micro-waveform visualizer
+                // SILHOUETTE WAVEFORM
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset { IntOffset(0, waveformY.roundToPx()) }
+                        .padding(horizontal = contentPaddingHorizontal)
+                        .zIndex(6f)
+                ) {
                     DarkSilhouetteWaveform(
                         isPlaying = isPlaying,
                         telemetry = telemetry,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(18.dp)
-                            .clip(cardShape)
+                            .height(lerp(18.dp, 14.dp, p))
+                            .clip(RoundedCornerShape(8.dp))
                     )
                 }
-            }
+            } // End of Player Card Box
 
-                Spacer(modifier = Modifier.height(8.dp))
+            // 2. TRANSPORT CONTROLS ROW (Always OUTSIDE & UNDER the artwork/card, never inside artwork!)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, controlsY.roundToPx()) }
+                    .height(controlsHeight)
+                    .padding(horizontal = contentPaddingHorizontal)
+                    .zIndex(6f),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AnimatedShuffleIcon(
+                    isShuffle = isShuffle,
+                    activeColor = Color.White,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleShuffle()
+                    },
+                    modifier = Modifier.testTag("player_shuffle_button"),
+                    touchSize = secondaryIconTouchSize,
+                    iconSize = secondaryIconSize
+                )
 
-                // 2. CONTROLS ROW (Directly underneath the upper surface)
-                Row(
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSkipPrevious()
+                    },
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .padding(horizontal = 18.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { /* Absorb clicks on controls row empty padding */ },
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .size(skipButtonSize)
+                        .testTag("player_previous_button")
                 ) {
-                    // Shuffle
-                    AnimatedShuffleIcon(
-                        isShuffle = isShuffle,
-                        activeColor = Color.White,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onToggleShuffle()
-                        },
-                        modifier = Modifier.testTag("player_shuffle_button"),
-                        touchSize = 46.dp,
-                        iconSize = 26.dp
-                    )
-
-                    // Previous
-                    IconButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSkipPrevious()
-                        },
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("player_previous_button")
-                    ) {
-                        PlayerPreviousIcon(
-                            modifier = Modifier.size(32.dp),
-                            tint = Color.White
-                        )
-                    }
-
-                    // Circular Play / Pause Button (Scaled down, elegant proportions)
-                    Box(
-                        modifier = Modifier
-                            .size(62.dp)
-                            .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.35f))
-                            .clip(CircleShape)
-                            .background(Color(0xFFF4F4F2))
-                            .border(1.dp, Color.White.copy(alpha = 0.60f), CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onTogglePlayPause()
-                                }
-                            )
-                            .testTag("player_play_pause_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        MorphingPlayPauseIcon(
-                            isPlaying = isPlaying,
-                            modifier = Modifier.size(38.dp),
-                            tint = Color(0xFF08090C)
-                        )
-                    }
-
-                    // Next
-                    IconButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSkipNext()
-                        },
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("player_next_button")
-                    ) {
-                        PlayerNextIcon(
-                            modifier = Modifier.size(32.dp),
-                            tint = Color.White
-                        )
-                    }
-
-                    // Repeat
-                    AnimatedRepeatIcon(
-                        repeatMode = repeatMode,
-                        activeColor = Color.White,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onToggleRepeat()
-                        },
-                        modifier = Modifier.testTag("player_repeat_button"),
-                        touchSize = 46.dp,
-                        iconSize = 26.dp
+                    PlayerPreviousIcon(
+                        modifier = Modifier.size(skipIconSize),
+                        tint = Color.White
                     )
                 }
 
-                Spacer(modifier = Modifier.height(2.dp))
-
-                // 4. DISCREET UP NEXT SWIPE-UP HANDLE (Longer, modern gesture pill dragged down)
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(24.dp)
+                        .size(playButtonSize)
+                        .shadow(8.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.35f))
+                        .clip(CircleShape)
+                        .background(Color(0xFFF4F4F2))
+                        .border(1.dp, Color.White.copy(alpha = 0.60f), CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {
-                                coroutineScope.launch {
-                                    expansionProgress.animateTo(
-                                        when {
-                                            expansionProgress.value < 0.5f -> 1f
-                                            expansionProgress.value < 1.5f -> 2f
-                                            else -> 0f
-                                        },
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onTogglePlayPause()
                             }
                         )
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures { _, dragAmount ->
-                                if (dragAmount < -12f) {
-                                    coroutineScope.launch {
-                                        expansionProgress.animateTo(1f)
-                                    }
-                                }
-                            }
-                        },
+                        .testTag("player_play_pause_button"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .width(68.dp)
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.25f))
+                    MorphingPlayPauseIcon(
+                        isPlaying = isPlaying,
+                        modifier = Modifier.size(playIconSize),
+                        tint = Color(0xFF08090C)
                     )
                 }
 
-            Spacer(modifier = Modifier.height(2.dp))
-        }
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSkipNext()
+                    },
+                    modifier = Modifier
+                        .size(skipButtonSize)
+                        .testTag("player_next_button")
+                ) {
+                    PlayerNextIcon(
+                        modifier = Modifier.size(skipIconSize),
+                        tint = Color.White
+                    )
+                }
 
-        // 5. EXPANDED UP NEXT QUEUE SHEET (Revealed on swipe-up or handle tap)
-        if (upNextP > 0.001f) {
+                AnimatedRepeatIcon(
+                    repeatMode = repeatMode,
+                    activeColor = Color.White,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleRepeat()
+                    },
+                    modifier = Modifier.testTag("player_repeat_button"),
+                    touchSize = secondaryIconTouchSize,
+                    iconSize = secondaryIconSize
+                )
+            }
+
+            // 3. DRAG HANDLE (Tapping toggles expansion, dragging scrubs expansionProgress)
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        translationY = (1f - upNextP) * totalHeight.toPx()
-                        alpha = upNextP.coerceIn(0f, 1f)
-                    }
-                    .background(playerSheetGradient)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { /* Absorb clicks on empty space of up next queue */ }
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // Header
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    expansionProgress.animateTo(0f)
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Collapse Queue",
-                                tint = Color.White
-                            )
-                        }
-
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Playing from Queue",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "${orderedQueueItems.size} tracks",
-                                fontSize = 12.sp,
-                                color = Color.White.copy(alpha = 0.60f)
-                            )
-                        }
-
-                        TextButton(
-                            onClick = {
-                                Toast.makeText(context, "Queue saved to playlist", Toast.LENGTH_SHORT).show()
-                            }
-                        ) {
-                            Text(
-                                text = "Save",
-                                color = themeColors.accent,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-
-                    // Pull-down handle to collapse back to player
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(20.dp)
-                            .pointerInput(Unit) {
-                                val dragRangePx = with(queueDragDensity) { 420.dp.toPx() }
-
-                                detectVerticalDragGestures(
-                                    onDragStart = {
-                                        coroutineScope.launch { expansionProgress.stop() }
-                                    },
-                                    onVerticalDrag = { change, dragAmount ->
-                                        change.consume()
-                                        // Dragging up increases expansion; dragging down collapses it.
-                                        val next = (expansionProgress.value - (dragAmount / dragRangePx))
-                                            .coerceIn(0f, 2f)
-                                        coroutineScope.launch {
-                                            expansionProgress.snapTo(next)
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        coroutineScope.launch {
-                                            val target = when {
-                                                expansionProgress.value < 0.5f -> 0f
-                                                expansionProgress.value < 1.5f -> 1f
-                                                else -> 2f
-                                            }
-                                            expansionProgress.animateTo(
-                                                target,
-                                                animationSpec = spring(
-                                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                                    stiffness = Spring.StiffnessMediumLow
-                                                )
-                                            )
-                                        }
-                                    },
-                                    onDragCancel = {
-                                        coroutineScope.launch {
-                                            val target = if (expansionProgress.value >= 0.48f) 1f else 0f
-                                            expansionProgress.animateTo(
-                                                target,
-                                                animationSpec = spring(
-                                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                                    stiffness = Spring.StiffnessMediumLow
-                                                )
-                                            )
-                                        }
-                                    }
-                                )
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, handleY.roundToPx()) }
+                    .height(handleHeight)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                velocityTracker.resetTracking()
+                                coroutineScope.launch { expansionProgress.stop() }
                             },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(36.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color.White.copy(alpha = 0.30f))
+                            onVerticalDrag = { change, dragAmount ->
+                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                change.consume()
+                                val deltaP = -dragAmount / dragRangePx
+                                val newP = (expansionProgress.value + deltaP).coerceIn(0f, 1f)
+                                coroutineScope.launch { expansionProgress.snapTo(newP) }
+                            },
+                            onDragEnd = {
+                                val velocityY = velocityTracker.calculateVelocity().y
+                                settleExpansion(velocityY)
+                                velocityTracker.resetTracking()
+                            },
+                            onDragCancel = {
+                                settleExpansion(0f)
+                                velocityTracker.resetTracking()
+                            }
                         )
                     }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            val target = if (expansionProgress.value > 0.5f) 0f else 1f
+                            coroutineScope.launch {
+                                expansionProgress.animateTo(
+                                    target,
+                                    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+                                )
+                            }
+                        }
+                    )
+                    .zIndex(6f),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(68.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.32f))
+                )
+            }
 
-                    // Full interactive reorderable/swipeable queue
+            // 4. THE QUEUE CONTENT (Revealed directly underneath the handle as the player compresses)
+            if (queueHeight > 1.dp) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(queueHeight)
+                        .offset { IntOffset(0, queueY.roundToPx()) }
+                        .clipToBounds()
+                        .zIndex(4f)
+                ) {
                     LazyColumn(
                         state = queueListState,
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentPadding = PaddingValues(bottom = 24.dp)
+                            .fillMaxSize()
+                            .nestedScroll(nestedScrollConnection),
+                        contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
                     ) {
+                        item(key = "queue_header_section") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "UP NEXT",
+                                    fontSize = 12.sp,
+                                    letterSpacing = 1.4.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.55f)
+                                )
+                                Text(
+                                    text = "${orderedQueueItems.size} tracks",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = Color.White.copy(alpha = 0.40f)
+                                )
+                            }
+                        }
+
                         itemsIndexed(
                             items = orderedQueueItems,
                             key = { _, item -> item.id }
@@ -1056,7 +1129,7 @@ fun PlayerSheet(
                                     if (isDragging) return@run 0f
                                     val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
                                     if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
-                                    val itemHeightPx = with(queueDragDensity) { 60.dp.toPx() }
+                                    val itemHeightPx = with(density) { 60.dp.toPx() }
                                     when {
                                         dragStartIndex < queueDragTargetIndex -> {
                                             if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
@@ -1153,7 +1226,6 @@ fun PlayerSheet(
             )
         }
     }
-}
 }
 
 
