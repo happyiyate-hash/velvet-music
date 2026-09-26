@@ -122,10 +122,6 @@ jobs:
         shell: bash
         run: python3 scripts/player_queue_second_stage_transition.py
 
-      - name: Refine Continuous Queue Reveal and Sticky Header
-        shell: bash
-        run: python3 scripts/refine_queue_reveal_and_sticky_header.py
-
       - name: Fetch official ACRCloud Android SDK
         shell: bash
         run: |

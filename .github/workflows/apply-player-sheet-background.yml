@@ -13,7 +13,6 @@ on:
       - 'scripts/player_sheet_exact_waveform_patch.py'
       - 'scripts/player_audio_visualizer_patch.py'
       - 'scripts/fix_latest_release_compile_errors.py'
-      - 'scripts/refine_queue_surface_and_swipe.py'
 
 jobs:
   patch:
@@ -48,16 +47,13 @@ jobs:
       - name: Fix latest release Kotlin compilation errors
         run: |
           python3 scripts/fix_latest_release_compile_errors.py
-      - name: Refine continuous queue surface and black-first swipe
-        run: |
-          python3 scripts/refine_queue_surface_and_swipe.py
       - name: Commit UI and audio visualization repairs
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@github.com'
           git add app/src/main/java/com/example/ui/PlayerSheet.kt app/src/main/java/com/example/ui/HomeFeedScreen.kt app/src/main/java/com/example/ui/VelvetApp.kt app/src/main/java/com/example/ui/AshGlassComponents.kt app/src/main/java/com/example/audio/VelvetAudioEngine.kt
           git diff --cached --quiet && exit 0
-          git commit -m 'Refine continuous queue surface and swipe transition'
+          git commit -m 'Fix latest release Kotlin compilation errors'
           git pull --rebase origin main
           git push
 
