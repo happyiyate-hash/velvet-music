@@ -69,9 +69,6 @@ jobs:
             fi
           fi
 
-          # Use the permanent signing keystore when it has been configured.
-          # Otherwise generate an ephemeral release keystore automatically so
-          # the APK build can proceed without requiring a GitHub secret.
           if [ -n "${KEYSTORE_BASE64}" ]; then
             echo "${KEYSTORE_BASE64}" | base64 --decode > my-upload-key.jks
             chmod 600 my-upload-key.jks
@@ -84,24 +81,26 @@ jobs:
             echo "Permanent release keystore restored."
           else
             echo "No permanent release keystore configured; generating an ephemeral signing keystore for this build."
-
-            # Use one generated password for both the keystore and the upload key.
-            # This avoids key-decryption mismatches on the ephemeral fallback path.
             STORE_PASSWORD="$(openssl rand -hex 24)"
             KEY_PASSWORD="${STORE_PASSWORD}"
 
-            keytool -genkeypair               -keystore my-upload-key.jks               -storepass "${STORE_PASSWORD}"               -keypass "${KEY_PASSWORD}"               -alias upload               -keyalg RSA               -keysize 4096               -validity 10000               -dname "CN=Velvet Music, OU=Android, O=Velvet Music, L=Unknown, ST=Unknown, C=NG"
+            keytool -genkeypair \
+              -keystore my-upload-key.jks \
+              -storepass "${STORE_PASSWORD}" \
+              -keypass "${KEY_PASSWORD}" \
+              -alias upload \
+              -keyalg RSA \
+              -keysize 4096 \
+              -validity 10000 \
+              -dname "CN=Velvet Music, OU=Android, O=Velvet Music, L=Unknown, ST=Unknown, C=NG"
 
             chmod 600 my-upload-key.jks
-
-            # Validate the exact alias/password pair that Gradle will use.
-            keytool -list -v               -keystore my-upload-key.jks               -storepass "${STORE_PASSWORD}"               -alias upload               >/dev/null
-            keytool -exportcert               -keystore my-upload-key.jks               -storepass "${STORE_PASSWORD}"               -alias upload               >/dev/null
+            keytool -list -v -keystore my-upload-key.jks -storepass "${STORE_PASSWORD}" -alias upload >/dev/null
+            keytool -exportcert -keystore my-upload-key.jks -storepass "${STORE_PASSWORD}" -alias upload >/dev/null
 
             echo "Ephemeral release keystore generated and verified successfully."
           fi
 
-          # Pass the selected/generated signing configuration to the Gradle step.
           {
             echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks"
             echo "STORE_PASSWORD=${STORE_PASSWORD}"
@@ -114,6 +113,10 @@ jobs:
       - name: Apply Latest Release Compile Fixes
         shell: bash
         run: python3 scripts/fix_latest_release_compile_errors.py
+
+      - name: Apply Continuous Player Queue Layout
+        shell: bash
+        run: python3 scripts/player_queue_continuous_patch.py
 
       - name: Fetch official ACRCloud Android SDK
         shell: bash
@@ -140,8 +143,6 @@ jobs:
             exit 1
           fi
 
-          # Gradle has already signed the release APK with the permanent keystore.
-          # Verify the signature and copy it to the stable artifact name.
           BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
           "$BUILD_TOOLS_DIR/apksigner" verify --verbose "${RELEASE_APK}"
           cp "${RELEASE_APK}" build-apks/Velvet-Music.apk
