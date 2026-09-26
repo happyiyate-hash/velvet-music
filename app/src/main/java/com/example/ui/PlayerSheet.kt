@@ -1644,7 +1644,9 @@ private fun UpNextTrackRow(
                         isDragging -> accentColor.copy(alpha = .13f)
                         isDropTarget -> accentColor.copy(alpha = .06f)
                         isCurrent -> accentColor.copy(alpha = .07f)
-                        else -> surfaceColor
+                        // Transparent for normal rows: inherit the exact queue/player
+                        // background instead of painting a brighter card color.
+                        else -> Color.Transparent
                     }
                 )
                 .pointerInput(track.id) {
