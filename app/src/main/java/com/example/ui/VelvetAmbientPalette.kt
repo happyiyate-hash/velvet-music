@@ -19,14 +19,10 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * A quiet, continuously drifting ambient palette for the upper Velvet player card.
+ * Quiet, continuously drifting ambient palette for the upper Velvet player card.
  *
- * The supplied colors never change during a frame. Only their spatial influence moves.
- * Motion is phase-based and wraps continuously; there is intentionally no
- * RepeatMode.Reverse / ping-pong animation.
- *
- * Keep this composable behind the artwork/waveform/title content and clip the parent
- * card so the ambient fields cannot bleed into the lower control surface.
+ * Palette changes crossfade over 500 ms while the spatial phase keeps running.
+ * There is intentionally no RepeatMode.Reverse / ping-pong animation.
  */
 @Composable
 fun VelvetAmbientPalette(
@@ -34,43 +30,88 @@ fun VelvetAmbientPalette(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val palette = remember(colors) {
-        buildList {
-            colors.filter { it != Color.Transparent }.take(4).forEach(::add)
-            while (size < 4) add(Color.Transparent)
-        }
+    val targetPalette = remember(colors) {
+        normalizePalette(colors)
     }
 
+    var displayedPalette by remember { mutableStateOf(targetPalette) }
+    var previousPalette by remember { mutableStateOf(targetPalette) }
+    var paletteTransitionStartNanos by remember { mutableLongStateOf(Long.MIN_VALUE) }
     var elapsedNanos by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(enabled) {
+    LaunchedEffect(targetPalette, enabled) {
         if (!enabled) {
+            previousPalette = targetPalette
+            displayedPalette = targetPalette
+            paletteTransitionStartNanos = Long.MIN_VALUE
             elapsedNanos = 0L
             return@LaunchedEffect
         }
 
+        // Capture the currently displayed palette so a rapid track change never
+        // jumps back to the previous track's original colors.
+        previousPalette = displayedPalette
+        paletteTransitionStartNanos = Long.MIN_VALUE
+    }
+
+    LaunchedEffect(enabled) {
+        if (!enabled) return@LaunchedEffect
+
         while (true) {
             withInfiniteAnimationFrameNanos { frameNanos ->
                 elapsedNanos = frameNanos
+
+                if (paletteTransitionStartNanos == Long.MIN_VALUE) {
+                    paletteTransitionStartNanos = frameNanos
+                }
+
+                val progress = (
+                    (frameNanos - paletteTransitionStartNanos).toFloat() / PALETTE_CROSSFADE_NANOS
+                ).coerceIn(0f, 1f)
+
+                // Smoothstep gives the palette a gentle arrival/departure instead
+                // of a mechanical linear color swap.
+                val eased = progress * progress * (3f - 2f * progress)
+                displayedPalette = blendPalette(previousPalette, targetPalette, eased)
             }
         }
     }
 
-    Canvas(
-        modifier = modifier.clipToBounds()
-    ) {
+    Canvas(modifier = modifier.clipToBounds()) {
+        if (size.minDimension <= 0f) return@Canvas
+
         val timeSeconds = elapsedNanos / 1_000_000_000f
-        drawAmbientFields(palette, timeSeconds)
+        drawAmbientFields(displayedPalette, timeSeconds)
     }
+}
+
+private const val PALETTE_CROSSFADE_NANOS = 500_000_000f
+
+private fun normalizePalette(colors: List<Color>): List<Color> = buildList {
+    colors.filter { it != Color.Transparent }.take(4).forEach(::add)
+    while (size < 4) add(Color.Transparent)
+}
+
+private fun blendPalette(
+    from: List<Color>,
+    to: List<Color>,
+    progress: Float,
+): List<Color> = List(4) { index ->
+    val start = from.getOrElse(index) { Color.Transparent }
+    val end = to.getOrElse(index) { Color.Transparent }
+    lerpColor(start, end, progress)
+}
+
+private fun lerpColor(from: Color, to: Color, fraction: Float): Color {
+    if (from == Color.Transparent) return to.copy(alpha = to.alpha * fraction)
+    if (to == Color.Transparent) return from.copy(alpha = from.alpha * (1f - fraction))
+    return androidx.compose.ui.graphics.lerp(from, to, fraction)
 }
 
 private fun DrawScope.drawAmbientFields(
     colors: List<Color>,
     timeSeconds: Float,
 ) {
-    if (size.minDimension <= 0f) return
-
-    // Long, intentionally different periods prevent obvious synchronization.
     val periods = floatArrayOf(22f, 28f, 34f, 40f)
     val phases = floatArrayOf(0f, 1.7f, 3.4f, 5.1f)
     val orbitRadii = floatArrayOf(0.23f, 0.27f, 0.21f, 0.25f)
@@ -85,14 +126,12 @@ private fun DrawScope.drawAmbientFields(
     colors.forEachIndexed { index, color ->
         if (color == Color.Transparent) return@forEachIndexed
 
-        // Continuous normalized phase in [0, 1). The path never reverses.
         val phase = positiveModulo(
             timeSeconds / periods[index] + phases[index] / (2f * PI.toFloat()),
             1f,
         )
         val angle = phase * 2f * PI.toFloat()
 
-        // A slow elliptical orbit gives organic movement without a visible ping-pong.
         val center = Offset(
             x = centerX + cos(angle) * width * orbitRadii[index],
             y = centerY + sin(angle) * height * (orbitRadii[index] * 0.62f),
