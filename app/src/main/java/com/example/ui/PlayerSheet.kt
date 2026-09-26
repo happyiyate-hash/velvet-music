@@ -1067,7 +1067,9 @@ fun PlayerSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(queueHeaderHeight)
-                            .background(cardColor.copy(alpha = 0.96f))
+                            // Transparent: inherit the exact player-sheet background.
+                            // Do not introduce a brighter queue-colored rectangle here.
+                            .background(Color.Transparent)
                             .padding(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -1540,201 +1542,136 @@ private fun UpNextTrackRow(
     isDragging: Boolean,
     dragOffsetY: Float,
     virtualDisplacementY: Float,
-    isDropTarget: Boolean = false,
+    isDropTarget: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var rowWidthPx by remember { mutableFloatStateOf(0f) }
     var swipeOffset by remember(track.id) { mutableFloatStateOf(0f) }
-    var thresholdLatched by remember(track.id) { mutableStateOf(false) }
-    val swipeSettle = remember(track.id) { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
-    val density = LocalDensity.current
-    val thresholdPx = if (rowWidthPx > 0f) rowWidthPx * 0.38f else with(density) { 140.dp.toPx() }
-    val swipeLimitPx = with(density) { 600.dp.toPx() }
+    val maxSwipe = 132f
 
-    val isSwiping = abs(swipeOffset) > 1f
-    val isPastThreshold = abs(swipeOffset) >= thresholdPx
-
-    // Trigger one short haptic vibration exactly at the instant threshold is crossed into action mode
-    LaunchedEffect(isPastThreshold) {
-        if (isPastThreshold && !thresholdLatched) {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            thresholdLatched = true
-        } else if (!isPastThreshold) {
-            thresholdLatched = false
-        }
-    }
-
-    // Dynamic background transition during swipe:
-    // Initial drag state: Matches player sheet background (surfaceColor).
-    // Threshold trigger state: Transitions to vibrant green (#22C55E) for Play Next and vibrant red (#EF4444) for Delete.
-    val targetActionColor = when {
-        !isPastThreshold -> surfaceColor
-        swipeOffset > 0f -> Color(0xFF22C55E)
-        else -> Color(0xFFEF4444)
-    }
-    val animatedActionBg by animateColorAsState(
-        targetValue = targetActionColor,
-        animationSpec = tween(160),
-        label = "swipe_action_bg"
-    )
-
-    // Icon scale and alpha animation as drag reaches action threshold
-    val progress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
-    val iconScale by animateFloatAsState(
-        targetValue = if (isPastThreshold) 1.2f else (0.65f + progress * 0.35f),
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
-        ),
-        label = "swipe_icon_scale"
-    )
-    val iconAlpha by animateFloatAsState(
-        targetValue = if (isPastThreshold) 1f else (0.35f + progress * 0.65f),
-        animationSpec = tween(120),
-        label = "swipe_icon_alpha"
-    )
+    // First reveal is always BLACK. The colored action is intentionally delayed
+    // until the user has swiped far enough to make the intent obvious.
+    val actionRevealStart = 54f
+    val actionRevealProgress =
+        ((abs(swipeOffset) - actionRevealStart) / (maxSwipe - actionRevealStart))
+            .coerceIn(0f, 1f)
 
     val displacement by animateFloatAsState(
         targetValue = virtualDisplacementY,
-        animationSpec = androidx.compose.animation.core.spring(
+        animationSpec = spring(
             stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
             dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
         ),
         label = "queue_virtual_displacement"
     )
-    val scale by animateFloatAsState(if (isDragging) 1.01f else 1f, tween(120), label = "queue_drag_scale")
-    val elevation by animateFloatAsState(if (isDragging) 4f else 0f, tween(120), label = "queue_drag_elevation")
+    val scale by animateFloatAsState(
+        if (isDragging) 1.02f else 1f,
+        tween(120),
+        label = "queue_drag_scale"
+    )
+    val elevation by animateFloatAsState(
+        if (isDragging) 14f else 0f,
+        tween(120),
+        label = "queue_drag_elevation"
+    )
 
-    // Active Item Highlight:
-    // Matches the exact background color of the player sheet itself (surfaceColor).
-    // Dragged item has a subtle lift, active current track has accent highlight.
-    val activeRowBg = when {
-        isDragging -> Color.White.copy(alpha = 0.16f).compositeOver(surfaceColor)
-        isCurrent -> accentColor.copy(alpha = 0.20f).compositeOver(surfaceColor)
-        else -> surfaceColor
-    }
-
-    // Full-Bleed Surface Layer: Spans 100% width, no border, zero padding cutoffs
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(60.dp)
-            .onSizeChanged { rowWidthPx = it.width.toFloat() }
+            .height(58.dp)
             .graphicsLayer {
                 translationY = if (isDragging) dragOffsetY else displacement
                 scaleX = scale
                 scaleY = scale
             }
-            .zIndex(if (isDragging) 5f else 0f)
-            .shadow(
-                elevation = elevation.dp,
-                shape = RectangleShape,
-                ambientColor = Color.Black.copy(alpha = 0.45f),
-                spotColor = Color.Black.copy(alpha = 0.45f),
-                clip = false
-            )
+            .zIndex(if (isDragging) 10f else 0f)
+            .shadow(elevation.dp, RoundedCornerShape(9.dp), clip = false)
+            .clip(RoundedCornerShape(9.dp))
     ) {
-        // Step 1: Background Reveal Layer - strictly sits behind moving card, revealed only as card is swiped open
-        if (isSwiping && !isCurrent) {
-            val showingPlayNext = swipeOffset > 0f
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(animatedActionBg),
-                contentAlignment = if (showingPlayNext) Alignment.CenterStart else Alignment.CenterEnd
-            ) {
+        // Base swipe reveal layer.
+        // This is deliberately BLACK, not transparent, so the page/background
+        // can never show through while a row is being swiped.
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            horizontalArrangement = if (swipeOffset < 0f) Arrangement.Start else Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (swipeOffset != 0f && !isDragging) {
+                val deleting = swipeOffset < 0f
+
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 24.dp)
-                        .graphicsLayer {
-                            scaleX = iconScale
-                            scaleY = iconScale
-                            alpha = iconAlpha
-                        },
+                        .width(92.dp)
+                        .height(50.dp)
+                        .padding(horizontal = 4.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (actionRevealProgress > 0f) {
+                                Color(0xFFB91C1C).copy(
+                                    alpha = 0.16f + 0.34f * actionRevealProgress
+                                )
+                            } else {
+                                Color.Black
+                            }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (showingPlayNext) Icons.Default.QueueMusic else Icons.Default.Delete,
-                        contentDescription = if (showingPlayNext) "Play Next" else "Delete",
-                        tint = Color.White,
+                        imageVector = if (deleting) Icons.Default.Delete else Icons.Default.SkipNext,
+                        contentDescription = if (deleting) "Delete from queue" else "Play next",
+                        tint = Color.White.copy(
+                            alpha = if (actionRevealProgress > 0f) {
+                                0.45f + 0.55f * actionRevealProgress
+                            } else {
+                                0f
+                            }
+                        ),
                         modifier = Modifier.size(24.dp)
                     )
                 }
             }
         }
 
-        // Step 2: Track Row Content - Solid opaque surface
+        // The song row slides over the reveal layer.
         Row(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
-                .background(activeRowBg)
-                .pointerInput(track.id, isDragging) {
+                .clip(RoundedCornerShape(9.dp))
+                .background(
+                    when {
+                        isDragging -> accentColor.copy(alpha = .13f)
+                        isDropTarget -> accentColor.copy(alpha = .06f)
+                        isCurrent -> accentColor.copy(alpha = .07f)
+                        else -> surfaceColor
+                    }
+                )
+                .pointerInput(track.id) {
                     detectHorizontalDragGestures(
-                        onDragStart = {
-                            thresholdLatched = false
-                        },
-                        onDragCancel = {
-                            scope.launch {
-                                swipeSettle.snapTo(swipeOffset)
-                                swipeSettle.animateTo(0f, tween(180)) { swipeOffset = value }
-                                thresholdLatched = false
-                            }
-                        },
+                        onDragStart = {},
+                        onDragCancel = { swipeOffset = 0f },
                         onDragEnd = {
-                            val releaseOffset = swipeOffset
-                            val crossed = abs(releaseOffset) >= thresholdPx
-                            if (!crossed) {
-                                scope.launch {
-                                    swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(0f, androidx.compose.animation.core.spring(
-                                        stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
-                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
-                                    )) { swipeOffset = value }
-                                    thresholdLatched = false
-                                }
-                            } else if (releaseOffset > 0f) {
-                                scope.launch {
-                                    swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
-                                    onPlayNext()
-                                    swipeSettle.snapTo(0f)
-                                    swipeOffset = 0f
-                                    thresholdLatched = false
-                                }
-                            } else {
-                                scope.launch {
-                                    swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(-swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
-                                    onDelete()
-                                    swipeSettle.snapTo(0f)
-                                    swipeOffset = 0f
-                                    thresholdLatched = false
+                            if (!isDragging) {
+                                when {
+                                    swipeOffset <= -92f -> {
+                                        onDelete()
+                                        swipeOffset = 0f
+                                    }
+                                    swipeOffset >= 92f -> {
+                                        onPlayNext()
+                                        swipeOffset = 0f
+                                    }
+                                    else -> swipeOffset = 0f
                                 }
                             }
                         },
                         onHorizontalDrag = { change, amount ->
                             change.consume()
-                            if (!isDragging && !isCurrent) {
-                                val next = (swipeOffset + amount).coerceIn(-swipeLimitPx, swipeLimitPx)
-                                swipeOffset = next
+                            if (!isDragging) {
+                                swipeOffset = (swipeOffset + amount)
+                                    .coerceIn(-maxSwipe, maxSwipe)
                             }
-                        }
-                    )
-                }
-                .pointerInput(track.id, isDragging) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = {
-                            swipeOffset = 0f
-                            onDragStart()
-                        },
-                        onDragEnd = onDragEnd,
-                        onDragCancel = onDragEnd,
-                        onDrag = { change, amount ->
-                            change.consume()
-                            onDragBy(amount.y)
                         }
                     )
                 }
@@ -1743,248 +1680,107 @@ private fun UpNextTrackRow(
                     indication = null,
                     onClick = onClick
                 )
-                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Album Art with rounded corners
             Box(
-                modifier = Modifier
+                Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.05f)),
+                    .clip(RoundedCornerShape(7.dp))
+                    .border(
+                        .7.dp,
+                        Color.White.copy(alpha = .10f),
+                        RoundedCornerShape(7.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 TrackArtworkImage(
                     track = track,
                     contentDescription = track.title,
-                    modifier = Modifier.fillMaxSize(),
-                    thumbnailSizePx = 128,
-                    crossfade = false
+                    modifier = Modifier.fillMaxSize()
                 )
-                if (isCurrent) {
+
+                if (isCurrent && isPlaying) {
                     Box(
-                        Modifier.fillMaxSize().background(Color.Black.copy(alpha = .38f)),
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = .28f)),
                         contentAlignment = Alignment.Center
                     ) {
                         AnimatedPlayingBars(
-                            color = Color.White,
-                            modifier = Modifier.size(24.dp),
-                            isPlaying = isPlaying
+                            Color.White,
+                            Modifier.size(24.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(Modifier.width(9.dp))
 
-            // Title and Subtitle with Live Waveform Indicator for active track
             Column(
-                modifier = Modifier.weight(1f),
+                Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = track.title.substringBefore(" - "),
-                        fontSize = 15.sp,
-                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
-                        color = if (isCurrent) accentColor else Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (isCurrent) {
-                        LiveWaveformIndicator(
-                            isPlaying = isPlaying,
-                            color = accentColor,
-                            modifier = Modifier.size(width = 16.dp, height = 12.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(3.dp))
-
                 Text(
-                    text = "${track.artist} • ${track.formattedDuration}",
-                    fontSize = 13.sp,
-                    color = if (isCurrent) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.6f),
+                    track.title.substringBefore(" - "),
+                    fontSize = 14.sp,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (isCurrent) accentColor else Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(1.dp))
+                Text(
+                    "${track.artist} • ${formatTrackDuration(track.durationMs)}",
+                    fontSize = 11.5.sp,
+                    color = Color.White.copy(alpha = .58f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            // Drag Handle: 3 clean lines
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
+            Column(
+                Modifier
+                    .size(38.dp)
                     .pointerInput(track.id) {
-                        detectDragGestures(
-                            onDragStart = { swipeOffset = 0f; onDragStart() },
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                swipeOffset = 0f
+                                onDragStart()
+                            },
                             onDragEnd = onDragEnd,
                             onDragCancel = onDragEnd,
-                            onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }
+                            onDrag = { change, amount ->
+                                change.consume()
+                                onDragBy(amount.y)
+                            }
                         )
                     },
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(3.5.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    repeat(3) {
-                        Box(
-                            Modifier
-                                .width(18.dp)
-                                .height(2.dp)
-                                .clip(RoundedCornerShape(1.dp))
-                                .background(if (isDragging) Color.White else Color.White.copy(alpha = 0.65f))
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * YouTube Music Up Next Track Item:
- * - Spans edge-to-edge across screen with fillMaxWidth().
- * - Slightly brighter extraction tint if playing (dominantColor.copy(alpha = 0.18f)).
- * - Padding inside item content reaching almost edge to edge (horizontal = 8.dp, vertical = 6.dp).
- * - Music picture with sharp edges (2.dp) instead of full rounded corner.
- * - 3-line drag handle reaching near edge.
- */
-@Composable
-fun UpNextTrackItem(
-    track: Track,
-    isPlaying: Boolean,
-    dominantColor: Color = Color.White,
-    modifier: Modifier = Modifier
-) {
-    val activeRowBg = if (isPlaying) {
-        dominantColor.copy(alpha = 0.18f).compositeOver(Color(0xFF101215))
-    } else {
-        Color.Transparent
-    }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth() // Spans edge-to-edge across screen
-            .background(activeRowBg)
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), // Reaching almost edge to edge
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Track Artwork with sharp edges (2.dp)
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Color.White.copy(alpha = 0.05f)),
-            contentAlignment = Alignment.Center
-        ) {
-            TrackArtworkImage(
-                track = track,
-                contentDescription = track.title,
-                modifier = Modifier.fillMaxSize(),
-                thumbnailSizePx = 128,
-                crossfade = false
-            )
-            if (isPlaying) {
-                Box(
-                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)),
-                    contentAlignment = Alignment.Center
-                ) { AnimatedPlayingBars(Color.White, Modifier.size(24.dp)) }
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Title Column with clean spacing
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = track.title.substringBefore(" - "),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "${track.artist} • ${track.formattedDuration}",
-                fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.6f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        // Drag Handle Icon: 3 lines reaching near edge
-        Box(
-            modifier = Modifier.size(40.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(3.5.dp),
+                verticalArrangement = Arrangement.spacedBy(
+                    3.dp,
+                    Alignment.CenterVertically
+                ),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                repeat(3) {
-                    Box(
-                        Modifier
-                            .width(18.dp)
-                            .height(2.dp)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(Color.White.copy(alpha = 0.85f))
-                    )
-                }
+                Box(
+                    Modifier
+                        .width(17.dp)
+                        .height(2.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(Color.White.copy(alpha = .92f))
+                )
+                Box(
+                    Modifier
+                        .width(17.dp)
+                        .height(2.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(Color.White.copy(alpha = .92f))
+                )
             }
         }
     }
 }
 
-private fun interpolateColor(start: Color, end: Color, fraction: Float): Color {
-    val f = fraction.coerceIn(0f, 1f)
-    return Color(
-        red = start.red + (end.red - start.red) * f,
-        green = start.green + (end.green - start.green) * f,
-        blue = start.blue + (end.blue - start.blue) * f,
-        alpha = start.alpha + (end.alpha - start.alpha) * f
-    )
-}
-
-@Composable
-private fun LiveWaveformIndicator(
-    isPlaying: Boolean,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "live_waveform")
-    val a by infinite.animateFloat(0.30f, 1.0f, androidx.compose.animation.core.infiniteRepeatable(tween(380, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w1")
-    val b by infinite.animateFloat(0.85f, 0.25f, androidx.compose.animation.core.infiniteRepeatable(tween(480, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w2")
-    val c by infinite.animateFloat(0.40f, 0.95f, androidx.compose.animation.core.infiniteRepeatable(tween(340, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w3")
-    val d by infinite.animateFloat(0.75f, 0.35f, androidx.compose.animation.core.infiniteRepeatable(tween(440, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w4")
-
-    val h1 = if (isPlaying) a else 0.40f
-    val h2 = if (isPlaying) b else 0.75f
-    val h3 = if (isPlaying) c else 0.50f
-    val h4 = if (isPlaying) d else 0.35f
-
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        Box(Modifier.width(2.5.dp).height((13f * h1).dp).clip(RoundedCornerShape(1.dp)).background(color))
-        Box(Modifier.width(2.5.dp).height((13f * h2).dp).clip(RoundedCornerShape(1.dp)).background(color))
-        Box(Modifier.width(2.5.dp).height((13f * h3).dp).clip(RoundedCornerShape(1.dp)).background(color))
-        Box(Modifier.width(2.5.dp).height((13f * h4).dp).clip(RoundedCornerShape(1.dp)).background(color))
-    }
-}
 
 @Composable
 private fun AnimatedPlayingBars(color: Color, modifier: Modifier = Modifier, isPlaying: Boolean = true) {
