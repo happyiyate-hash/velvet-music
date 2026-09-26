@@ -31,8 +31,7 @@ s = s.replace(
     1,
 )
 
-# The density value is declared after upNextP in the base PlayerSheet. Insert all
-# second-stage derived values after it so the generated Kotlin is always in scope.
+# Keep all second-stage values in scope after the existing density declaration.
 density_anchor = "    val queueDragDensity = LocalDensity.current\n"
 if density_anchor not in s:
     raise SystemExit("queue drag density anchor not found")
@@ -51,71 +50,47 @@ if "val queueFocusProgress =" not in s:
         1,
     )
 
-# Transform the complete artwork frame, not just the image. This keeps the rounded
-# frame, border and glass treatment moving together as one physical object.
-artwork_frame = """                            Box(
-                                modifier = Modifier
-                                    .size(artSize)
-                                    .shadow(
-                                        elevation = artworkElevation,
-                                        shape = artworkShape,
-                                        spotColor = Color.Black.copy(alpha = 0.72f),
-                                        ambientColor = Color.Black.copy(alpha = 0.45f)
-                                    )
-                                    .clip(artworkShape),
-                                contentAlignment = Alignment.Center
-                            ) {"""
-artwork_frame_replacement = """                            Box(
-                                modifier = Modifier
-                                    .size(artSize)
-                                    .graphicsLayer {
+# IMPORTANT: do not replace complete Box/Column blocks. The continuous queue patch
+# can change their surrounding structure. Inject only graphicsLayer modifiers into
+# the existing modifier chains so the patch cannot create unmatched braces/parentheses.
+artwork_size_anchor = "                                    .size(artSize)"
+artwork_graphics = """                                    .graphicsLayer {
                                         val t = queueFocusProgress
                                         val eased = t * t * (3f - 2f * t)
                                         scaleX = 1f - (0.77f * eased)
                                         scaleY = 1f - (0.77f * eased)
                                         translationX = -(queueFocusArtworkShiftX * eased)
                                         translationY = -(queueFocusArtworkShiftY * eased)
-                                    }
-                                    .shadow(
-                                        elevation = artworkElevation,
-                                        shape = artworkShape,
-                                        spotColor = Color.Black.copy(alpha = 0.72f),
-                                        ambientColor = Color.Black.copy(alpha = 0.45f)
-                                    )
-                                    .clip(artworkShape),
-                                contentAlignment = Alignment.Center
-                            ) {"""
-if artwork_frame in s:
-    s = s.replace(artwork_frame, artwork_frame_replacement, 1)
-elif "queueFocusArtworkShiftX" not in s:
-    raise SystemExit("artwork frame anchor not found")
+                                    }"""
 
-# Move the existing title/artist column as one unit. The exact base modifier is stable
-# and this avoids fragile parenthesis scanning or malformed Kotlin generated source.
-metadata_base = """                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp),
-                            horizontalAlignment = Alignment.Start
-                        ) {"""
-metadata_replacement = """                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                                .graphicsLayer {
+if "queueFocusArtworkShiftX" not in s:
+    if artwork_size_anchor not in s:
+        raise SystemExit("artwork size anchor not found")
+    s = s.replace(
+        artwork_size_anchor,
+        artwork_size_anchor + "\n" + artwork_graphics,
+        1,
+    )
+
+# Inject the metadata transform into the existing title/artist Column modifier.
+metadata_padding_anchor = "                                .padding(horizontal = 24.dp),"
+metadata_graphics = """                                .graphicsLayer {
                                     val t = queueFocusProgress
                                     val eased = t * t * (3f - 2f * t)
                                     translationX = queueFocusMetadataShiftX * eased
                                     translationY = -(queueFocusMetadataShiftY * eased)
                                     scaleX = 1f - (0.06f * eased)
                                     scaleY = 1f - (0.06f * eased)
-                                },
-                            horizontalAlignment = Alignment.Start
-                        ) {"""
-if metadata_base in s:
-    s = s.replace(metadata_base, metadata_replacement, 1)
-elif "queueFocusMetadataShiftX" not in s:
-    raise SystemExit("song metadata Column anchor not found")
+                                },"""
+
+if "queueFocusMetadataShiftX" not in s:
+    if metadata_padding_anchor not in s:
+        raise SystemExit("song metadata padding anchor not found")
+    s = s.replace(
+        metadata_padding_anchor,
+        metadata_padding_anchor + "\n" + metadata_graphics,
+        1,
+    )
 
 path.write_text(s, encoding="utf-8")
-print("Applied second-stage queue-focused artwork and title/artist transition.")
+print("Applied second-stage queue-focused transition using modifier-only injections.")
