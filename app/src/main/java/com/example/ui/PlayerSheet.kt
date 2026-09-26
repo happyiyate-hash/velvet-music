@@ -1042,8 +1042,16 @@ fun PlayerSheet(
                 )
             }
 
-            // 4. THE QUEUE CONTENT (Revealed directly underneath the handle as the player compresses)
+            // 4. THE QUEUE CONTENT
+            //
+            // The queue is a separate viewport from the player. As the player collapses,
+            // queueY moves upward and the queue automatically takes over the reclaimed
+            // empty space. Once the queue reaches its expanded position, ONLY the track
+            // rows scroll. The "UP NEXT" boundary/header remains fixed.
             if (queueHeight > 1.dp) {
+                val queueHeaderHeight = 44.dp
+                val queueListHeight = (queueHeight - queueHeaderHeight).coerceAtLeast(0.dp)
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1052,37 +1060,45 @@ fun PlayerSheet(
                         .clipToBounds()
                         .zIndex(4f)
                 ) {
+                    // FIXED QUEUE BOUNDARY
+                    // This header moves upward with the collapsing player, but it is
+                    // deliberately outside LazyColumn so it never scrolls away.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(queueHeaderHeight)
+                            .background(cardColor.copy(alpha = 0.96f))
+                            .padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "UP NEXT",
+                            fontSize = 12.sp,
+                            letterSpacing = 1.4.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.55f)
+                        )
+                        Text(
+                            text = "${orderedQueueItems.size} tracks",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color.White.copy(alpha = 0.40f)
+                        )
+                    }
+
+                    // ONLY THIS REGION SCROLLS.
+                    // Keeping LazyColumn below the fixed boundary prevents the queue
+                    // header/upper block from being dragged away with the songs.
                     LazyColumn(
                         state = queueListState,
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
+                            .height(queueListHeight)
+                            .offset(y = queueHeaderHeight)
                             .nestedScroll(nestedScrollConnection),
-                        contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
+                        contentPadding = PaddingValues(top = 2.dp, bottom = 32.dp)
                     ) {
-                        item(key = "queue_header_section") {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "UP NEXT",
-                                    fontSize = 12.sp,
-                                    letterSpacing = 1.4.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.55f)
-                                )
-                                Text(
-                                    text = "${orderedQueueItems.size} tracks",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = Color.White.copy(alpha = 0.40f)
-                                )
-                            }
-                        }
-
                         itemsIndexed(
                             items = orderedQueueItems,
                             key = { _, item -> item.id }
@@ -1147,7 +1163,6 @@ fun PlayerSheet(
                     }
                 }
             }
-        }
 
         // 7. THREE-DOT SONG ACTION BOTTOM SHEET
         if (showActionSheet) {
