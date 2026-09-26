@@ -118,6 +118,10 @@ jobs:
         shell: bash
         run: python3 scripts/player_queue_continuous_patch.py
 
+      - name: Apply Second-Stage Queue-Focused Transition
+        shell: bash
+        run: python3 scripts/player_queue_second_stage_transition.py
+
       - name: Fetch official ACRCloud Android SDK
         shell: bash
         run: |
