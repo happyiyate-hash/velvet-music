@@ -101,8 +101,8 @@ fun AshGlassBottomNavigationBar(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF19030A), // deep matte wine ash
-                        Color(0xFF100206)  // midnight plum base
+                        Color(0xFF260510), // rich dark wine
+                        Color(0xFF140208)  // deep midnight wine base
                     )
                 )
             )
@@ -265,8 +265,8 @@ fun AshGlassMiniPlayerBar(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xF8240610), // luxury deep crimson ash
-                        Color(0xFD19030A)
+                        Color(0xFF380818), // rich dark crimson wine
+                        Color(0xFF260510)  // seamlessly matches bottom nav top
                     )
                 )
             )

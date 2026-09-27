@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
@@ -38,10 +38,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,11 +75,14 @@ fun HomeFeedScreen(
         if (allTracks.isNotEmpty()) allTracks else SampleData.starterTracks
     }
 
+    // Rich atmospheric crimson wine gradient: slightly more red at the top, deep velvet at bottom
     val velvetBackgroundGradient = remember {
         Brush.verticalGradient(
             colors = listOf(
-                Color(0xFF140207), // midnight plum top matching top card base
-                Color(0xFF100206)  // deep pitch velvet
+                Color(0xFF5E0E22), // Vibrant rich red wine top
+                Color(0xFF380814),
+                Color(0xFF20040B),
+                Color(0xFF120206)  // Deep velvet plum base
             )
         )
     }
@@ -88,8 +95,8 @@ fun HomeFeedScreen(
     ) {
         // 1. TOP HEADER CARD:
         // Fills the very status bar of the phone to remove extra gap,
-        // same color as bottom navigation, sharp top corners, curved bottom left & right,
-        // logo on the left with compact app name, action icons on the right.
+        // rich crimson frosted wine matching the navigation, sharp top corners, curved bottom left & right,
+        // custom acoustic V logo, gradient wordmark, and action icons.
         VelvetTopHeaderCard(
             trackCount = displayTracks.size,
             onOpenNotifications = onOpenNotifications,
@@ -97,17 +104,16 @@ fun HomeFeedScreen(
             onOpenSettings = onOpenSettings
         )
 
-        // 2. MAIN BACKGROUND:
-        // All lists of music in the user's device directly in the main background.
-        // No recently played, no discovered new releases, no mock internet cards.
+        // 2. MAIN BACKGROUND MUSIC LIST:
+        // Direct list on the background with NO cards, NO extra card padding, and BIG artwork thumbnails.
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
             contentPadding = PaddingValues(
-                start = 12.dp,
-                end = 12.dp,
-                top = 6.dp,
+                start = 14.dp,
+                end = 14.dp,
+                top = 8.dp,
                 bottom = 120.dp
             )
         ) {
@@ -115,7 +121,7 @@ fun HomeFeedScreen(
             if (!hasAudioPermission && allTracks.isEmpty()) {
                 item {
                     DeviceAudioPermissionBanner(onRequestPermission = onRequestPermission)
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                 }
             }
 
@@ -127,9 +133,7 @@ fun HomeFeedScreen(
                     isPlaying = isPlaying && isCurrent,
                     onClick = { onSelectTrack(track) },
                     onMenuClick = { onTrackMenuClick(track) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.5.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
@@ -138,8 +142,8 @@ fun HomeFeedScreen(
 
 /**
  * Top Header Card:
- * Same color as bottom navigation, flows from the very top status bar,
- * sharp on top, curved on bottom left and right, with compact logo + wordmark and action icons.
+ * Same rich crimson wine as bottom navigation, flows from the very top status bar,
+ * sharp on top, curved on bottom left and right, with custom acoustic logo, gradient wordmark and action icons.
  */
 @Composable
 private fun VelvetTopHeaderCard(
@@ -152,25 +156,26 @@ private fun VelvetTopHeaderCard(
     val topCardShape = RoundedCornerShape(
         topStart = 0.dp,
         topEnd = 0.dp,
-        bottomStart = 16.dp,
-        bottomEnd = 16.dp
+        bottomStart = 18.dp,
+        bottomEnd = 18.dp
     )
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 10.dp,
+                elevation = 14.dp,
                 shape = topCardShape,
-                spotColor = Color(0x50FF2448),
-                ambientColor = Color(0x3018030A)
+                spotColor = Color(0x70FF2448),
+                ambientColor = Color(0x4035040C)
             )
             .clip(topCardShape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF19030A), // matches bottom navigation
-                        Color(0xFF100206)
+                        Color(0xFF4C0A1C), // Rich radiant crimson top
+                        Color(0xFF2A0612),
+                        Color(0xFF1B030A)  // Deep wine base
                     )
                 )
             )
@@ -179,7 +184,7 @@ private fun VelvetTopHeaderCard(
                 brush = Brush.verticalGradient(
                     listOf(
                         Color.Transparent,
-                        Color(0x30FFAAB8)
+                        Color(0x35FF385C)  // Luminous crimson specular rim
                     )
                 ),
                 shape = topCardShape
@@ -191,55 +196,54 @@ private fun VelvetTopHeaderCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 9.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: Logo + Compact App Name
+            // Left: Custom-Drawn Acoustic Logo + Designed Gradient Wordmark
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Sleek Velvet Logo badge
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    Color(0xFFFF2448),
-                                    Color(0xFF900822)
-                                )
-                            )
-                        )
-                        .border(0.8.dp, Color(0x40FFFFFF), RoundedCornerShape(9.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = "Velvet Logo",
-                        tint = Color.White,
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
+                // Bespoke acoustic "V" audio wave logo
+                VelvetAcousticLogo()
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(11.dp))
 
                 Column {
+                    // Designed gradient title
                     Text(
                         text = "VELVET",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.4.sp,
-                        color = Color.White
+                        style = TextStyle(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFFFFFFFF),
+                                    Color(0xFFFFCCD5),
+                                    Color(0xFFFF4D6D),
+                                    Color(0xFFFF2448)
+                                )
+                            ),
+                            fontSize = 18.5.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.2.sp
+                        )
                     )
-                    Text(
-                        text = "$trackCount TRACKS • DEVICE AUDIO",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 0.8.sp,
-                        color = Color(0xFFC098A2)
-                    )
+                    Spacer(modifier = Modifier.height(1.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(4.5.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFFF2E54))
+                        )
+                        Spacer(modifier = Modifier.width(4.5.dp))
+                        Text(
+                            text = "$trackCount TRACKS • DEVICE AUDIO",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.9.sp,
+                            color = Color(0xFFFFB2BF)
+                        )
+                    }
                 }
             }
 
@@ -268,6 +272,68 @@ private fun VelvetTopHeaderCard(
     }
 }
 
+/**
+ * Custom-drawn Acoustic Wave "V" Logo:
+ * Draws 5 acoustic resonance bars with rounded caps forming a sleek "V" silhouette.
+ */
+@Composable
+private fun VelvetAcousticLogo(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFFE51B3E), // vibrant velvet crimson
+                        Color(0xFF990A26),
+                        Color(0xFF550415)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    listOf(
+                        Color(0x80FFFFFF),
+                        Color(0x30FFAAB8)
+                    )
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(20.dp)) {
+            val w = size.width
+            val h = size.height
+            val barCount = 5
+            val barWidth = w / 7.5f
+            val heights = listOf(0.92f, 0.65f, 0.42f, 0.65f, 0.92f)
+            val spacing = (w - (barCount * barWidth)) / (barCount - 1)
+
+            val barBrush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.White,
+                    Color(0xFFFFD4DC),
+                    Color(0xFFFF859B)
+                )
+            )
+
+            for (i in 0 until barCount) {
+                val barH = h * heights[i]
+                val x = i * (barWidth + spacing)
+                val topY = (h - barH) / 2f
+                drawRoundRect(
+                    brush = barBrush,
+                    topLeft = Offset(x, topY),
+                    size = Size(barWidth, barH),
+                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun TopBarActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -282,13 +348,13 @@ private fun TopBarActionButton(
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
-                .background(Color(0x18FFFFFF)),
+                .background(Color(0x22FFFFFF)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = Color(0xFFE2CCD2),
+                tint = Color(0xFFFFD0D8),
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -296,7 +362,9 @@ private fun TopBarActionButton(
 }
 
 /**
- * Bigger, Rounded Device Track Row with Reduced Padding.
+ * Cardless Device Track Row:
+ * Direct on the background, NO card container, NO outer border, NO bloated padding.
+ * Features a BIG 58×58dp album artwork thumbnail with clean rounded corners.
  */
 @Composable
 private fun DeviceTrackRowItem(
@@ -308,31 +376,24 @@ private fun DeviceTrackRowItem(
     modifier: Modifier = Modifier
 ) {
     val cleanTitle = track.title.substringBefore(" - ")
-    val rowShape = RoundedCornerShape(12.dp)
 
     Row(
         modifier = modifier
-            .clip(rowShape)
-            .background(
-                if (isCurrent) Color(0x35600E1C)
-                else Color(0x14FFFFFF)
-            )
-            .border(
-                width = 0.8.dp,
-                color = if (isCurrent) Color(0x55FF2448) else Color(0x12FFAAB8),
-                shape = rowShape
-            )
             .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Quite bigger album artwork thumbnail (52x52dp) with rounded corners
+        // BIG Album Artwork (58x58dp) with smooth rounded corners
         Box(
             modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF20060E))
-                .border(0.8.dp, Color(0x22FFAAB8), RoundedCornerShape(10.dp))
+                .size(58.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF22050E))
+                .border(
+                    width = 0.8.dp,
+                    color = if (isCurrent) Color(0x60FF2448) else Color(0x20FF385C),
+                    shape = RoundedCornerShape(12.dp)
+                )
         ) {
             TrackArtworkImage(
                 track = track,
@@ -353,29 +414,29 @@ private fun DeviceTrackRowItem(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "Playing",
                         tint = Color(0xFFFF2448),
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(13.dp))
 
         // Title and artist metadata
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = cleanTitle,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (isCurrent) Color(0xFFFF5575) else Color.White,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (isCurrent) Color(0xFFFF3B5C) else Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(3.dp))
             Text(
                 text = "${track.artist} • ${track.formattedDuration}",
                 fontSize = 12.sp,
-                color = Color(0xFFB89EA6),
+                color = if (isCurrent) Color(0xFFFFB0BD) else Color(0xFFC098A2),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -389,7 +450,7 @@ private fun DeviceTrackRowItem(
             Icon(
                 imageVector = Icons.Default.MoreHoriz,
                 contentDescription = "Track options",
-                tint = Color(0xFF9E848D),
+                tint = Color(0xFFC098A2),
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -405,8 +466,8 @@ private fun DeviceAudioPermissionBanner(
         modifier = Modifier
             .fillMaxWidth()
             .clip(bannerShape)
-            .background(Color(0x30600C1C))
-            .border(1.dp, Color(0x30FFAAB8), bannerShape)
+            .background(Color(0x35600C1C))
+            .border(1.dp, Color(0x35FFAAB8), bannerShape)
             .padding(14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
