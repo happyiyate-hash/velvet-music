@@ -193,6 +193,15 @@ fun VelvetApp() {
     var isSingToSearchOpen by remember { mutableStateOf(false) }
     var mediaDownloaderInitialUrl by remember { mutableStateOf<String?>(null) }
     var actionSheetTrack by remember { mutableStateOf<Track?>(null) }
+    var hasActiveTrack by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentTrack.id, isPlaying) {
+        if (isPlaying || (currentTrack.id.isNotBlank() && currentTrack != SampleData.defaultIdleTrack)) {
+            hasActiveTrack = true
+        }
+    }
+
+    val showMiniPlayer = (isPlaying || hasActiveTrack) && currentTrack.id.isNotBlank() && currentTrack != SampleData.defaultIdleTrack
 
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xFF100206))
@@ -207,7 +216,7 @@ fun VelvetApp() {
                         .fillMaxWidth()
                         .background(Color.Transparent)
                 ) {
-                    if (isPlaying) {
+                    if (showMiniPlayer) {
                         AshGlassMiniPlayerBar(
                             track = currentTrack,
                             isPlaying = isPlaying,
@@ -222,7 +231,8 @@ fun VelvetApp() {
                         selectedTab = selectedTab,
                         onSelectTab = { tabIndex ->
                             selectedTab = tabIndex
-                        }
+                        },
+                        hasMiniPlayerAbove = showMiniPlayer
                     )
                 }
             }
@@ -231,7 +241,6 @@ fun VelvetApp() {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .statusBarsPadding()
                     .then(
                         if (isPlayerExpanded) {
                             Modifier.pointerInput(Unit) {
@@ -256,7 +265,6 @@ fun VelvetApp() {
                         onRequestPermission = { mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions) },
                         onSelectTrack = { track ->
                             audioEngine.playTrack(track)
-                            isPlayerExpanded = true
                         },
                         onOpenSearch = { selectedTab = 1 },
                         onOpenSettings = { isSettingsOpen = true },
@@ -264,27 +272,30 @@ fun VelvetApp() {
                         onTrackMenuClick = { track -> actionSheetTrack = track },
                         onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
                     )
-                    1 -> ExploreScreen(
-                        currentTrack = currentTrack,
-                        isPlaying = isPlaying,
-                        tracks = allTracks,
-                        onSelectTrack = { track -> audioEngine.playTrack(track) },
-                        onTrackMenuClick = { track -> actionSheetTrack = track },
-                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) },
-                        onOpenMediaDownloader = { url ->
-                            mediaDownloaderInitialUrl = url
-                            isMediaDownloaderOpen = true
-                        },
-                        onOpenSingToSearch = {
-                            isSingToSearchOpen = true
-                        }
-                    )
-                    2 -> VideoLibraryScreen(
-                        onSelectTrackAudio = { track ->
-                            audioEngine.playTrack(track)
-                            isPlayerExpanded = true
-                        }
-                    )
+                    1 -> Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+                        ExploreScreen(
+                            currentTrack = currentTrack,
+                            isPlaying = isPlaying,
+                            tracks = allTracks,
+                            onSelectTrack = { track -> audioEngine.playTrack(track) },
+                            onTrackMenuClick = { track -> actionSheetTrack = track },
+                            onAddTrack = { track -> audioEngine.addDeviceTrack(track) },
+                            onOpenMediaDownloader = { url ->
+                                mediaDownloaderInitialUrl = url
+                                isMediaDownloaderOpen = true
+                            },
+                            onOpenSingToSearch = {
+                                isSingToSearchOpen = true
+                            }
+                        )
+                    }
+                    2 -> Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+                        VideoLibraryScreen(
+                            onSelectTrackAudio = { track ->
+                                audioEngine.playTrack(track)
+                            }
+                        )
+                    }
                 }
             }
         }

@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -66,82 +68,96 @@ import com.example.ui.theme.VelvetTextSecondary
 fun AshGlassBottomNavigationBar(
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
+    hasMiniPlayerAbove: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val navShape = RoundedCornerShape(32.dp)
+    // When the music card sits above, top corners turn sharp (0.dp) to unite with the card seamlessly.
+    // When no music card is showing, only the top left and right curve (16.dp).
+    // The bottom corners are ALWAYS sharp (0.dp) so it stays flush at the very bottom of the screen.
+    val animatedTopRadius by animateDpAsState(
+        targetValue = if (hasMiniPlayerAbove) 0.dp else 16.dp,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        label = "navTopCornerRadius"
+    )
+
+    val navShape = RoundedCornerShape(
+        topStart = animatedTopRadius,
+        topEnd = animatedTopRadius,
+        bottomStart = 0.dp,
+        bottomEnd = 0.dp
+    )
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 6.dp)
-            .testTag("ash_glass_navigation_bar"),
-        contentAlignment = Alignment.Center
-    ) {
-        // Floating Frosted Dark Crimson Glass Capsule
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .shadow(
-                    elevation = 20.dp,
-                    shape = navShape,
-                    spotColor = Color(0x60FF2448),
-                    ambientColor = Color(0x4035040C)
-                )
-                .clip(navShape)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xEE2E0914), // Frosted dark wine glass
-                            Color(0xF618030A)
-                        )
+            .testTag("ash_glass_navigation_bar")
+            .shadow(
+                elevation = if (hasMiniPlayerAbove) 0.dp else 12.dp,
+                shape = navShape,
+                spotColor = Color(0x50FF2448),
+                ambientColor = Color(0x3018030A)
+            )
+            .clip(navShape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF19030A), // deep matte wine ash
+                        Color(0xFF100206)  // midnight plum base
                     )
                 )
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color(0x45FFFFFF), // Specular top edge hairline
-                            Color(0x18FF3B5C),
-                            Color(0x10FFFFFF)
-                        )
-                    ),
-                    shape = navShape
-                )
-                .padding(horizontal = 20.dp, vertical = 6.dp)
+            )
+            .then(
+                if (!hasMiniPlayerAbove) {
+                    Modifier.border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color(0x38FFFFFF),
+                                Color(0x15FF3B5C),
+                                Color(0x05FFFFFF)
+                            )
+                        ),
+                        shape = navShape
+                    )
+                } else Modifier
+            )
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.Center
+    ) {
+        // Reduced compact height for bottom navigation
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 1. Music / Home (ACTIVE with glowing bloom & ACTIVE pill badge)
-                VelvetGlassNavTabItem(
-                    icon = Icons.Default.LibraryMusic,
-                    contentDescription = "Music",
-                    isSelected = selectedTab == 0,
-                    onClick = { onSelectTab(0) },
-                    testTag = "nav_tab_home"
-                )
+            // 1. Music / Home
+            VelvetGlassNavTabItem(
+                icon = Icons.Default.LibraryMusic,
+                contentDescription = "Music",
+                isSelected = selectedTab == 0,
+                onClick = { onSelectTab(0) },
+                testTag = "nav_tab_home"
+            )
 
-                // 2. Search
-                VelvetGlassNavTabItem(
-                    icon = Icons.Default.Search,
-                    contentDescription = "Search",
-                    isSelected = selectedTab == 1,
-                    onClick = { onSelectTab(1) },
-                    testTag = "nav_tab_search"
-                )
+            // 2. Search
+            VelvetGlassNavTabItem(
+                icon = Icons.Default.Search,
+                contentDescription = "Search",
+                isSelected = selectedTab == 1,
+                onClick = { onSelectTab(1) },
+                testTag = "nav_tab_search"
+            )
 
-                // 3. Explore / Sparkle
-                VelvetGlassNavTabItem(
-                    icon = Icons.Default.AutoAwesome,
-                    contentDescription = "Discover",
-                    isSelected = selectedTab == 2,
-                    onClick = { onSelectTab(2) },
-                    testTag = "nav_tab_videos"
-                )
-            }
+            // 3. Explore / Discover
+            VelvetGlassNavTabItem(
+                icon = Icons.Default.AutoAwesome,
+                contentDescription = "Discover",
+                isSelected = selectedTab == 2,
+                onClick = { onSelectTab(2) },
+                testTag = "nav_tab_videos"
+            )
         }
     }
 }
@@ -160,25 +176,25 @@ private fun VelvetGlassNavTabItem(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onClick() }
-            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .padding(horizontal = 14.dp, vertical = 2.dp)
             .testTag(testTag),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            modifier = Modifier.size(36.dp),
+            modifier = Modifier.size(30.dp),
             contentAlignment = Alignment.Center
         ) {
             if (isSelected) {
-                // Radiant glowing red/salmon bloom behind the icon
+                // Subtle glowing bloom behind active icon
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(30.dp)
                         .background(
                             Brush.radialGradient(
                                 colors = listOf(
-                                    Color(0x95FF385C),
-                                    Color(0x35FF2048),
+                                    Color(0x85FF385C),
+                                    Color(0x20FF2048),
                                     Color.Transparent
                                 )
                             ),
@@ -190,23 +206,24 @@ private fun VelvetGlassNavTabItem(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = if (isSelected) Color.White else Color(0xFF9E8A92),
-                modifier = Modifier.size(24.dp)
+                tint = if (isSelected) Color.White else Color(0xFF8E7D84),
+                modifier = Modifier.size(22.dp)
             )
         }
 
+        Spacer(modifier = Modifier.height(2.dp))
+
         if (isSelected) {
-            Spacer(modifier = Modifier.height(2.dp))
-            // Active text badge pill
-            Text(
-                text = "ACTIVE",
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 0.8.sp,
-                color = Color(0xFFFFB0BB)
+            // Sleek active crimson indicator pill
+            Box(
+                modifier = Modifier
+                    .width(12.dp)
+                    .height(2.5.dp)
+                    .clip(RoundedCornerShape(1.5.dp))
+                    .background(Color(0xFFFF385C))
             )
         } else {
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(2.5.dp))
         }
     }
 }
@@ -218,30 +235,38 @@ fun AshGlassMiniPlayerBar(
     playbackPositionMs: Long,
     onTogglePlayPause: () -> Unit,
     onSkipNext: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val progressFraction = if (track.durationMs > 0) {
         (playbackPositionMs.toFloat() / track.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
 
-    val miniShape = RoundedCornerShape(18.dp)
+    // The card sits directly on top of the bottom navigation.
+    // It is curved both left and right only on top (16.dp).
+    // The bottom corners are sharp (0.dp) to sit seamlessly against the sharp top of the bottom navigation.
+    val cardShape = RoundedCornerShape(
+        topStart = 16.dp,
+        topEnd = 16.dp,
+        bottomStart = 0.dp,
+        bottomEnd = 0.dp
+    )
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
             .shadow(
                 elevation = 16.dp,
-                shape = miniShape,
+                shape = cardShape,
                 spotColor = Color(0x60FF2448),
-                ambientColor = Color(0x3035040C)
+                ambientColor = Color(0x4018030A)
             )
-            .clip(miniShape)
+            .clip(cardShape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xF82A0914),
-                        Color(0xFD18030A)
+                        Color(0xF8240610), // luxury deep crimson ash
+                        Color(0xFD19030A)
                     )
                 )
             )
@@ -249,12 +274,12 @@ fun AshGlassMiniPlayerBar(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     listOf(
-                        Color(0x35FFFFFF),
+                        Color(0x40FFFFFF), // specular top rim
                         Color(0x18FF3B5C),
-                        Color(0x10FFFFFF)
+                        Color.Transparent
                     )
                 ),
-                shape = miniShape
+                shape = cardShape
             )
             .clickable { onClick() }
             .testTag("mini_player_bar")
@@ -265,15 +290,15 @@ fun AshGlassMiniPlayerBar(
                 progress = { progressFraction },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp),
-                color = Color(0xFFFF385C),
-                trackColor = Color(0x3035040C)
+                    .height(2.5.dp),
+                color = Color(0xFFFF2448),
+                trackColor = Color(0x2535040C)
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Uniform Album Art with crisp rounded corners
@@ -282,6 +307,7 @@ fun AshGlassMiniPlayerBar(
                         .size(42.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0xFF140206))
+                        .border(0.8.dp, Color(0x25FFAAB8), RoundedCornerShape(8.dp))
                 ) {
                     TrackArtworkImage(
                         track = track,
@@ -302,7 +328,7 @@ fun AshGlassMiniPlayerBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(1.dp))
+                    Spacer(modifier = Modifier.height(1.5.dp))
                     Text(
                         text = track.artist,
                         fontSize = 11.5.sp,
@@ -333,6 +359,8 @@ fun AshGlassMiniPlayerBar(
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.width(2.dp))
 
                 IconButton(
                     modifier = Modifier

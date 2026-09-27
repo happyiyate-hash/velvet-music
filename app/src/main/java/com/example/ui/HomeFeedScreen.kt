@@ -1,10 +1,8 @@
 package com.example.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,17 +14,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -35,7 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -46,25 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.SampleData
 import com.example.model.Track
-
-private data class MockMix(
-    val id: String,
-    val title: String,
-    val curator: String,
-    val topColor: Color,
-    val bottomColor: Color,
-    val hasWaveform: Boolean = false,
-    val hasSun: Boolean = false,
-    val hasMoon: Boolean = false
-)
-
-private val curatedMixes = listOf(
-    MockMix("mix_1", "Luminous Echoes", "(Curated by Tame Impala)", Color(0xFF6E1828), Color(0xFF280812), hasMoon = true),
-    MockMix("mix_2", "Acoustic Waves", "(Curated by Bon Iver)", Color(0xFF2D3B4C), Color(0xFF141A22), hasWaveform = true),
-    MockMix("mix_3", "Sunset Beats", "(Curated by Kaytranada)", Color(0xFF7E2A38), Color(0xFF380E18), hasSun = true),
-    MockMix("mix_4", "Night Grooves", "(Curated by Khruangbin)", Color(0xFF451E4E), Color(0xFF1A0A20), hasMoon = true),
-    MockMix("mix_5", "Braw Beats", "(Curated by SZA)", Color(0xFF602835), Color(0xFF220C14), hasSun = true)
-)
 
 @Composable
 fun HomeFeedScreen(
@@ -84,12 +67,6 @@ fun HomeFeedScreen(
     onAddTrack: ((Track) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val recentTracks = remember(mostPlayedTracks, allTracks) {
-        if (mostPlayedTracks.isNotEmpty()) mostPlayedTracks.take(8)
-        else if (allTracks.isNotEmpty()) allTracks.take(8)
-        else SampleData.starterTracks.take(6)
-    }
-
     val displayTracks = remember(allTracks) {
         if (allTracks.isNotEmpty()) allTracks else SampleData.starterTracks
     }
@@ -97,135 +74,54 @@ fun HomeFeedScreen(
     val velvetBackgroundGradient = remember {
         Brush.verticalGradient(
             colors = listOf(
-                Color(0xFF4C0E1B), // Rich atmospheric crimson wine top
-                Color(0xFF300812),
-                Color(0xFF1B040A),
-                Color(0xFF100206)  // Midnight plum black base
+                Color(0xFF140207), // midnight plum top matching top card base
+                Color(0xFF100206)  // deep pitch velvet
             )
         )
     }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(velvetBackgroundGradient)
             .testTag("home_feed_screen")
     ) {
+        // 1. TOP HEADER CARD:
+        // Fills the very status bar of the phone to remove extra gap,
+        // same color as bottom navigation, sharp top corners, curved bottom left & right,
+        // logo on the left with compact app name, action icons on the right.
+        VelvetTopHeaderCard(
+            trackCount = displayTracks.size,
+            onOpenNotifications = onOpenNotifications,
+            onOpenSearch = onOpenSearch,
+            onOpenSettings = onOpenSettings
+        )
+
+        // 2. MAIN BACKGROUND:
+        // All lists of music in the user's device directly in the main background.
+        // No recently played, no discovered new releases, no mock internet cards.
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                end = 12.dp,
+                top = 6.dp,
+                bottom = 120.dp
+            )
         ) {
-            // 1. TOP HEADER: "Welcome back, Echo" + "Home Feed" + 3 action buttons
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Welcome back, Echo",
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color(0xFFDCA8B0)
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Home Feed",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-
-                    // 3 Frosted squircle action buttons matching mockup
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        HeaderFrostedButton(
-                            icon = Icons.Outlined.Notifications,
-                            contentDescription = "Notifications",
-                            onClick = onOpenNotifications
-                        )
-                        HeaderFrostedButton(
-                            icon = Icons.Outlined.Settings,
-                            contentDescription = "Settings",
-                            onClick = onOpenSettings
-                        )
-                        HeaderFrostedButton(
-                            icon = Icons.Default.Search,
-                            contentDescription = "Search",
-                            onClick = onOpenSearch
-                        )
-                    }
+            // Permission request banner if local media permission is missing
+            if (!hasAudioPermission && allTracks.isEmpty()) {
+                item {
+                    DeviceAudioPermissionBanner(onRequestPermission = onRequestPermission)
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // 2. PERSONALIZED MIXES: Large frosted glass card container
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(Color(0x354E0E1B))
-                        .border(
-                            width = 1.dp,
-                            color = Color(0x30FFAAB8),
-                            shape = RoundedCornerShape(24.dp)
-                        )
-                        .padding(16.dp)
-                ) {
-                    Column {
-                        Text(
-                            text = "Personalized Mixes",
-                            fontSize = 15.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFF8D8DE)
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Curated mixes grid / horizontal flow
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            items(curatedMixes, key = { it.id }) { mix ->
-                                CuratedMixCard(
-                                    mix = mix,
-                                    onClick = {
-                                        val match = displayTracks.firstOrNull() ?: currentTrack
-                                        onSelectTrack(match)
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(22.dp))
-            }
-
-            // 3. RECENTLY PLAYED SECTION
-            item {
-                Text(
-                    text = "Recently Played",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-
-            items(recentTracks, key = { "recent_${it.id}" }) { track ->
+            items(displayTracks, key = { it.id }) { track ->
                 val isCurrent = track.id == currentTrack.id
-                MockupTrackRowItem(
+                DeviceTrackRowItem(
                     track = track,
                     isCurrent = isCurrent,
                     isPlaying = isPlaying && isCurrent,
@@ -233,202 +129,177 @@ fun HomeFeedScreen(
                     onMenuClick = { onTrackMenuClick(track) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 5.dp)
+                        .padding(vertical = 2.5.dp)
                 )
             }
+        }
+    }
+}
 
-            // 4. DISCOVER NEW RELEASES SECTION: Rounded card container
-            item {
-                Spacer(modifier = Modifier.height(22.dp))
+/**
+ * Top Header Card:
+ * Same color as bottom navigation, flows from the very top status bar,
+ * sharp on top, curved on bottom left and right, with compact logo + wordmark and action icons.
+ */
+@Composable
+private fun VelvetTopHeaderCard(
+    trackCount: Int,
+    onOpenNotifications: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val topCardShape = RoundedCornerShape(
+        topStart = 0.dp,
+        topEnd = 0.dp,
+        bottomStart = 16.dp,
+        bottomEnd = 16.dp
+    )
 
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 10.dp,
+                shape = topCardShape,
+                spotColor = Color(0x50FF2448),
+                ambientColor = Color(0x3018030A)
+            )
+            .clip(topCardShape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF19030A), // matches bottom navigation
+                        Color(0xFF100206)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color.Transparent,
+                        Color(0x30FFAAB8)
+                    )
+                ),
+                shape = topCardShape
+            )
+    ) {
+        // Internal statusBarsPadding keeps text and icons positioned safely below the system status bar,
+        // while the card's background fills the status bar area completely.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left: Logo + Compact App Name
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Sleek Velvet Logo badge
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(Color(0x28380A14))
-                        .border(1.dp, Color(0x22FFAAB8), RoundedCornerShape(24.dp))
-                        .padding(16.dp)
-                ) {
-                    Column {
-                        Text(
-                            text = "Discover New Releases",
-                            fontSize = 15.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFF8D8DE)
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    Color(0xFFFF2448),
+                                    Color(0xFF900822)
+                                )
+                            )
                         )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(displayTracks.take(6), key = { "new_${it.id}" }) { track ->
-                                Column(
-                                    modifier = Modifier
-                                        .width(96.dp)
-                                        .clickable { onSelectTrack(track) }
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(96.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Color(0xFF220812))
-                                    ) {
-                                        TrackArtworkImage(
-                                            track = track,
-                                            contentDescription = track.title,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = track.title.substringBefore(" - "),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = track.artist,
-                                        fontSize = 10.5.sp,
-                                        color = Color(0xFFC098A2),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                    }
+                        .border(0.8.dp, Color(0x40FFFFFF), RoundedCornerShape(9.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = "Velvet Logo",
+                        tint = Color.White,
+                        modifier = Modifier.size(19.dp)
+                    )
                 }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column {
+                    Text(
+                        text = "VELVET",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.4.sp,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "$trackCount TRACKS • DEVICE AUDIO",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.8.sp,
+                        color = Color(0xFFC098A2)
+                    )
+                }
+            }
+
+            // Right: Compact Action Icons
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TopBarActionButton(
+                    icon = Icons.Outlined.Notifications,
+                    contentDescription = "Notifications",
+                    onClick = onOpenNotifications
+                )
+                TopBarActionButton(
+                    icon = Icons.Default.Search,
+                    contentDescription = "Search",
+                    onClick = onOpenSearch
+                )
+                TopBarActionButton(
+                    icon = Icons.Outlined.Settings,
+                    contentDescription = "Settings",
+                    onClick = onOpenSettings
+                )
             }
         }
     }
 }
 
 @Composable
-private fun HeaderFrostedButton(
+private fun TopBarActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .size(38.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0x35601220))
-            .border(1.dp, Color(0x35FFAAB8), RoundedCornerShape(12.dp))
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(36.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = Color(0xFFF2D0D6),
-            modifier = Modifier.size(19.dp)
-        )
-    }
-}
-
-@Composable
-private fun CuratedMixCard(
-    mix: MockMix,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .width(112.dp)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() }
-    ) {
-        // Artwork Canvas Box with custom art matching mockup
         Box(
             modifier = Modifier
-                .size(112.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(mix.topColor, mix.bottomColor)
-                    )
-                ),
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(Color(0x18FFFFFF)),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-
-                if (mix.hasWaveform) {
-                    // Acoustic waves pattern
-                    val barWidth = 3.dp.toPx()
-                    val barSpacing = 5.dp.toPx()
-                    val bars = listOf(0.3f, 0.55f, 0.85f, 1.0f, 0.75f, 0.45f, 0.25f)
-                    val startX = (w - (bars.size * (barWidth + barSpacing))) / 2f
-                    bars.forEachIndexed { i, factor ->
-                        val barH = h * 0.35f * factor
-                        drawRoundRect(
-                            color = Color(0xFFFFB0BD).copy(alpha = 0.85f),
-                            topLeft = Offset(startX + i * (barWidth + barSpacing), (h - barH) / 2f),
-                            size = androidx.compose.ui.geometry.Size(barWidth, barH),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
-                        )
-                    }
-                } else if (mix.hasSun) {
-                    // Sunset Beats warm sun over dunes
-                    drawCircle(
-                        color = Color(0xFFFF6B7D).copy(alpha = 0.8f),
-                        radius = w * 0.22f,
-                        center = Offset(w * 0.5f, h * 0.45f)
-                    )
-                    drawCircle(
-                        color = mix.bottomColor.copy(alpha = 0.95f),
-                        radius = w * 0.5f,
-                        center = Offset(w * 0.5f, h * 1.1f)
-                    )
-                } else if (mix.hasMoon) {
-                    // Crescent moon silhouette
-                    drawCircle(
-                        color = Color(0xFFFFD4DC).copy(alpha = 0.8f),
-                        radius = w * 0.22f,
-                        center = Offset(w * 0.55f, h * 0.45f)
-                    )
-                    drawCircle(
-                        color = mix.topColor,
-                        radius = w * 0.20f,
-                        center = Offset(w * 0.62f, h * 0.40f)
-                    )
-                }
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = Color(0xFFE2CCD2),
+                modifier = Modifier.size(18.dp)
+            )
         }
-
-        Spacer(modifier = Modifier.height(7.dp))
-
-        Text(
-            text = mix.title,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        Spacer(modifier = Modifier.height(1.dp))
-
-        Text(
-            text = mix.curator,
-            fontSize = 10.5.sp,
-            color = Color(0xFFD4A5AC),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
+/**
+ * Bigger, Rounded Device Track Row with Reduced Padding.
+ */
 @Composable
-private fun MockupTrackRowItem(
+private fun DeviceTrackRowItem(
     track: Track,
     isCurrent: Boolean,
     isPlaying: Boolean,
@@ -437,25 +308,37 @@ private fun MockupTrackRowItem(
     modifier: Modifier = Modifier
 ) {
     val cleanTitle = track.title.substringBefore(" - ")
+    val rowShape = RoundedCornerShape(12.dp)
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(rowShape)
+            .background(
+                if (isCurrent) Color(0x35600E1C)
+                else Color(0x14FFFFFF)
+            )
+            .border(
+                width = 0.8.dp,
+                color = if (isCurrent) Color(0x55FF2448) else Color(0x12FFAAB8),
+                shape = rowShape
+            )
             .clickable { onClick() }
-            .padding(vertical = 4.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Thumbnail with 8dp rounded corners
+        // Quite bigger album artwork thumbnail (52x52dp) with rounded corners
         Box(
             modifier = Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF280A12))
+                .size(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF20060E))
+                .border(0.8.dp, Color(0x22FFAAB8), RoundedCornerShape(10.dp))
         ) {
             TrackArtworkImage(
                 track = track,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
+                thumbnailSizePx = 128,
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -469,36 +352,36 @@ private fun MockupTrackRowItem(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "Playing",
-                        tint = Color(0xFFFF3B5C),
-                        modifier = Modifier.size(18.dp)
+                        tint = Color(0xFFFF2448),
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
-        // Title and artist
+        // Title and artist metadata
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = cleanTitle,
-                fontSize = 14.5.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (isCurrent) Color(0xFFFF6078) else Color.White,
+                color = if (isCurrent) Color(0xFFFF5575) else Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = track.artist,
+                text = "${track.artist} • ${track.formattedDuration}",
                 fontSize = 12.sp,
-                color = Color(0xFFC098A2),
+                color = Color(0xFFB89EA6),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
 
-        // Horizontal 3 dots matching mockup!
+        // Action Menu
         IconButton(
             onClick = onMenuClick,
             modifier = Modifier.size(36.dp)
@@ -506,9 +389,55 @@ private fun MockupTrackRowItem(
             Icon(
                 imageVector = Icons.Default.MoreHoriz,
                 contentDescription = "Track options",
-                tint = Color(0xFF90757C),
+                tint = Color(0xFF9E848D),
                 modifier = Modifier.size(22.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun DeviceAudioPermissionBanner(
+    onRequestPermission: (() -> Unit)?
+) {
+    val bannerShape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(bannerShape)
+            .background(Color(0x30600C1C))
+            .border(1.dp, Color(0x30FFAAB8), bannerShape)
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Device Audio Access",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Grant permission to read and play all music files stored on this device.",
+                fontSize = 11.5.sp,
+                color = Color(0xFFC098A2)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Button(
+            onClick = { onRequestPermission?.invoke() },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFE51B3E),
+                contentColor = Color.White
+            ),
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Text(text = "Allow", fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
