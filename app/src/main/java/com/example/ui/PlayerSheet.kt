@@ -1777,7 +1777,7 @@ private fun UpNextTrackRow(
                     contentDescription = track.title,
                     modifier = Modifier.fillMaxSize(),
                     thumbnailSizePx = 128,
-                    crossfade = false
+                    crossfade = true
                 )
                 if (isCurrent) {
                     Box(

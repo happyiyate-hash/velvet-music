@@ -195,12 +195,37 @@ fun VelvetApp() {
     var actionSheetTrack by remember { mutableStateOf<Track?>(null) }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black)
+        modifier = Modifier.fillMaxSize().background(Color(0xFF100206))
     ) {
         Scaffold(
-            containerColor = Color.Black,
+            containerColor = Color(0xFF100206),
             contentColor = VelvetTextPrimary,
-            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            bottomBar = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Transparent)
+                ) {
+                    if (isPlaying) {
+                        AshGlassMiniPlayerBar(
+                            track = currentTrack,
+                            isPlaying = isPlaying,
+                            playbackPositionMs = playbackPositionMs,
+                            onTogglePlayPause = { audioEngine.togglePlayPause() },
+                            onSkipNext = { audioEngine.playNext() },
+                            onClick = { isPlayerExpanded = true }
+                        )
+                    }
+
+                    AshGlassBottomNavigationBar(
+                        selectedTab = selectedTab,
+                        onSelectTab = { tabIndex ->
+                            selectedTab = tabIndex
+                        }
+                    )
+                }
+            }
         ) { paddingValues ->
             Box(
                 modifier = Modifier
@@ -261,32 +286,6 @@ fun VelvetApp() {
                         }
                     )
                 }
-
-                if (isPlaying) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .navigationBarsPadding()
-                            .padding(bottom = 46.dp, start = 8.dp, end = 8.dp)
-                    ) {
-                        AshGlassMiniPlayerBar(
-                            track = currentTrack,
-                            isPlaying = isPlaying,
-                            playbackPositionMs = playbackPositionMs,
-                            onTogglePlayPause = { audioEngine.togglePlayPause() },
-                            onSkipNext = { audioEngine.playNext() },
-                            onClick = { isPlayerExpanded = true }
-                        )
-                    }
-                }
-
-                AshGlassBottomNavigationBar(
-                    selectedTab = selectedTab,
-                    onSelectTab = { tabIndex ->
-                        selectedTab = tabIndex
-                    },
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
             }
         }
 

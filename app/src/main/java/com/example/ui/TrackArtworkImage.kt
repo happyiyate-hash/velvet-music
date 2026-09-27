@@ -21,7 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,22 +28,27 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Precision
+import coil.size.Scale
 import com.example.model.Track
+import kotlinx.coroutines.Dispatchers
 
 /**
- * Universal Track Artwork renderer:
- * 1. If the music fetched/searched from user device has a photo (embedded in ID3 tag, MediaStore, or local cache),
- *    this component renders that real photo.
- * 2. If the song has NO photo, it cleanly and reliably resolves to the app's fallback artwork resource.
- * 3. Wrapped with a key(track.id) and remember(track.id) so track transitions always force a full reset
- *    and re-evaluation of the active artwork target.
+ * Universal Track Artwork renderer (YouTube Music Asynchronous Architecture):
+ * 1. Fully Asynchronous: Decoding runs strictly on Dispatchers.IO, never blocking the main UI thread.
+ * 2. Instant Zero-Jank Placeholder: Instant lightweight grey/ash background box renders immediately
+ *    without synchronous painterResource() or BitmapFactory decoding on the UI thread.
+ * 3. Exact Downscaling: Resizes bitmaps to exact target visual dimensions (128x128 px)
+ *    before passing to Compose, avoiding memory bloat and scroll lag.
+ * 4. Asynchronous Crossfade: Progressive fade-in smoothly reveals images as background loading finishes.
+ * 5. Hardware Bitmaps & Aggressive Caching: Uses hardware bitmap memory cache for butter-smooth scrolling.
  */
 @Composable
 fun TrackArtworkImage(
@@ -52,53 +56,48 @@ fun TrackArtworkImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
-    thumbnailSizePx: Int? = null,
+    thumbnailSizePx: Int? = 128,
     crossfade: Boolean = true
 ) {
-    key(track.id) {
-        val context = LocalContext.current
-        val effectiveArtTarget: Any? = remember(track.id, track.artworkUri, track.coverResId) {
-            val uri = track.artworkUri
-            if (!uri.isNullOrBlank() && !uri.startsWith("content://media/external/audio/media")) {
-                uri
-            } else if (track.coverResId != 0) {
-                track.coverResId
-            } else {
-                null
-            }
+    val context = LocalContext.current
+    val effectiveArtTarget: Any? = remember(track.id, track.artworkUri, track.coverResId) {
+        val uri = track.artworkUri
+        if (!uri.isNullOrBlank() && !uri.startsWith("content://media/external/audio/media")) {
+            uri
+        } else if (track.coverResId != 0) {
+            track.coverResId
+        } else {
+            null
         }
+    }
 
+    val targetSize = thumbnailSizePx ?: 128
+
+    val request = remember(track.id, effectiveArtTarget, targetSize, crossfade) {
+        ImageRequest.Builder(context)
+            .data(effectiveArtTarget)
+            .dispatcher(Dispatchers.IO)
+            .crossfade(crossfade)
+            .size(targetSize, targetSize)
+            .precision(Precision.EXACT)
+            .scale(Scale.FILL)
+            .allowHardware(true)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCacheKey("thumb_${track.id}_$targetSize")
+            .diskCacheKey("thumb_${track.id}_$targetSize")
+            .build()
+    }
+
+    // Instant grey placeholder background (Color(0xFF222226)) prevents blank/white pops
+    Box(
+        modifier = modifier.background(Color(0xFF222226))
+    ) {
         if (effectiveArtTarget != null) {
-            val request = remember(track.id, effectiveArtTarget) {
-                ImageRequest.Builder(context)
-                    .data(effectiveArtTarget)
-                    .crossfade(crossfade)
-                    .apply {
-                        thumbnailSizePx?.let {
-                            size(it, it)
-                            val cacheKey = "thumb_${track.id}_$effectiveArtTarget"
-                            memoryCacheKey(cacheKey)
-                            diskCacheKey(cacheKey)
-                            allowHardware(true)
-                        }
-                    }
-                    .build()
-            }
             AsyncImage(
                 model = request,
                 contentDescription = contentDescription,
-                modifier = modifier,
-                contentScale = contentScale,
-                placeholder = painterResource(id = track.coverResId),
-                error = painterResource(id = track.coverResId),
-                fallback = painterResource(id = track.coverResId)
-            )
-        } else {
-            val fallbackRes = remember(track.id, track.coverResId) { track.coverResId }
-            Image(
-                painter = painterResource(id = fallbackRes),
-                contentDescription = contentDescription,
-                modifier = modifier,
+                modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale
             )
         }

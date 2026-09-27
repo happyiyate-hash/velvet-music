@@ -23,18 +23,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,12 +41,30 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.SampleData
 import com.example.model.Track
+
+private data class MockMix(
+    val id: String,
+    val title: String,
+    val curator: String,
+    val topColor: Color,
+    val bottomColor: Color,
+    val hasWaveform: Boolean = false,
+    val hasSun: Boolean = false,
+    val hasMoon: Boolean = false
+)
+
+private val curatedMixes = listOf(
+    MockMix("mix_1", "Luminous Echoes", "(Curated by Tame Impala)", Color(0xFF6E1828), Color(0xFF280812), hasMoon = true),
+    MockMix("mix_2", "Acoustic Waves", "(Curated by Bon Iver)", Color(0xFF2D3B4C), Color(0xFF141A22), hasWaveform = true),
+    MockMix("mix_3", "Sunset Beats", "(Curated by Kaytranada)", Color(0xFF7E2A38), Color(0xFF380E18), hasSun = true),
+    MockMix("mix_4", "Night Grooves", "(Curated by Khruangbin)", Color(0xFF451E4E), Color(0xFF1A0A20), hasMoon = true),
+    MockMix("mix_5", "Braw Beats", "(Curated by SZA)", Color(0xFF602835), Color(0xFF220C14), hasSun = true)
+)
 
 @Composable
 fun HomeFeedScreen(
@@ -69,7 +84,6 @@ fun HomeFeedScreen(
     onAddTrack: ((Track) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Recently played music with reduced thumbnail size
     val recentTracks = remember(mostPlayedTracks, allTracks) {
         if (mostPlayedTracks.isNotEmpty()) mostPlayedTracks.take(8)
         else if (allTracks.isNotEmpty()) allTracks.take(8)
@@ -80,129 +94,138 @@ fun HomeFeedScreen(
         if (allTracks.isNotEmpty()) allTracks else SampleData.starterTracks
     }
 
-    // User playlists (if empty, skip completely; if added later, display at bottom)
-    val userPlaylists by remember { mutableStateOf<List<String>>(emptyList()) }
+    val velvetBackgroundGradient = remember {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFF4C0E1B), // Rich atmospheric crimson wine top
+                Color(0xFF300812),
+                Color(0xFF1B040A),
+                Color(0xFF100206)  // Midnight plum black base
+            )
+        )
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
+            .background(velvetBackgroundGradient)
             .testTag("home_feed_screen")
     ) {
-        // Pure black canvas background with glowing red aura right around the brand name
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            drawRect(color = Color.Black)
-
-            // Subtle glowing red aura strictly around the top VELVET branding
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0x50FF2448),
-                        Color(0x22880018),
-                        Color(0x06330008),
-                        Color.Transparent
-                    ),
-                    center = Offset(w * 0.5f, 46.dp.toPx()),
-                    radius = w * 0.52f
-                ),
-                center = Offset(w * 0.5f, 46.dp.toPx()),
-                radius = w * 0.52f
-            )
-        }
-
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
         ) {
-            // 1. BRANDING HEADER: Exact VELVET signature branding from Search page
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp, bottom = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "V E L V E T",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF2448),
-                        letterSpacing = 10.sp,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "DARK.  AMBIENT.  FLUID AUDIO.",
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Light,
-                        color = Color(0xFF8E8E93),
-                        letterSpacing = 2.8.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-
-            // 2. RECENTLY PLAYED SECTION (Reduced artwork sizes, clean & compact)
-            if (recentTracks.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Recently played",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(recentTracks, key = { "recent_${it.id}" }) { track ->
-                            CompactRecentlyPlayedItem(
-                                track = track,
-                                isCurrent = track.id == currentTrack.id,
-                                isPlaying = isPlaying && track.id == currentTrack.id,
-                                onClick = { onSelectTrack(track) }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
-            }
-
-            // 3. ALL TRACKS SECTION (Clean standalone music list)
+            // 1. TOP HEADER: "Welcome back, Echo" + "Home Feed" + 3 action buttons
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Your Music",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+                    Column {
+                        Text(
+                            text = "Welcome back, Echo",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color(0xFFDCA8B0)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Home Feed",
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
 
-                    Text(
-                        text = "${displayTracks.size} tracks",
-                        fontSize = 12.sp,
-                        color = Color(0xFFB0B5C0)
-                    )
+                    // 3 Frosted squircle action buttons matching mockup
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HeaderFrostedButton(
+                            icon = Icons.Outlined.Notifications,
+                            contentDescription = "Notifications",
+                            onClick = onOpenNotifications
+                        )
+                        HeaderFrostedButton(
+                            icon = Icons.Outlined.Settings,
+                            contentDescription = "Settings",
+                            onClick = onOpenSettings
+                        )
+                        HeaderFrostedButton(
+                            icon = Icons.Default.Search,
+                            contentDescription = "Search",
+                            onClick = onOpenSearch
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // Clean list of music: standout title, white 3 dots, clean silver subtitle
-            items(displayTracks, key = { it.id }) { track ->
+            // 2. PERSONALIZED MIXES: Large frosted glass card container
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0x354E0E1B))
+                        .border(
+                            width = 1.dp,
+                            color = Color(0x30FFAAB8),
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                        .padding(16.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "Personalized Mixes",
+                            fontSize = 15.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFF8D8DE)
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Curated mixes grid / horizontal flow
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(curatedMixes, key = { it.id }) { mix ->
+                                CuratedMixCard(
+                                    mix = mix,
+                                    onClick = {
+                                        val match = displayTracks.firstOrNull() ?: currentTrack
+                                        onSelectTrack(match)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(22.dp))
+            }
+
+            // 3. RECENTLY PLAYED SECTION
+            item {
+                Text(
+                    text = "Recently Played",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            items(recentTracks, key = { "recent_${it.id}" }) { track ->
                 val isCurrent = track.id == currentTrack.id
-                CleanTrackRowItem(
+                MockupTrackRowItem(
                     track = track,
                     isCurrent = isCurrent,
                     isPlaying = isPlaying && isCurrent,
@@ -210,80 +233,73 @@ fun HomeFeedScreen(
                     onMenuClick = { onTrackMenuClick(track) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 3.dp)
+                        .padding(horizontal = 20.dp, vertical = 5.dp)
                 )
             }
 
-            // 4. PLAYLISTS SECTION (If user has playlists, show them; otherwise skip completely)
-            if (userPlaylists.isNotEmpty()) {
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Text(
-                        text = "Playlists",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
+            // 4. DISCOVER NEW RELEASES SECTION: Rounded card container
+            item {
+                Spacer(modifier = Modifier.height(22.dp))
 
-                items(userPlaylists) { playlistName ->
-                    Text(
-                        text = playlistName,
-                        fontSize = 14.sp,
-                        color = Color.White,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    )
-                }
-            }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0x28380A14))
+                        .border(1.dp, Color(0x22FFAAB8), RoundedCornerShape(24.dp))
+                        .padding(16.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "Discover New Releases",
+                            fontSize = 15.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFF8D8DE)
+                        )
 
-            // Optional Storage Permission Banner (Only if permission is not granted)
-            if (!hasAudioPermission && onRequestPermission != null) {
-                item {
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0x1F2A000A))
-                            .border(0.8.dp, Color(0x44FF2448), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.LockOpen,
-                                contentDescription = null,
-                                tint = Color(0xFFFF4D6D),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Allow storage access to load device music",
-                                fontSize = 12.sp,
-                                color = Color(0xFFD0D3DC),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Button(
-                            onClick = onRequestPermission,
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFE51B3E),
-                                contentColor = Color.White
-                            ),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
-                        ) {
-                            Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            items(displayTracks.take(6), key = { "new_${it.id}" }) { track ->
+                                Column(
+                                    modifier = Modifier
+                                        .width(96.dp)
+                                        .clickable { onSelectTrack(track) }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(96.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0xFF220812))
+                                    ) {
+                                        TrackArtworkImage(
+                                            track = track,
+                                            contentDescription = track.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = track.title.substringBefore(" - "),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = track.artist,
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFFC098A2),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -292,30 +308,149 @@ fun HomeFeedScreen(
     }
 }
 
-/**
- * Compact Recently Played Card with reduced artwork size (80dp x 80dp)
- */
 @Composable
-private fun CompactRecentlyPlayedItem(
-    track: Track,
-    isCurrent: Boolean,
-    isPlaying: Boolean,
+private fun HeaderFrostedButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
     onClick: () -> Unit
 ) {
-    val cleanTitle = track.title.substringBefore(" - ")
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0x35601220))
+            .border(1.dp, Color(0x35FFAAB8), RoundedCornerShape(12.dp))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color(0xFFF2D0D6),
+            modifier = Modifier.size(19.dp)
+        )
+    }
+}
+
+@Composable
+private fun CuratedMixCard(
+    mix: MockMix,
+    onClick: () -> Unit
+) {
     Column(
         modifier = Modifier
-            .width(80.dp)
+            .width(112.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onClick() }
     ) {
+        // Artwork Canvas Box with custom art matching mockup
         Box(
             modifier = Modifier
-                .size(80.dp)
+                .size(112.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(mix.topColor, mix.bottomColor)
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+
+                if (mix.hasWaveform) {
+                    // Acoustic waves pattern
+                    val barWidth = 3.dp.toPx()
+                    val barSpacing = 5.dp.toPx()
+                    val bars = listOf(0.3f, 0.55f, 0.85f, 1.0f, 0.75f, 0.45f, 0.25f)
+                    val startX = (w - (bars.size * (barWidth + barSpacing))) / 2f
+                    bars.forEachIndexed { i, factor ->
+                        val barH = h * 0.35f * factor
+                        drawRoundRect(
+                            color = Color(0xFFFFB0BD).copy(alpha = 0.85f),
+                            topLeft = Offset(startX + i * (barWidth + barSpacing), (h - barH) / 2f),
+                            size = androidx.compose.ui.geometry.Size(barWidth, barH),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
+                        )
+                    }
+                } else if (mix.hasSun) {
+                    // Sunset Beats warm sun over dunes
+                    drawCircle(
+                        color = Color(0xFFFF6B7D).copy(alpha = 0.8f),
+                        radius = w * 0.22f,
+                        center = Offset(w * 0.5f, h * 0.45f)
+                    )
+                    drawCircle(
+                        color = mix.bottomColor.copy(alpha = 0.95f),
+                        radius = w * 0.5f,
+                        center = Offset(w * 0.5f, h * 1.1f)
+                    )
+                } else if (mix.hasMoon) {
+                    // Crescent moon silhouette
+                    drawCircle(
+                        color = Color(0xFFFFD4DC).copy(alpha = 0.8f),
+                        radius = w * 0.22f,
+                        center = Offset(w * 0.55f, h * 0.45f)
+                    )
+                    drawCircle(
+                        color = mix.topColor,
+                        radius = w * 0.20f,
+                        center = Offset(w * 0.62f, h * 0.40f)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(7.dp))
+
+        Text(
+            text = mix.title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(1.dp))
+
+        Text(
+            text = mix.curator,
+            fontSize = 10.5.sp,
+            color = Color(0xFFD4A5AC),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun MockupTrackRowItem(
+    track: Track,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onMenuClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cleanTitle = track.title.substringBefore(" - ")
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Thumbnail with 8dp rounded corners
+        Box(
+            modifier = Modifier
+                .size(46.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF140206))
+                .background(Color(0xFF280A12))
         ) {
             TrackArtworkImage(
                 track = track,
@@ -334,121 +469,45 @@ private fun CompactRecentlyPlayedItem(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "Playing",
-                        tint = Color(0xFFFF2448),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Text(
-            text = cleanTitle,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isCurrent) Color(0xFFFF4D6D) else Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        Text(
-            text = track.artist,
-            fontSize = 10.5.sp,
-            color = Color(0xFFB0B5C0),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-/**
- * Clean Single Track Row Item:
- * - Standout bold title
- * - White bigger 3-dots icon (24dp)
- * - Clean subtitle typography
- */
-@Composable
-private fun CleanTrackRowItem(
-    track: Track,
-    isCurrent: Boolean,
-    isPlaying: Boolean,
-    onClick: () -> Unit,
-    onMenuClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val cleanTitle = track.title.substringBefore(" - ")
-
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable { onClick() }
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Artwork Thumbnail (compact 44dp)
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF140206))
-        ) {
-            TrackArtworkImage(
-                track = track,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            if (isCurrent && isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = "Playing",
-                        tint = Color(0xFFFF2448),
+                        tint = Color(0xFFFF3B5C),
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
 
-        // Track Info - Standout title
+        // Title and artist
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = cleanTitle,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isCurrent) Color(0xFFFF4D6D) else Color.White,
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isCurrent) Color(0xFFFF6078) else Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "${track.artist} • ${track.formattedDuration}",
+                text = track.artist,
                 fontSize = 12.sp,
-                color = Color(0xFFB0B5C0),
+                color = Color(0xFFC098A2),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
 
-        // Action Menu - 3 dots: bigger and white!
+        // Horizontal 3 dots matching mockup!
         IconButton(
             onClick = onMenuClick,
-            modifier = Modifier.size(40.dp)
+            modifier = Modifier.size(36.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.MoreVert,
+                imageVector = Icons.Default.MoreHoriz,
                 contentDescription = "Track options",
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
+                tint = Color(0xFF90757C),
+                modifier = Modifier.size(22.dp)
             )
         }
     }
