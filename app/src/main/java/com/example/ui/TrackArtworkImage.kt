@@ -55,7 +55,7 @@ fun TrackArtworkImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
-    thumbnailSizePx: Int? = 128,
+    thumbnailSizePx: Int? = null,
     crossfade: Boolean = true
 ) {
     val context = LocalContext.current
@@ -76,25 +76,26 @@ fun TrackArtworkImage(
         }
     }
 
-    val targetSize = thumbnailSizePx ?: 128
-
-    val request = remember(track.id, primaryData, fallbackResId, targetSize, crossfade) {
-        ImageRequest.Builder(context)
+    val request = remember(track.id, primaryData, fallbackResId, thumbnailSizePx, crossfade) {
+        val builder = ImageRequest.Builder(context)
             .data(primaryData)
             .error(fallbackResId)
             .fallback(fallbackResId)
             .placeholder(fallbackResId)
             .dispatcher(Dispatchers.IO)
             .crossfade(crossfade)
-            .size(targetSize, targetSize)
-            .precision(Precision.EXACT)
-            .scale(Scale.FILL)
             .allowHardware(true)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
-            .memoryCacheKey("thumb_${track.id}_$targetSize")
-            .diskCacheKey("thumb_${track.id}_$targetSize")
-            .build()
+            .memoryCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
+            .diskCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
+
+        if (thumbnailSizePx != null && thumbnailSizePx > 0) {
+            builder.size(thumbnailSizePx, thumbnailSizePx)
+                .precision(Precision.EXACT)
+                .scale(Scale.FILL)
+        }
+        builder.build()
     }
 
     Box(
