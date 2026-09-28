@@ -43,6 +43,7 @@ credentials = "1.5.0"
 googleid = "1.1.1"
 media3 = "1.5.1"
 palette = "1.0.0"
+splashscreen = "1.2.0"
 
 
 [libraries]
@@ -52,6 +53,7 @@ androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.re
 androidx-palette = { group = "androidx.palette", name = "palette", version.ref = "palette" }
 androidx-palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
