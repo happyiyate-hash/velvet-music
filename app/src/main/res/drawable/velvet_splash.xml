@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Velvet splash artwork wrapper.
-
-    Upload the actual image as:
-    app/src/main/res/drawable/velvet_splash_logo.png
-
-    Keep the artwork centered on a transparent/black canvas so Android can
-    display it cleanly without adding another rounded card around it.
+    Keeps the complete Velvet splash artwork visible.
+    The inset prevents Android's splash icon area from center-cropping
+    the rounded-square artwork.
 -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:drawable="@drawable/velvet_splash_logo"
-        android:gravity="center" />
-</layer-list>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="32dp"
+    android:insetTop="32dp"
+    android:insetRight="32dp"
+    android:insetBottom="32dp">
+
+    <bitmap
+        android:src="@drawable/velvet_splash_logo"
+        android:gravity="fill" />
+
+</inset>
