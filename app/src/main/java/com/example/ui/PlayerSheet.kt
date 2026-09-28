@@ -271,7 +271,6 @@ fun PlayerSheet(
     // One continuous controller for the player and its in-flow queue.
     // 0f = collapsed player, 0.55f = player + queue peek, 1f = queue-focused player.
     val expansionProgress = remember { Animatable(0f) }
-    val p = expansionProgress.value.coerceIn(0f, 1f)
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
 
@@ -411,10 +410,6 @@ fun PlayerSheet(
         )
     }
 
-    val darkControlCenterBg = remember(animatedBgBottom) {
-        colorLerp(animatedBgBottom, Color(0xFF090A0E), 0.75f)
-    }
-
     val queueSheetGradient = remember(animatedBgTop, animatedBgMidUpper, animatedBgMidLower) {
         Brush.verticalGradient(
             0.0f to animatedBgTop,
@@ -423,10 +418,22 @@ fun PlayerSheet(
         )
     }
 
+    val p = expansionProgress.value.coerceIn(0f, 2f)
+    val p1 = p.coerceIn(0f, 1f)
+    val p2 = (p - 1f).coerceIn(0f, 1f)
+
+    // Dynamic Control Center & Screen Background:
+    // In Stage 1 (dropped): displays the exact extracted color, quite darker than player card (darkFactor ~0.28f), NOT pure black!
+    // In Stage 2 (maximum): gradually darkens further (darkFactor ~0.58f), but still retains vibrant color without becoming fully dark.
+    val currentControlCenterBg = remember(animatedBgBottom, p2) {
+        val darkFactor = 0.28f + (0.58f - 0.28f) * p2
+        colorLerp(animatedBgBottom, Color(0xFF090A0E), darkFactor)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(darkControlCenterBg)
+            .background(currentControlCenterBg)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -445,22 +452,13 @@ fun PlayerSheet(
             val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-            // Two continuous stages driven by expansionProgress:
-            // Stage 1 (p in 0f..1f): Artwork expands to top, controls stay under it, queue preview emerges
-            // Stage 2 (p in 1f..2f): Artwork shrinks to top-left thumbnail, controls fade, top area darkens,
-            // Up Next boundary with curved border moves to top, revealing full Up Next list
-            val p = expansionProgress.value.coerceIn(0f, 2f)
-            val p1 = p.coerceIn(0f, 1f)
-            val p2 = (p - 1f).coerceIn(0f, 1f)
-
             // 1. Artwork Geometry
             // Aspect ratio is strictly preserved (1:1 square artwork).
             val artworkAspectRatio = 1.0f
             val controlsHeight = 64.dp
 
             // Collapsed state (p = 0f):
-            // Shift bottom sheet downward so that "UP NEXT" and track count texts are completely hidden off-screen,
-            // and only the top gesture handle area is present above system navigation.
+            // Shift bottom sheet downward so that only the drag handle peeks above system navigation.
             val collapsedPeekHeight = (navBarBottom + 20.dp).coerceIn(20.dp, 32.dp)
             val collapsedControlsY = totalHeight - collapsedPeekHeight - controlsHeight - 12.dp
             val collapsedCardHeight = collapsedControlsY - 6.dp
@@ -468,12 +466,13 @@ fun PlayerSheet(
             val collapsedProgressY = collapsedWaveformY - 28.dp
             val collapsedMetadataY = collapsedProgressY - 46.dp
             val collapsedArtworkBottom = collapsedMetadataY - 10.dp
-            // In collapsed state (p = 0f), the artwork fills the top width edge-to-edge with NO rounded overlay or margins:
-            val collapsedArtworkTop = 0.dp
-            val collapsedArtworkLeft = 0.dp
-            val collapsedArtworkWidth = totalWidth
-            val collapsedArtworkHeight = (collapsedMetadataY - 8.dp).coerceAtLeast(200.dp)
-            val collapsedArtworkRadius = 0.dp
+
+            // Collapsed state (p = 0f): Original centered display with rounded corners and proper margins:
+            val collapsedArtworkHeight = (minOf(totalWidth - 32.dp, collapsedArtworkBottom - (statusBarTop + 46.dp) - 6.dp)).coerceIn(240.dp, 330.dp)
+            val collapsedArtworkWidth = collapsedArtworkHeight * artworkAspectRatio
+            val collapsedArtworkTop = ((statusBarTop + 46.dp) + (collapsedArtworkBottom - (statusBarTop + 46.dp) - collapsedArtworkHeight) / 2f)
+            val collapsedArtworkLeft = (totalWidth - collapsedArtworkWidth) / 2f
+            val collapsedArtworkRadius = 14.dp
 
             // Stage 1 Expanded state (p = 1f):
             val expandedArtworkWidth = totalWidth
@@ -488,15 +487,18 @@ fun PlayerSheet(
             val expandedProgressY = expandedWaveformY - 26.dp
             val expandedMetadataY = expandedProgressY - 44.dp
 
-            // Stage 2 Mini Artwork Targets (Thumbnail at top left, sharp edges with gentle 6.dp curve, increased size 68.dp):
-            val stage2ArtworkSize = 68.dp
-            val stage2ArtworkTop = statusBarTop + 8.dp
-            val stage2ArtworkLeft = 16.dp
+            // Stage 2 Mini Artwork Targets:
+            // Reduced size: ~20% larger than 48dp queue art = 56dp. Pushed to far left with small space (10dp).
+            val stage2ArtworkSize = 56.dp
+            val stage2ArtworkTop = statusBarTop + 6.dp
+            val stage2ArtworkLeft = 10.dp
             val stage2ArtworkRadius = 6.dp
+            // Up Next sheet moves higher to the top (68dp instead of 84dp):
+            val stage2BoundaryY = statusBarTop + 68.dp
 
             // Continuous two-stage interpolation for Artwork:
             val artworkWidth = if (p <= 1f) {
-                totalWidth
+                lerp(collapsedArtworkWidth, expandedArtworkWidth, p1)
             } else {
                 lerp(expandedArtworkWidth, stage2ArtworkSize, p2)
             }
@@ -506,23 +508,22 @@ fun PlayerSheet(
                 lerp(expandedArtworkHeight, stage2ArtworkSize, p2)
             }
             val artworkTop = if (p <= 1f) {
-                0.dp
+                lerp(collapsedArtworkTop, expandedArtworkTop, p1)
             } else {
-                lerp(0.dp, stage2ArtworkTop, p2)
+                lerp(expandedArtworkTop, stage2ArtworkTop, p2)
             }
             val artworkLeft = if (p <= 1f) {
-                0.dp
+                lerp(collapsedArtworkLeft, expandedArtworkLeft, p1)
             } else {
-                lerp(0.dp, stage2ArtworkLeft, p2)
+                lerp(expandedArtworkLeft, stage2ArtworkLeft, p2)
             }
             val artworkRadius = if (p <= 1f) {
-                0.dp
+                lerp(collapsedArtworkRadius, expandedArtworkRadius, p1)
             } else {
-                lerp(0.dp, stage2ArtworkRadius, p2)
+                lerp(expandedArtworkRadius, stage2ArtworkRadius, p2)
             }
 
             // Card Height and Shape:
-            val stage2BoundaryY = statusBarTop + 84.dp
             val cardHeight = if (p <= 1f) {
                 lerp(collapsedCardHeight, expandedCardHeight, p1)
             } else {
@@ -727,17 +728,17 @@ fun PlayerSheet(
                 }
 
                 // STAGE 2 TOP HEADER:
-                // Dark background across top side as explicitly requested by user,
-                // mini artwork on left, auto-scrolling title & artist, and enlarged Play/Pause button on right.
+                // Darkened header across top side displaying track color,
+                // mini artwork on far left, tightly framed auto-scrolling title & artist, and enlarged Play/Pause button on far right.
                 if (p2 > 0.01f) {
                     val stage2HeaderAlpha = ((p2 - 0.05f) / 0.35f).coerceIn(0f, 1f)
                     if (stage2HeaderAlpha > 0.001f) {
-                        // Dark background across the top side in Stage 2:
+                        // Darkened background across the top side in Stage 2 (matching currentControlCenterBg):
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(stage2BoundaryY)
-                                .background(darkControlCenterBg.copy(alpha = stage2HeaderAlpha))
+                                .background(currentControlCenterBg.copy(alpha = stage2HeaderAlpha))
                                 .graphicsLayer { alpha = stage2HeaderAlpha }
                                 .zIndex(11f)
                         )
@@ -745,9 +746,9 @@ fun PlayerSheet(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .offset { IntOffset(0, (statusBarTop + 8.dp).roundToPx()) }
+                                .offset { IntOffset(0, (statusBarTop + 6.dp).roundToPx()) }
                                 .height(stage2ArtworkSize)
-                                .padding(start = 16.dp + stage2ArtworkSize + 14.dp, end = 16.dp)
+                                .padding(start = stage2ArtworkLeft + stage2ArtworkSize + 8.dp, end = 8.dp)
                                 .graphicsLayer { alpha = stage2HeaderAlpha }
                                 .zIndex(12f),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -757,17 +758,17 @@ fun PlayerSheet(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clipToBounds()
-                                    .padding(end = 12.dp),
+                                    .padding(end = 4.dp),
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 MarqueeTrackTitle(
                                     title = track.title,
-                                    fontSize = 14.sp,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     letterSpacing = 0.sp,
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                Spacer(modifier = Modifier.height(1.dp))
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = track.artist,
                                     fontSize = 12.sp,
@@ -783,12 +784,12 @@ fun PlayerSheet(
                                     onTogglePlayPause()
                                 },
                                 modifier = Modifier
-                                    .size(52.dp)
+                                    .size(48.dp)
                                     .testTag("player_stage2_play_pause")
                             ) {
                                 MorphingPlayPauseIcon(
                                     isPlaying = isPlaying,
-                                    modifier = Modifier.size(34.dp),
+                                    modifier = Modifier.size(38.dp),
                                     tint = Color.White
                                 )
                             }
@@ -971,7 +972,7 @@ fun PlayerSheet(
             // In Stage 2, the bottom sheet SHOWS THE VIBRANT COLOR (queueSheetGradient) as explicitly requested:
             if (upNextHeight > 1.dp) {
                 val stage2Progress = (p - 1f).coerceIn(0f, 1f)
-                val sheetFillAlpha = if (p <= 1f) 0f else (stage2Progress * 4f).coerceIn(0f, 1f)
+                val sheetColorAlpha = stage2Progress.coerceIn(0f, 1f)
 
                 Box(
                     modifier = Modifier
@@ -979,15 +980,18 @@ fun PlayerSheet(
                         .height(upNextHeight)
                         .offset { IntOffset(0, boundaryY.roundToPx()) }
                         .clip(boundaryShape)
-                        .then(
-                            if (sheetFillAlpha > 0.005f) {
-                                Modifier.background(queueSheetGradient)
-                            } else {
-                                Modifier
-                            }
-                        )
                         .zIndex(8f)
                 ) {
+                    // Slowly and steadily fade in vibrant color as sheet is pushed into Stage 2:
+                    if (sheetColorAlpha > 0.001f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = sheetColorAlpha }
+                                .background(queueSheetGradient)
+                        )
+                    }
+
                     Column(
                         modifier = Modifier.fillMaxSize()
                     ) {
@@ -1028,9 +1032,9 @@ fun PlayerSheet(
                                     onClick = {
                                         val current = expansionProgress.value
                                         val target = when {
-                                            current < 0.5f -> 1.0f
-                                            current < 1.5f -> 2.0f
-                                            else -> 1.0f
+                                             current < 0.5f -> 1.0f
+                                             current < 1.5f -> 2.0f
+                                             else -> 1.0f
                                         }
                                         coroutineScope.launch {
                                             expansionProgress.animateTo(
@@ -1052,57 +1056,53 @@ fun PlayerSheet(
                             )
                         }
 
-                        // Fixed Queue Header: only visible when user begins dragging up, strictly hidden in collapsed state (p=0)
-                        val queueHeaderAlpha = ((p1 - 0.25f) / 0.40f).coerceIn(0f, 1f)
-                        if (queueHeaderAlpha > 0.005f) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = 4.dp)
-                                    .graphicsLayer { alpha = queueHeaderAlpha }
-                                    .pointerInput(Unit) {
-                                        detectVerticalDragGestures(
-                                            onDragStart = {
-                                                velocityTracker.resetTracking()
-                                                coroutineScope.launch { expansionProgress.stop() }
-                                            },
-                                            onVerticalDrag = { change, dragAmount ->
-                                                velocityTracker.addPosition(change.uptimeMillis, change.position)
-                                                change.consume()
-                                                val currentP = expansionProgress.value
-                                                val dragRange = if (currentP < 1f) stage1DragRangePx else stage2DragRangePx
-                                                val deltaP = -dragAmount / dragRange
-                                                val newP = (currentP + deltaP).coerceIn(0f, 2f)
-                                                coroutineScope.launch { expansionProgress.snapTo(newP) }
-                                            },
-                                            onDragEnd = {
-                                                val velocityY = velocityTracker.calculateVelocity().y
-                                                settleExpansion(velocityY)
-                                                velocityTracker.resetTracking()
-                                            },
-                                            onDragCancel = {
-                                                settleExpansion(0f)
-                                                velocityTracker.resetTracking()
-                                            }
-                                        )
-                                    },
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "UP NEXT",
-                                    fontSize = 12.sp,
-                                    letterSpacing = 1.4.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.65f)
-                                )
-                                Text(
-                                    text = "${orderedQueueItems.size} tracks",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = Color.White.copy(alpha = 0.45f)
-                                )
-                            }
+                        // Fixed Queue Header: always present in the layout so list is never pushed to the top unexpectedly
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 6.dp)
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures(
+                                        onDragStart = {
+                                            velocityTracker.resetTracking()
+                                            coroutineScope.launch { expansionProgress.stop() }
+                                        },
+                                        onVerticalDrag = { change, dragAmount ->
+                                            velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                            change.consume()
+                                            val currentP = expansionProgress.value
+                                            val dragRange = if (currentP < 1f) stage1DragRangePx else stage2DragRangePx
+                                            val deltaP = -dragAmount / dragRange
+                                            val newP = (currentP + deltaP).coerceIn(0f, 2f)
+                                            coroutineScope.launch { expansionProgress.snapTo(newP) }
+                                        },
+                                        onDragEnd = {
+                                            val velocityY = velocityTracker.calculateVelocity().y
+                                            settleExpansion(velocityY)
+                                            velocityTracker.resetTracking()
+                                        },
+                                        onDragCancel = {
+                                            settleExpansion(0f)
+                                            velocityTracker.resetTracking()
+                                        }
+                                    )
+                                },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "UP NEXT",
+                                fontSize = 12.sp,
+                                letterSpacing = 1.4.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.65f)
+                            )
+                            Text(
+                                text = "${orderedQueueItems.size} tracks",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color.White.copy(alpha = 0.45f)
+                            )
                         }
 
                         // Scrollable List: ONLY the music tracks scroll smoothly underneath, no dragging of the bottom sheet
