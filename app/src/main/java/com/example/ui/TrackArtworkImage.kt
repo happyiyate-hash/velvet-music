@@ -37,18 +37,17 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Precision
 import coil.size.Scale
+import com.example.model.FallbackArtworkPool
 import com.example.model.Track
 import kotlinx.coroutines.Dispatchers
 
 /**
- * Universal Track Artwork renderer (YouTube Music Asynchronous Architecture):
+ * Universal Track Artwork renderer:
  * 1. Fully Asynchronous: Decoding runs strictly on Dispatchers.IO, never blocking the main UI thread.
- * 2. Instant Zero-Jank Placeholder: Instant lightweight grey/ash background box renders immediately
- *    without synchronous painterResource() or BitmapFactory decoding on the UI thread.
- * 3. Exact Downscaling: Resizes bitmaps to exact target visual dimensions (128x128 px)
- *    before passing to Compose, avoiding memory bloat and scroll lag.
- * 4. Asynchronous Crossfade: Progressive fade-in smoothly reveals images as background loading finishes.
- * 5. Hardware Bitmaps & Aggressive Caching: Uses hardware bitmap memory cache for butter-smooth scrolling.
+ * 2. Guaranteed Replacement Artwork: If track has no artwork or MediaStore URI fails,
+ *    instantly falls back to the app's rich fallback pool artwork.
+ * 3. Exact Downscaling: Resizes bitmaps to exact target visual dimensions (128x128 px).
+ * 4. Asynchronous Crossfade: Smooth transition with zero-jank caching.
  */
 @Composable
 fun TrackArtworkImage(
@@ -60,22 +59,31 @@ fun TrackArtworkImage(
     crossfade: Boolean = true
 ) {
     val context = LocalContext.current
-    val effectiveArtTarget: Any? = remember(track.id, track.artworkUri, track.coverResId) {
-        val uri = track.artworkUri
-        if (!uri.isNullOrBlank() && !uri.startsWith("content://media/external/audio/media")) {
-            uri
-        } else if (track.coverResId != 0) {
+    val fallbackResId = remember(track.id, track.coverResId, track.title, track.artist) {
+        if (track.coverResId != 0) {
             track.coverResId
         } else {
-            null
+            FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
+        }
+    }
+
+    val primaryData: Any = remember(track.artworkUri, fallbackResId) {
+        val uri = track.artworkUri
+        if (!uri.isNullOrBlank()) {
+            uri
+        } else {
+            fallbackResId
         }
     }
 
     val targetSize = thumbnailSizePx ?: 128
 
-    val request = remember(track.id, effectiveArtTarget, targetSize, crossfade) {
+    val request = remember(track.id, primaryData, fallbackResId, targetSize, crossfade) {
         ImageRequest.Builder(context)
-            .data(effectiveArtTarget)
+            .data(primaryData)
+            .error(fallbackResId)
+            .fallback(fallbackResId)
+            .placeholder(fallbackResId)
             .dispatcher(Dispatchers.IO)
             .crossfade(crossfade)
             .size(targetSize, targetSize)
@@ -89,18 +97,15 @@ fun TrackArtworkImage(
             .build()
     }
 
-    // Instant grey placeholder background (Color(0xFF222226)) prevents blank/white pops
     Box(
-        modifier = modifier.background(Color(0xFF222226))
+        modifier = modifier.background(Color(0xFF18181C))
     ) {
-        if (effectiveArtTarget != null) {
-            AsyncImage(
-                model = request,
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
-            )
-        }
+        AsyncImage(
+            model = request,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = contentScale
+        )
     }
 }
 
