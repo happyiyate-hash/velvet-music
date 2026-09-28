@@ -127,11 +127,24 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p app/libs app/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86,x86_64,riscv64}
-          curl -fsSL "https://raw.githubusercontent.com/acrcloud/ACRCloudUniversalSDK/master/libs/acrcloud-universal-sdk-1.3.33.jar" -o app/libs/acrcloud-universal-sdk-1.3.33.jar
+          ACRCLOUD_BASE_URL="https://raw.githubusercontent.com/acrcloud/ACRCloudUniversalSDK/master/libs"
+          CURL_OPTS=(--fail --show-error --location --retry 8 --retry-delay 5 --retry-max-time 180 --retry-all-errors --connect-timeout 30 --max-time 300)
+
+          download_acrcloud() {
+            local url="$1"
+            local output="$2"
+            echo "Downloading: $url"
+            curl "${CURL_OPTS[@]}" "$url" -o "$output"
+            test -s "$output"
+          }
+
+          download_acrcloud "${ACRCLOUD_BASE_URL}/acrcloud-universal-sdk-1.3.33.jar" \
+            app/libs/acrcloud-universal-sdk-1.3.33.jar
+
           for abi in arm64-v8a armeabi-v7a x86 x86_64 riscv64; do
-            curl -fsSL "https://raw.githubusercontent.com/acrcloud/ACRCloudUniversalSDK/master/libs/$abi/libACRCloudUniversalEngine.so" -o "app/src/main/jniLibs/$abi/libACRCloudUniversalEngine.so"
+            download_acrcloud "${ACRCLOUD_BASE_URL}/$abi/libACRCloudUniversalEngine.so" \
+              "app/src/main/jniLibs/$abi/libACRCloudUniversalEngine.so"
           done
-          test -s app/libs/acrcloud-universal-sdk-1.3.33.jar
 
       - name: Build Optimized Release APK
         run: ./gradlew clean :app:assembleRelease --stacktrace
