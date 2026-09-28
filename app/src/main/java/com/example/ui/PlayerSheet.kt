@@ -152,6 +152,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.graphics.lerp as colorLerp
 import android.graphics.Bitmap
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
@@ -1134,12 +1135,32 @@ fun PlayerSheet(
 
             // 3. UP NEXT BOUNDARY & GESTURE CONTAINER
             // Unified container sitting at boundaryY, full width edge-to-edge.
-            // On the first page, transparent to match the exact background color seamlessly.
-            // When dragged, mimics the exact background color across the sheet (queueSheetGradient),
-            // never showing black.
+            // On the first stage (p in 0f..1f): completely transparent, getting the exact background color without any tint.
+            // On the second stage (p in 1f..2f):
+            // - At p2 = 0f: completely transparent.
+            // - As p2 begins (0f..0.20f): color emerges slowly with the matching deep background tone.
+            // - As user drags up further: bottom sheet color transitions to vibrant gold, making it wild
+            //   while the main background at the top darkens into deep dark black.
             // Smoothly curved corners (28.dp) exclusively at top left and top right, with full-width flush edges.
             if (upNextHeight > 1.dp) {
-                val sheetFillAlpha = (p / 0.35f).coerceIn(0f, 1f)
+                val stage2Progress = (p - 1f).coerceIn(0f, 1f)
+                val sheetFillAlpha = if (p <= 1f) 0f else stage2Progress
+
+                val goldBlend = ((stage2Progress - 0.20f) / 0.80f).coerceIn(0f, 1f)
+                val vibrantGold = remember(themeColors.accent, animatedBgTop) {
+                    val hsv = FloatArray(3)
+                    android.graphics.Color.colorToHSV(themeColors.accent.toArgb(), hsv)
+                    Color.hsv(
+                        hsv[0],
+                        hsv[1].coerceIn(0.55f, 0.95f),
+                        hsv[2].coerceIn(0.65f, 0.88f)
+                    )
+                }
+
+                val currentQueueTop = colorLerp(animatedBgMidLower, vibrantGold, goldBlend)
+                val currentQueueMid = colorLerp(animatedBgBottom, animatedBgTop, goldBlend)
+                val currentQueueBottom = colorLerp(animatedBgBottom, animatedBgMidLower, goldBlend)
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1150,9 +1171,9 @@ fun PlayerSheet(
                             if (sheetFillAlpha > 0.005f) {
                                 Modifier.background(
                                     Brush.verticalGradient(
-                                        0.0f to animatedBgTop.copy(alpha = sheetFillAlpha),
-                                        0.40f to animatedBgMidUpper.copy(alpha = sheetFillAlpha),
-                                        1.0f to animatedBgMidLower.copy(alpha = sheetFillAlpha)
+                                        0.0f to currentQueueTop.copy(alpha = sheetFillAlpha),
+                                        0.45f to currentQueueMid.copy(alpha = sheetFillAlpha),
+                                        1.0f to currentQueueBottom.copy(alpha = sheetFillAlpha)
                                     )
                                 )
                             } else {
@@ -1296,6 +1317,7 @@ fun PlayerSheet(
                                 isPlaying = isPlaying,
                                 accentColor = themeColors.accent,
                                 surfaceColor = animatedBgMidLower,
+                                stage2Progress = p2,
                                 onClick = { onSelectQueueTrack(queueTrack) },
                                 onPlayNext = {
                                     val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
@@ -1717,6 +1739,7 @@ private fun UpNextTrackRow(
     isPlaying: Boolean,
     accentColor: Color,
     surfaceColor: Color,
+    stage2Progress: Float = 0f,
     onClick: () -> Unit,
     onPlayNext: () -> Unit,
     onDelete: () -> Unit,
@@ -1794,13 +1817,20 @@ private fun UpNextTrackRow(
     val elevation by animateFloatAsState(if (isDragging) 4f else 0f, tween(120), label = "queue_drag_elevation")
 
     // Active Item Highlight:
-    // In resting state (not swiping, not dragging, not current), Transparent so it matches the exact background color of the player sheet with zero brightness mismatch.
+    // In stage 1 (p <= 1f), completely transparent so it has zero tint and matches the background perfectly.
+    // In stage 2 (p > 1f), softly introduces the gold/accent color tint as user drags upward.
     // When swiping, uses solid opaque surfaceColor (animatedBgBottom) so the moving row cleanly slides over the black/action reveal layer.
     val rowBaseBg = surfaceColor
     val activeRowBg = when {
         isDragging -> Color.White.copy(alpha = 0.16f).compositeOver(rowBaseBg)
-        isCurrent -> accentColor.copy(alpha = 0.18f).compositeOver(rowBaseBg)
         isSwiping -> rowBaseBg
+        isCurrent -> {
+            if (stage2Progress > 0.05f) {
+                accentColor.copy(alpha = 0.14f * stage2Progress)
+            } else {
+                Color.Transparent
+            }
+        }
         else -> Color.Transparent
     }
 
