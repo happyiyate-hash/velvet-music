@@ -8,5 +8,5 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <!-- Deep Velvet pink sampled from the splash artwork. -->
-    <color name="velvet_splash_background">#A80052</color>
+    <color name="velvet_splash_background">#000000</color>
 </resources>
