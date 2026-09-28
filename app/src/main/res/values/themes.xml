@@ -7,6 +7,7 @@
     <!-- Velvet splash screen: deep pink background matched to the Velvet artwork. -->
     <style name="Theme.MyApplication.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/velvet_splash_background</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/velvet_splash</item>
         <item name="postSplashScreenTheme">@style/Theme.MyApplication</item>
     </style>
