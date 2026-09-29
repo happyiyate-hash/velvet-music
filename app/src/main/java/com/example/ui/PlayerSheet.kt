@@ -1128,8 +1128,6 @@ fun PlayerSheet(
                             )
                         }
 
-                        val isQueueScrolling = queueListState.isScrollInProgress
-
                         // Keep a rolling artwork window warm even while the queue is moving.
                         // Newly exposed rows must begin decoding during the scroll, not after it stops.
                         LaunchedEffect(queueListState.firstVisibleItemIndex) {
