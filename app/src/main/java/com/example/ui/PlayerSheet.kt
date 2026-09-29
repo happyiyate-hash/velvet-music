@@ -749,7 +749,7 @@ fun PlayerSheet(
                                 .fillMaxWidth()
                                 .offset { IntOffset(0, (statusBarTop + 6.dp).roundToPx()) }
                                 .height(stage2ArtworkSize)
-                                .padding(start = stage2ArtworkLeft + stage2ArtworkSize + 8.dp, end = 8.dp)
+                                .padding(start = stage2ArtworkLeft + stage2ArtworkSize + 8.dp, end = 2.dp)
                                 .graphicsLayer { alpha = stage2HeaderAlpha }
                                 .zIndex(12f),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -759,7 +759,7 @@ fun PlayerSheet(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clipToBounds()
-                                    .padding(end = 4.dp),
+                                    .padding(end = 6.dp),
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 MarqueeTrackTitle(
@@ -769,28 +769,34 @@ fun PlayerSheet(
                                     letterSpacing = 0.sp,
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = track.artist,
-                                    fontSize = 12.sp,
-                                    color = Color.White.copy(alpha = 0.65f),
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Light,
+                                    letterSpacing = 0.2.sp,
+                                    color = Color.White.copy(alpha = 0.82f),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.offset(y = (-1).dp)
                                 )
                             }
 
-                            IconButton(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onTogglePlayPause()
-                                },
+                            Box(
                                 modifier = Modifier
-                                    .size(48.dp)
-                                    .testTag("player_stage2_play_pause")
+                                    .size(width = 38.dp, height = 48.dp)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onTogglePlayPause()
+                                    }
+                                    .testTag("player_stage2_play_pause"),
+                                contentAlignment = Alignment.CenterEnd
                             ) {
                                 MorphingPlayPauseIcon(
                                     isPlaying = isPlaying,
-                                    modifier = Modifier.size(38.dp),
+                                    modifier = Modifier.size(36.dp),
                                     tint = Color.White
                                 )
                             }
@@ -1061,7 +1067,7 @@ fun PlayerSheet(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+                                .padding(start = 6.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragStart = {

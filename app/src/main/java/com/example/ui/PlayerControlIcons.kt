@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -7,7 +8,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -20,6 +23,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlin.math.sin
 
 /**
@@ -31,12 +35,12 @@ import kotlin.math.sin
 
 /**
  * Liquid morphing Play / Pause Icon:
- * - Liquid geometric transformation between a Play triangle and Pause dual bars.
- * - Single continuous shape system: Play triangle is split along its central seam into two
- *   complementary geometric halves that cleanly separate and straighten into two vertical pause bars.
- * - Seamless reverse: Pause bars slide toward each other, fuse along their inner seam,
- *   and form the unified rounded play triangle.
- * - No disappearing/cross-fading: actual dynamic polygon restructuring.
+ * - 3-stage choreography with a visible hold delay:
+ *   - Play -> Pause: play triangle splits into two halves, HOLDS in place for a distinct delay,
+ *     then straightens and morphs into the two vertical rounded pause bars.
+ *   - Pause -> Play: pause bars morph back into the two separated half-triangles, HOLDS in place
+ *     for a distinct delay, then slides together, overlaps across the seam, and joins into a 100%
+ *     continuous, seamless unified play triangle with zero center empty line.
  */
 @Composable
 fun MorphingPlayPauseIcon(
@@ -45,15 +49,42 @@ fun MorphingPlayPauseIcon(
     tint: Color = Color(0xFF08090C),
     contentDescription: String? = if (isPlaying) "Pause" else "Play"
 ) {
-    // 0f = Play triangle, 1f = Pause dual bars
-    val morphProgress by animateFloatAsState(
-        targetValue = if (isPlaying) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = 440,
-            easing = FastOutSlowInEasing
-        ),
-        label = "morphPlayPause"
-    )
+    // Value: 0f = Unified Play Triangle, 0.40f = Separated Half-Triangles (Hold state), 1f = Dual Pause Bars
+    val anim = remember { Animatable(if (isPlaying) 1f else 0f) }
+
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            // PLAYING: Play -> Pause
+            // Phase 1: Triangle splits and separates cleanly
+            anim.animateTo(
+                targetValue = 0.40f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+            )
+            // Phase 2: Perceptible HOLD / DELAY beat so separation is clearly seen
+            delay(150)
+            // Phase 3: Straighten and morph into vertical pause bars
+            anim.animateTo(
+                targetValue = 1.0f,
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            )
+        } else {
+            // PAUSED: Pause -> Play
+            // Phase 1: Morph pause bars into separated half-play triangles
+            anim.animateTo(
+                targetValue = 0.40f,
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            )
+            // Phase 2: Perceptible HOLD / DELAY beat
+            delay(150)
+            // Phase 3: Slide together, overlap across center seam, and fuse into solid play button
+            anim.animateTo(
+                targetValue = 0.0f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+            )
+        }
+    }
+
+    val morphProgress = anim.value.coerceIn(0f, 1f)
 
     Box(
         modifier = modifier.semantics {
@@ -71,52 +102,24 @@ fun MorphingPlayPauseIcon(
 
             val t = morphProgress
 
-            // Iconic 2-Stage Choreography with perceptible hold beat:
-            // Forward (Play -> Pause):
-            //   1. [0.00 .. 0.36]: Play triangle splits into two half-triangles and separates with clear gap
-            //   2. [0.36 .. 0.52]: HOLD BEAT — stays as two distinct separated half-triangles floating in space
-            //   3. [0.52 .. 1.00]: The two halves straighten and morph their geometry into the two rounded pause bars
-            // Reverse (Pause -> Play):
-            //   1. [1.00 .. 0.52]: Pause bars morph into the two half-play buttons with gap open
-            //   2. [0.52 .. 0.36]: HOLD BEAT — stays as two half-play buttons separated
-            //   3. [0.36 .. 0.00]: The two halves slide together and fuse seamlessly into the solid play triangle
-            val gapProgress = if (t <= 0.36f) {
-                val r = (t / 0.36f).coerceIn(0f, 1f)
-                sin((r - 0.5f) * Math.PI.toFloat()) * 0.5f + 0.5f
+            val gapProgress = if (t <= 0.40f) {
+                (t / 0.40f).coerceIn(0f, 1f)
             } else {
                 1f
             }
 
-            val shapeProgress = if (t <= 0.52f) {
+            val shapeProgress = if (t <= 0.40f) {
                 0f
             } else {
-                val r = ((t - 0.52f) / 0.48f).coerceIn(0f, 1f)
-                sin((r - 0.5f) * Math.PI.toFloat()) * 0.5f + 0.5f
+                ((t - 0.40f) / 0.60f).coerceIn(0f, 1f)
             }
 
-            val rCorner = 4.0f * scale
+            val rCorner = 4.2f * scale
             // Inner seam radius: 0 when joined for zero-seam fusion; softly rounded when separated
             val innerR = 4.0f * scale * gapProgress * (0.35f + 0.65f * shapeProgress)
 
-            // Subtle scale breathing during transformation (contracting slightly at midpoint)
+            // Subtle scale breathing during transformation
             val pulseScale = 1f - sin(t * Math.PI.toFloat()) * 0.035f
-
-            // Canonical 64x64 coordinates with bilateral symmetrical division:
-            // 1. Play icon is optically centered in the white circle (base at x=21f, tip at x=49f, seam at x=33f).
-            // 2. On pause, BOTH halves divide and move symmetrically:
-            //    - Left half shifts LEFT from [21..33] to [18..27]
-            //    - Right half shifts RIGHT from [33..49] to [37..46]
-            // 3. On play, both halves slide back toward center to fuse at x=33f, keeping play icon dead-center.
-            val p0 = Offset(lerp(21f, 18f, gapProgress), lerp(15f, 16f, shapeProgress))
-            val p1 = Offset(lerp(33f, 27f, gapProgress), lerp(22.3f, 16f, shapeProgress))
-            val p2 = Offset(lerp(33f, 27f, gapProgress), lerp(41.7f, 48f, shapeProgress))
-            val p3 = Offset(lerp(21f, 18f, gapProgress), lerp(49f, 48f, shapeProgress))
-
-            val tipX = lerp(49f, 50.5f, gapProgress)
-            val q0 = Offset(lerp(33f, 37f, gapProgress), lerp(22.3f, 16f, shapeProgress))
-            val q1 = Offset(lerp(tipX, 46f, shapeProgress), lerp(32f, 16f, shapeProgress))
-            val q2 = Offset(lerp(tipX, 46f, shapeProgress), lerp(32f, 48f, shapeProgress))
-            val q3 = Offset(lerp(33f, 37f, gapProgress), lerp(41.7f, 48f, shapeProgress))
 
             val center = Offset(size.width / 2f, size.height / 2f)
 
@@ -129,6 +132,37 @@ fun MorphingPlayPauseIcon(
                     center.y + (cy - center.y) * pulseScale
                 )
             }
+
+            // WHEN FULLY JOINED (Play button):
+            // Directly render the single unified continuous rounded triangle path.
+            // This guarantees 100% solid continuity with ZERO center empty line, cut-off, or seam!
+            if (gapProgress <= 0.005f) {
+                val pTopLeft = toCanvas(Offset(21f, 15f))
+                val pApex = toCanvas(Offset(49f, 32f))
+                val pBottomLeft = toCanvas(Offset(21f, 49f))
+                val unifiedPlayTriangle = buildRoundedPolygonPath(
+                    points = listOf(pTopLeft, pApex, pBottomLeft),
+                    radii = listOf(rCorner, rCorner, rCorner)
+                )
+                drawPath(path = unifiedPlayTriangle, color = tint)
+                return@Canvas
+            }
+
+            // WHEN SEPARATED OR MORPHING:
+            // Generous seam overlap across x=33f ensures that as the two halves slide together,
+            // they overlap completely without any anti-aliasing hairline or center hollow artifact.
+            val seamOverlap = 1.8f * (1f - gapProgress)
+
+            val p0 = Offset(lerp(21f, 18f, gapProgress), lerp(15f, 16f, shapeProgress))
+            val p1 = Offset(lerp(33f + seamOverlap, 27f, gapProgress), lerp(22.3f, 16f, shapeProgress))
+            val p2 = Offset(lerp(33f + seamOverlap, 27f, gapProgress), lerp(41.7f, 48f, shapeProgress))
+            val p3 = Offset(lerp(21f, 18f, gapProgress), lerp(49f, 48f, shapeProgress))
+
+            val tipX = lerp(49f, 50.5f, gapProgress)
+            val q0 = Offset(lerp(33f - seamOverlap, 37f, gapProgress), lerp(22.3f, 16f, shapeProgress))
+            val q1 = Offset(lerp(tipX, 46f, shapeProgress), lerp(32f, 16f, shapeProgress))
+            val q2 = Offset(lerp(tipX, 46f, shapeProgress), lerp(32f, 48f, shapeProgress))
+            val q3 = Offset(lerp(33f - seamOverlap, 37f, gapProgress), lerp(41.7f, 48f, shapeProgress))
 
             val canvasP0 = toCanvas(p0)
             val canvasP1 = toCanvas(p1)
