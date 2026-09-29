@@ -535,17 +535,12 @@ private fun DeviceTrackRowItem(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // BIG Album Artwork (58x58dp) with smooth rounded corners & pink/red border
+        // BIG Album Artwork (58x58dp) with smooth rounded corners and no placeholder border
         Box(
             modifier = Modifier
                 .size(58.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF22050E))
-                .border(
-                    width = 0.8.dp,
-                    color = if (isCurrent) Color(0x80FF2A6D) else Color(0x25FF6384),
-                    shape = RoundedCornerShape(12.dp)
-                )
         ) {
             TrackArtworkImage(
                 track = track,
