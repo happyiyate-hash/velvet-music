@@ -44,7 +44,6 @@ fun FastArtworkThumbnail(
     size: Dp = 48.dp,
     shape: Shape = RoundedCornerShape(4.dp),
     thumbnailSizePx: Int = 128,
-    isScrolling: Boolean = false,
     contentDescription: String? = track.title
 ) {
     val context = LocalContext.current
@@ -97,15 +96,13 @@ fun FastArtworkThumbnail(
     ) {
         // No icon, border, or card-style placeholder. The clean surface remains underneath
         // only until the actual artwork is available, then the artwork fades in.
-        if (request != null) {
-            AsyncImage(
+        AsyncImage(
                 model = request,
                 imageLoader = imageLoader,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
-            )
-        }
+        )
     }
 }
 
