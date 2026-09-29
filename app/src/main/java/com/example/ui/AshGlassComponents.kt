@@ -94,15 +94,15 @@ fun AshGlassBottomNavigationBar(
             .shadow(
                 elevation = if (hasMiniPlayerAbove) 0.dp else 12.dp,
                 shape = navShape,
-                spotColor = Color(0x50FF2448),
-                ambientColor = Color(0x3018030A)
+                spotColor = Color(0x60FF2A6D),
+                ambientColor = Color(0x3018030D)
             )
             .clip(navShape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF260510), // rich dark wine
-                        Color(0xFF140208)  // deep midnight wine base
+                        Color(0xFF2D0516), // rich dark pinkish wine
+                        Color(0xFF16020A)  // deep midnight wine base
                     )
                 )
             )
@@ -113,7 +113,7 @@ fun AshGlassBottomNavigationBar(
                         brush = Brush.verticalGradient(
                             listOf(
                                 Color(0x38FFFFFF),
-                                Color(0x15FF3B5C),
+                                Color(0x25FF2A6D),
                                 Color(0x05FFFFFF)
                             )
                         ),
@@ -193,8 +193,8 @@ private fun VelvetGlassNavTabItem(
                         .background(
                             Brush.radialGradient(
                                 colors = listOf(
-                                    Color(0x85FF385C),
-                                    Color(0x20FF2048),
+                                    Color(0x85FF2A6D),
+                                    Color(0x25E50914),
                                     Color.Transparent
                                 )
                             ),
@@ -214,13 +214,17 @@ private fun VelvetGlassNavTabItem(
         Spacer(modifier = Modifier.height(2.dp))
 
         if (isSelected) {
-            // Sleek active crimson indicator pill
+            // Sleek active pink-and-red indicator pill
             Box(
                 modifier = Modifier
-                    .width(12.dp)
+                    .width(14.dp)
                     .height(2.5.dp)
                     .clip(RoundedCornerShape(1.5.dp))
-                    .background(Color(0xFFFF385C))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFFFF2A6D), Color(0xFFE50914))
+                        )
+                    )
             )
         } else {
             Spacer(modifier = Modifier.height(2.5.dp))
@@ -258,15 +262,15 @@ fun AshGlassMiniPlayerBar(
             .shadow(
                 elevation = 16.dp,
                 shape = cardShape,
-                spotColor = Color(0x60FF2448),
-                ambientColor = Color(0x4018030A)
+                spotColor = Color(0x70FF2A6D),
+                ambientColor = Color(0x4018030D)
             )
             .clip(cardShape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF380818), // rich dark crimson wine
-                        Color(0xFF260510)  // seamlessly matches bottom nav top
+                        Color(0xFF420822), // rich dark pinkish wine
+                        Color(0xFF2D0516)  // seamlessly matches bottom nav top
                     )
                 )
             )
@@ -275,7 +279,7 @@ fun AshGlassMiniPlayerBar(
                 brush = Brush.verticalGradient(
                     listOf(
                         Color(0x40FFFFFF), // specular top rim
-                        Color(0x18FF3B5C),
+                        Color(0x22FF2A6D),
                         Color.Transparent
                     )
                 ),
@@ -291,7 +295,7 @@ fun AshGlassMiniPlayerBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.5.dp),
-                color = Color(0xFFFF2448),
+                color = Color(0xFFFF2A6D),
                 trackColor = Color(0x2535040C)
             )
 

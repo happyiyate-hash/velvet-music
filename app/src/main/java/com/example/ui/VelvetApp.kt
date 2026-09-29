@@ -204,10 +204,10 @@ fun VelvetApp() {
     val showMiniPlayer = (isPlaying || hasActiveTrack) && currentTrack.id.isNotBlank() && currentTrack != SampleData.defaultIdleTrack
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF100206))
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0F0107))
     ) {
         Scaffold(
-            containerColor = Color(0xFF100206),
+            containerColor = Color(0xFF0F0107),
             contentColor = VelvetTextPrimary,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
@@ -260,6 +260,7 @@ fun VelvetApp() {
                         isPlaying = isPlaying,
                         allTracks = allTracks,
                         mostPlayedTracks = mostPlayedTracks,
+                        favoriteTrackIds = favoriteTrackIds,
                         playCounts = trackPlayCounts,
                         hasAudioPermission = DeviceMediaManager.hasAudioPermission(context),
                         onRequestPermission = { mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions) },
@@ -270,7 +271,13 @@ fun VelvetApp() {
                         onOpenSettings = { isSettingsOpen = true },
                         onOpenNotifications = { isProTierOpen = true },
                         onTrackMenuClick = { track -> actionSheetTrack = track },
-                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) }
+                        onAddTrack = { track -> audioEngine.addDeviceTrack(track) },
+                        onToggleShuffle = {
+                            audioEngine.toggleShuffle()
+                            if (allTracks.isNotEmpty()) {
+                                audioEngine.playTrack(allTracks.random())
+                            }
+                        }
                     )
                     1 -> Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                         ExploreScreen(
