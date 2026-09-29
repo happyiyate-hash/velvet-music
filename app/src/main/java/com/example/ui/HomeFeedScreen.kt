@@ -140,7 +140,7 @@ fun HomeFeedScreen(
             // 2. TOP NAVIGATION HEADER:
             // - Borderless, flows directly from the very top and left/right edges with zero cutoff.
             // - Blends seamlessly into pure black.
-            // - Transparent App logo without borders or boxes (ready for custom app_logo.png in GitHub).
+            // - Transparent App logo without borders or boxes (ready for custom velvet_home_logo.png in GitHub).
             // - Name "VELVET" at top.
             // - Track count text completely removed.
             // - Only Search and Settings icons (Notification icon removed).
@@ -429,11 +429,11 @@ private fun VelvetTopHeaderCard(
 /**
  * App Logo in the top navigation:
  * - Expected file path to upload in your GitHub repository:
- *   `app/src/main/res/drawable/app_logo.png`
+ *   `app/src/main/res/drawable/velvet_home_logo.png`
  * - Treated as a pure SVG / transparent icon:
  *   NO borders, NO bounding background box, NO curvature.
  *   Blends directly into the background of the top navigation.
- * - When no custom file is uploaded yet, gracefully falls back to default icon.
+ * - When no custom logo file is uploaded yet, gracefully falls back to default icon.
  */
 @Composable
 private fun VelvetCornerAppLogo(
@@ -441,7 +441,7 @@ private fun VelvetCornerAppLogo(
 ) {
     val context = LocalContext.current
     val logoResId = remember(context) {
-        val id = context.resources.getIdentifier("app_logo", "drawable", context.packageName)
+        val id = context.resources.getIdentifier("velvet_home_logo", "drawable", context.packageName)
         if (id != 0) id else R.drawable.ic_velvet_logo
     }
 
