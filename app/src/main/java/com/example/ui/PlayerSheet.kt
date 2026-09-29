@@ -1167,7 +1167,6 @@ fun PlayerSheet(
                                     accentColor = themeColors.accent,
                                     surfaceColor = animatedBgMidLower,
                                     stage2Progress = p2,
-                                    isScrolling = isQueueScrolling,
                                     onClick = { onSelectQueueTrack(queueTrack) },
                                 onPlayNext = {
                                     val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
@@ -1620,7 +1619,6 @@ private fun UpNextTrackRow(
     accentColor: Color,
     surfaceColor: Color,
     stage2Progress: Float = 0f,
-    isScrolling: Boolean = false,
     onClick: () -> Unit,
     onPlayNext: () -> Unit,
     onDelete: () -> Unit,
