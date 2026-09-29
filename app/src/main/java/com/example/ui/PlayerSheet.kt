@@ -1130,11 +1130,12 @@ fun PlayerSheet(
 
                         val isQueueScrolling = queueListState.isScrollInProgress
 
-                        // Rolling prefetch window: when idle or gently scrolling, warm memory cache for upcoming 6-8 tracks
-                        LaunchedEffect(queueListState.firstVisibleItemIndex, isQueueScrolling) {
-                            if (!isQueueScrolling && orderedQueueItems.isNotEmpty()) {
+                        // Keep a rolling artwork window warm even while the queue is moving.
+                        // Newly exposed rows must begin decoding during the scroll, not after it stops.
+                        LaunchedEffect(queueListState.firstVisibleItemIndex) {
+                            if (orderedQueueItems.isNotEmpty()) {
                                 val firstVisible = queueListState.firstVisibleItemIndex
-                                val prefetchRange = (firstVisible + 1)..(firstVisible + 8)
+                                val prefetchRange = firstVisible..(firstVisible + 12)
                                 for (idx in prefetchRange) {
                                     if (idx in orderedQueueItems.indices) {
                                         FastArtworkThumbnailDefaults.prefetch(context, orderedQueueItems[idx], 128)
