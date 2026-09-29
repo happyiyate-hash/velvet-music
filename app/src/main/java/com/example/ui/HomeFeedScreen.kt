@@ -133,39 +133,19 @@ fun HomeFeedScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .background(Color.Black)
             .testTag("home_feed_screen")
     ) {
-        // 1. MAIN APP BACKGROUND: Illuminated Pink/Magenta Dot Matrix Grid on Deep Black
-        Image(
-            painter = painterResource(id = R.drawable.bg_home_matrix),
-            contentDescription = "Main App Background",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Subtle dark gradient scrim ensuring high contrast for the music list and text
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color(0x3512020A),
-                            Color(0x750B0106)
-                        )
-                    )
-                )
-        )
-
         Column(modifier = Modifier.fillMaxSize()) {
-            // 2. TOP NAVIGATION HEADER CARD:
-            // - App logo made smaller, dragged to top corner with dedicated transparent PNG space.
-            // - Name & track text taken to the top.
-            // - Pink and red luxury mixed colors.
-            // - Bottom space filled with a horizontally scrollable bar of feature icons (libraries, adjustment, etc.).
+            // 2. TOP NAVIGATION HEADER:
+            // - Borderless, flows directly from the very top and left/right edges with zero cutoff.
+            // - Blends seamlessly into pure black.
+            // - Transparent App logo without borders or boxes (ready for custom app_logo.png in GitHub).
+            // - Name "VELVET" at top.
+            // - Track count text completely removed.
+            // - Only Search and Settings icons (Notification icon removed).
+            // - Horizontally scrollable bar of feature icons (Library, Adjustment, etc.).
             VelvetTopHeaderCard(
-                trackCount = displayTracks.size,
                 activeFilter = activeFilter,
                 onSelectFilter = { filter ->
                     activeFilter = filter
@@ -190,7 +170,6 @@ fun HomeFeedScreen(
                     }
                     Toast.makeText(context, "Shuffling library", Toast.LENGTH_SHORT).show()
                 },
-                onOpenNotifications = onOpenNotifications,
                 onOpenSearch = onOpenSearch,
                 onOpenSettings = onOpenSettings
             )
@@ -262,7 +241,6 @@ fun HomeFeedScreen(
  */
 @Composable
 private fun VelvetTopHeaderCard(
-    trackCount: Int,
     activeFilter: HomeFilter,
     onSelectFilter: (HomeFilter) -> Unit,
     onOpenEqualizer: () -> Unit,
@@ -272,48 +250,22 @@ private fun VelvetTopHeaderCard(
     onOpenTempo: () -> Unit,
     onOpenAudioFx: () -> Unit,
     onShuffleAll: () -> Unit,
-    onOpenNotifications: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val topCardShape = RoundedCornerShape(
-        topStart = 0.dp,
-        topEnd = 0.dp,
-        bottomStart = 20.dp,
-        bottomEnd = 20.dp
-    )
-
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 16.dp,
-                shape = topCardShape,
-                spotColor = Color(0x75FF2A6D),
-                ambientColor = Color(0x40380616)
-            )
-            .clip(topCardShape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF6B0E35), // Vibrant electric pinkish wine top
-                        Color(0xFF450824), // Crimson-magenta mid
-                        Color(0xFF280415), // Deep red velvet
-                        Color(0xFF15020B)  // Deep midnight wine base
+                        Color(0xFF5E092B), // Rich pinkish wine top
+                        Color(0xFF38051A),
+                        Color(0xFF1B020D),
+                        Color.Black        // Blends smoothly into the pure black screen
                     )
                 )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color(0x60FFFFFF), // Specular rim
-                        Color(0x35FF2A6D), // Electric pink highlight
-                        Color(0x15E50914)  // Crimson glow
-                    )
-                ),
-                shape = topCardShape
             )
     ) {
         Column(
@@ -322,76 +274,48 @@ private fun VelvetTopHeaderCard(
                 .statusBarsPadding()
         ) {
             // ==========================================
-            // TOP ROW: Logo (smaller & top), Name (top), Track text (top), & Action Icons
+            // TOP ROW: Transparent Logo + VELVET Name (top) & Search/Settings
             // ==========================================
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 14.dp, end = 12.dp, top = 6.dp, bottom = 4.dp),
+                    .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Dedicated Space for App Logo (smaller, top corner) + Name + Track Text
+                // Left: Transparent Logo + App Name (Track text removed!)
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Dedicated Space for App Logo:
-                    // Sized compact (26.dp), sits high in corner, supports transparent PNGs uploaded directly in GitHub
                     VelvetCornerAppLogo(
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(28.dp)
                     )
 
-                    Spacer(modifier = Modifier.width(9.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
-                    Column {
-                        // Designed Pink + Red + White gradient wordmark taken to the top
-                        Text(
-                            text = "VELVET",
-                            style = TextStyle(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color(0xFFFFFFFF),
-                                        Color(0xFFFFB3C6),
-                                        Color(0xFFFF2A6D), // Vibrant pink
-                                        Color(0xFFE50914)  // Crimson red
-                                    )
-                                ),
-                                fontSize = 17.5.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 2.0.sp
-                            )
+                    Text(
+                        text = "VELVET",
+                        style = TextStyle(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFFFFFFFF),
+                                    Color(0xFFFFB3C6),
+                                    Color(0xFFFF2A6D), // Vibrant pink
+                                    Color(0xFFE50914)  // Crimson red
+                                )
+                            ),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.0.sp
                         )
-                        Spacer(modifier = Modifier.height(1.dp))
-                        // Track count text taken to the top
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(4.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFFF2A6D))
-                            )
-                            Spacer(modifier = Modifier.width(4.5.dp))
-                            Text(
-                                text = "$trackCount TRACKS • DEVICE AUDIO",
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                letterSpacing = 0.8.sp,
-                                color = Color(0xFFFFB3C6)
-                            )
-                        }
-                    }
+                    )
                 }
 
-                // Right: Compact Action Buttons (Notifications, Search, Settings)
+                // Right: Search and Settings (Notification icon removed!)
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TopBarActionButton(
-                        icon = Icons.Outlined.Notifications,
-                        contentDescription = "Notifications",
-                        onClick = onOpenNotifications
-                    )
                     TopBarActionButton(
                         icon = Icons.Default.Search,
                         contentDescription = "Search",
@@ -405,7 +329,7 @@ private fun VelvetTopHeaderCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // ==========================================
             // BOTTOM AREA: Horizontally Scrollable Bar of Feature Icons (Libraries, Adjustment, etc.)
@@ -414,7 +338,7 @@ private fun VelvetTopHeaderCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -503,36 +427,34 @@ private fun VelvetTopHeaderCard(
 }
 
 /**
- * Dedicated Space for the App Logo in the top corner:
- * - Made smaller (26.dp)
- * - Renders the app logo from `R.drawable.app_logo`
- * - Supports transparent background PNGs directly so when uploaded to GitHub repo, it displays cleanly
- * - Uses a soft translucent pink halo backing
+ * App Logo in the top navigation:
+ * - Expected file path to upload in your GitHub repository:
+ *   `app/src/main/res/drawable/app_logo.png`
+ * - Treated as a pure SVG / transparent icon:
+ *   NO borders, NO bounding background box, NO curvature.
+ *   Blends directly into the background of the top navigation.
+ * - When no custom file is uploaded yet, gracefully falls back to default icon.
  */
 @Composable
 private fun VelvetCornerAppLogo(
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(7.dp))
-            .background(Color(0x28FF2A6D))
-            .border(0.8.dp, Color(0x40FF85A1), RoundedCornerShape(7.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.app_logo),
-            contentDescription = "Velvet App Logo",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(2.dp)
-        )
+    val context = LocalContext.current
+    val logoResId = remember(context) {
+        val id = context.resources.getIdentifier("app_logo", "drawable", context.packageName)
+        if (id != 0) id else R.drawable.ic_velvet_logo
     }
+
+    Image(
+        painter = painterResource(id = logoResId),
+        contentDescription = "Velvet App Logo",
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+    )
 }
 
 /**
- * Sleek Horizontally Scrollable Action Pill with pink-and-red glass glow
+ * Horizontally Scrollable Action Pill without harsh borders
  */
 @Composable
 private fun HeaderActionPill(
@@ -545,18 +467,15 @@ private fun HeaderActionPill(
     val pillBg = if (isSelected) {
         Brush.horizontalGradient(listOf(Color(0xFFFF2A6D), Color(0xFFE50914)))
     } else {
-        Brush.horizontalGradient(listOf(Color(0x28FF2A6D), Color(0x18E50914)))
+        Brush.horizontalGradient(listOf(Color(0x35FFFFFF), Color(0x18FFFFFF)))
     }
-
-    val borderColor = if (isSelected) Color(0xFFFFD4DC) else Color(0x35FF6384)
 
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(pillBg)
-            .border(0.8.dp, borderColor, RoundedCornerShape(16.dp))
             .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -564,12 +483,12 @@ private fun HeaderActionPill(
             imageVector = icon,
             contentDescription = label,
             tint = if (isSelected) Color.White else Color(0xFFFF85A1),
-            modifier = Modifier.size(15.dp)
+            modifier = Modifier.size(16.dp)
         )
-        Spacer(modifier = Modifier.width(5.dp))
+        Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = label,
-            fontSize = 11.sp,
+            fontSize = 11.5.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             color = if (isSelected) Color.White else Color(0xFFFFE6EC)
         )
@@ -584,23 +503,14 @@ private fun TopBarActionButton(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier.size(34.dp)
+        modifier = Modifier.size(38.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(CircleShape)
-                .background(Color(0x28FF2A6D))
-                .border(0.6.dp, Color(0x35FF85A1), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = Color(0xFFFFD4DC),
-                modifier = Modifier.size(17.dp)
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color(0xFFFFE6EC),
+            modifier = Modifier.size(22.dp)
+        )
     }
 }
 
