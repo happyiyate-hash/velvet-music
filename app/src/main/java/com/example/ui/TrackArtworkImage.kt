@@ -76,12 +76,12 @@ fun TrackArtworkImage(
         }
     }
 
+    val imageLoader = remember { VelvetImageLoader.get(context) }
     val request = remember(track.id, primaryData, fallbackResId, thumbnailSizePx, crossfade) {
         val builder = ImageRequest.Builder(context)
             .data(primaryData)
             .error(fallbackResId)
             .fallback(fallbackResId)
-            .placeholder(fallbackResId)
             .dispatcher(Dispatchers.IO)
             .crossfade(crossfade)
             .allowHardware(true)
@@ -103,6 +103,7 @@ fun TrackArtworkImage(
     ) {
         AsyncImage(
             model = request,
+            imageLoader = imageLoader,
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),
             contentScale = contentScale

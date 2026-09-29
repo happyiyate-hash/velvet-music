@@ -37,4 +37,17 @@ object ArtworkColorExtractor {
 
     fun generateThemePalette(baseColor: androidx.compose.ui.graphics.Color): TrackThemeColors =
         VelvetArtworkColorEngine.generateThemePalette(baseColor)
+
+    fun extractVisualizerColor(
+        context: Context,
+        track: Track,
+        chosenBackgroundColor: androidx.compose.ui.graphics.Color
+    ): androidx.compose.ui.graphics.Color =
+        VelvetArtworkColorEngine.extractVisualizerColor(context, track, chosenBackgroundColor)
+
+    fun extractVisualizerColorFromBitmap(
+        bitmap: Bitmap?,
+        chosenBackgroundColor: androidx.compose.ui.graphics.Color
+    ): androidx.compose.ui.graphics.Color =
+        VelvetArtworkColorEngine.extractVisualizerColorFromBitmap(bitmap, chosenBackgroundColor)
 }

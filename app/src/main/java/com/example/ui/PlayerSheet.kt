@@ -396,6 +396,23 @@ fun PlayerSheet(
         label = "atmospheric_bloom"
     )
 
+    // Extract distinct secondary visualizer color from the artwork, after the background color has been chosen
+    val visualizerColor = remember(themeColors, resolvedArtworkBitmap) {
+        if (resolvedArtworkBitmap != null) {
+            ArtworkColorExtractor.extractVisualizerColorFromBitmap(
+                resolvedArtworkBitmap,
+                themeColors.cardBackground
+            )
+        } else {
+            themeColors.visualizerColor
+        }
+    }
+    val animatedVisualizerColor by animateColorAsState(
+        targetValue = visualizerColor,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "visualizer_color"
+    )
+
     val cardColor = animatedBgTop
 
     val cardBottomCornerRadius = 30.dp
@@ -460,12 +477,13 @@ fun PlayerSheet(
 
             // Collapsed state (p = 0f):
             // Shift bottom sheet downward so that only the drag handle peeks above system navigation.
+            val visualizerHeight = 28.dp
             val collapsedPeekHeight = (navBarBottom + 20.dp).coerceIn(20.dp, 32.dp)
             val collapsedControlsY = totalHeight - collapsedPeekHeight - controlsHeight - 12.dp
             val collapsedCardHeight = collapsedControlsY - 6.dp
-            val collapsedWaveformY = collapsedCardHeight - 24.dp
-            val collapsedProgressY = collapsedWaveformY - 28.dp
-            val collapsedMetadataY = collapsedProgressY - 46.dp
+            val collapsedWaveformY = collapsedCardHeight - visualizerHeight
+            val collapsedProgressY = collapsedWaveformY - 26.dp
+            val collapsedMetadataY = collapsedProgressY - 44.dp
             val collapsedArtworkBottom = collapsedMetadataY - 10.dp
 
             // Collapsed state (p = 0f): Original centered display with rounded corners and proper margins:
@@ -484,7 +502,7 @@ fun PlayerSheet(
             val expandedArtworkBottom = expandedArtworkTop + expandedArtworkHeight // = totalWidth
             val expandedCardHeight = expandedArtworkBottom
 
-            val expandedWaveformY = expandedArtworkBottom - 26.dp
+            val expandedWaveformY = expandedCardHeight - visualizerHeight
             val expandedProgressY = expandedWaveformY - 26.dp
             val expandedMetadataY = expandedProgressY - 44.dp
 
@@ -543,7 +561,7 @@ fun PlayerSheet(
             // Continuous lerp for elements inside the Card:
             val metadataY = lerp(collapsedMetadataY, expandedMetadataY, p1)
             val progressY = lerp(collapsedProgressY, expandedProgressY, p1)
-            val waveformY = lerp(collapsedWaveformY, expandedWaveformY, p1)
+            val waveformY = cardHeight - visualizerHeight
             val contentPaddingHorizontal = lerp(22.dp, 18.dp, p1)
 
             // Transport Controls:
@@ -859,22 +877,20 @@ fun PlayerSheet(
                         )
                     }
 
-                    // SILHOUETTE WAVEFORM (Strictly in FRONT of artwork at zIndex 10f)
+                    // PLAYER CARD AUDIO VISUALIZER (Spanning full width to both boundaries, sitting directly at bottom edge)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .offset { IntOffset(0, waveformY.roundToPx()) }
-                            .padding(horizontal = contentPaddingHorizontal)
+                            .height(visualizerHeight)
                             .graphicsLayer { alpha = stage1CardElementsAlpha }
                             .zIndex(10f)
                     ) {
                         DarkSilhouetteWaveform(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(18.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                            visualizerColor = animatedVisualizerColor,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
@@ -1112,6 +1128,21 @@ fun PlayerSheet(
                             )
                         }
 
+                        val isQueueScrolling = queueListState.isScrollInProgress
+
+                        // Rolling prefetch window: when idle or gently scrolling, warm memory cache for upcoming 6-8 tracks
+                        LaunchedEffect(queueListState.firstVisibleItemIndex, isQueueScrolling) {
+                            if (!isQueueScrolling && orderedQueueItems.isNotEmpty()) {
+                                val firstVisible = queueListState.firstVisibleItemIndex
+                                val prefetchRange = (firstVisible + 1)..(firstVisible + 8)
+                                for (idx in prefetchRange) {
+                                    if (idx in orderedQueueItems.indices) {
+                                        FastArtworkThumbnailDefaults.prefetch(context, orderedQueueItems[idx], 128)
+                                    }
+                                }
+                            }
+                        }
+
                         // Scrollable List: ONLY the music tracks scroll smoothly underneath, no dragging of the bottom sheet
                         LazyColumn(
                             state = queueListState,
@@ -1121,20 +1152,22 @@ fun PlayerSheet(
                             contentPadding = PaddingValues(top = 2.dp, bottom = 32.dp + navBarBottom)
                         ) {
                             itemsIndexed(
-                            items = orderedQueueItems,
-                            key = { _, item -> item.id }
-                        ) { queueIndex, queueTrack ->
-                            val isCurrent = queueTrack.id == track.id
-                            val isDragging = queueTrack.id == activeQueueDragId
+                                items = orderedQueueItems,
+                                key = { _, item -> item.id },
+                                contentType = { _, _ -> "up_next_track_row" }
+                            ) { queueIndex, queueTrack ->
+                                val isCurrent = queueTrack.id == track.id
+                                val isDragging = queueTrack.id == activeQueueDragId
 
-                            UpNextTrackRow(
-                                track = queueTrack,
-                                isCurrent = isCurrent,
-                                isPlaying = isPlaying,
-                                accentColor = themeColors.accent,
-                                surfaceColor = animatedBgMidLower,
-                                stage2Progress = p2,
-                                onClick = { onSelectQueueTrack(queueTrack) },
+                                UpNextTrackRow(
+                                    track = queueTrack,
+                                    isCurrent = isCurrent,
+                                    isPlaying = isPlaying,
+                                    accentColor = themeColors.accent,
+                                    surfaceColor = animatedBgMidLower,
+                                    stage2Progress = p2,
+                                    isScrolling = isQueueScrolling,
+                                    onClick = { onSelectQueueTrack(queueTrack) },
                                 onPlayNext = {
                                     val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
                                     val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
@@ -1467,22 +1500,20 @@ private fun NowPlayingProgressBar(
 private fun DarkSilhouetteWaveform(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
+    visualizerColor: Color,
     modifier: Modifier = Modifier
 ) {
-    // 92 tiny, tightly packed vertical bars with minimal gap, in pure black
-    val barCount = 92
-    val restingProfile = remember(barCount) {
-        FloatArray(barCount) { i ->
-            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
-            // Multi-harmonic natural undulating wave silhouette
-            val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.35f
-            val wave2 = abs(sin(norm * 3.14159f * 3.6f)) * 0.20f
-            val wave3 = abs(cos(norm * 3.14159f * 6.5f)) * 0.12f
-            (0.18f + wave1 + wave2 + wave3).coerceIn(0.15f, 0.70f)
+    val maxBars = 180
+    val restingProfile = remember {
+        FloatArray(maxBars) { i ->
+            val norm = i.toFloat() / (maxBars - 1).coerceAtLeast(1)
+            val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.16f
+            val wave2 = abs(cos(norm * 3.14159f * 3.6f)) * 0.10f
+            (0.08f + wave1 + wave2).coerceIn(0.06f, 0.30f)
         }
     }
-    val liveAmplitudes = remember(barCount) {
-        FloatArray(barCount) { i -> restingProfile[i] }
+    val liveAmplitudes = remember {
+        FloatArray(maxBars) { i -> restingProfile[i] }
     }
 
     val frameTicker = remember { mutableLongStateOf(0L) }
@@ -1499,47 +1530,79 @@ private fun DarkSilhouetteWaveform(
     Canvas(modifier = modifier) {
         @Suppress("UNUSED_VARIABLE")
         val ticker = frameTicker.longValue
-        val rawFft = telemetry.fftBars
-        val subBassEnergy = if (rawFft.size >= 4) {
-            (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f
-        } else 0f
-
-        val targetHeights = calculateCompressedWaveform(rawFft, barCount, subBassEnergy)
-
         val totalWidth = size.width
-        // Very tiny bars brought tightly together so there is minimal space between them
-        val barWidth = 1.8.dp.toPx()
-        val barGap = ((totalWidth - (barWidth * barCount)) / (barCount - 1).coerceAtLeast(1)).coerceIn(0.8.dp.toPx(), 1.5.dp.toPx())
+        val totalHeight = size.height
+        if (totalWidth <= 0f || totalHeight <= 0f) return@Canvas
 
-        val minBarHeight = 1.8.dp.toPx()
-        val maxBarHeight = size.height * 0.85f
+        // Fill edge-to-edge across both left and right sides of the player card
+        val barWidth = 2.0.dp.toPx()
+        val minGap = 1.0.dp.toPx()
+        val barCount = ((totalWidth + minGap) / (barWidth + minGap)).toInt().coerceIn(90, maxBars)
+        val barGap = if (barCount > 1) (totalWidth - (barWidth * barCount)) / (barCount - 1) else 0f
+
+        val rawFft = telemetry.fftBars
+        val fftSize = rawFft.size
+        val subBassEnergy = if (fftSize >= 4) (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f else 0f
+        val midEnergy = if (fftSize >= 24) (rawFft[8] + rawFft[12] + rawFft[16] + rawFft[20]) / 4f else 0f
+        val highEnergy = if (fftSize >= 48) (rawFft[36] + rawFft[42] + rawFft[47]) / 3f else 0f
+
+        val minBarHeight = 2.0.dp.toPx()
+        // Restrict maximum height to 85% of visualizer height
+        val maxBarHeight = totalHeight * 0.85f
         val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
 
-        val attackRate = 0.45f
-        val decayRate = 0.16f
-
-        // Pure solid black color
-        val barColor = Color.Black
+        // Snappy rise (attack) and fast drop (decay)
+        val attackRate = 0.72f
+        val decayRate = 0.38f
 
         for (i in 0 until barCount) {
+            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+
+            // Perceptual frequency spectrum distribution
+            val fftIndex = (Math.pow(norm.toDouble(), 1.35) * (fftSize - 1)).toInt().coerceIn(0, (fftSize - 1).coerceAtLeast(0))
+            val binVal = if (fftIndex < fftSize) rawFft[fftIndex] else 0f
+            val prevVal = if (fftIndex > 0) rawFft[fftIndex - 1] else binVal
+            val nextVal = if (fftIndex < fftSize - 1) rawFft[fftIndex + 1] else binVal
+            val smoothBin = prevVal * 0.20f + binVal * 0.60f + nextVal * 0.20f
+
+            // 1. Kick and bass punch on lower spectrum
+            val kickWeight = if (norm < 0.28f) (1f - norm / 0.28f) else 0f
+            val kickBoost = if (telemetry.kickDetected) kickWeight * 0.55f else kickWeight * subBassEnergy * 0.40f
+
+            // 2. Snare and vocals on mid spectrum
+            val midDist = abs(norm - 0.45f) / 0.25f
+            val snareWeight = (1f - midDist).coerceIn(0f, 1f)
+            val snareBoost = if (telemetry.snareDetected) snareWeight * 0.50f else snareWeight * midEnergy * 0.35f
+
+            // 3. Hi-hats, percussions, transients on high spectrum
+            val highWeight = ((norm - 0.55f) / 0.45f).coerceIn(0f, 1f)
+            val transientBoost = highWeight * telemetry.transientSpike * 0.45f + highWeight * highEnergy * 0.35f
+
+            val soundResponse = (smoothBin * 0.60f + kickBoost + snareBoost + transientBoost + telemetry.rmsLevel * 0.12f)
+            // Restricted height so it remains elegant and bounded
+            val targetFraction = soundResponse.coerceIn(0.06f, 0.82f)
+
             if (isPlaying) {
-                val target = targetHeights[i].coerceIn(0f, 1f)
                 val current = liveAmplitudes[i]
-                val updated = if (target > current) {
-                    current + (target - current) * attackRate
+                val updated = if (targetFraction > current) {
+                    current + (targetFraction - current) * attackRate
                 } else {
-                    current - (current - target) * decayRate
+                    current - (current - targetFraction) * decayRate
                 }
-                liveAmplitudes[i] = updated.coerceIn(0f, 1f)
+                liveAmplitudes[i] = updated.coerceIn(0.04f, 0.85f)
+            } else {
+                val target = restingProfile[i % restingProfile.size]
+                val current = liveAmplitudes[i]
+                liveAmplitudes[i] = (current - (current - target) * 0.28f).coerceIn(0.04f, 0.85f)
             }
 
             val clampedFraction = liveAmplitudes[i].coerceIn(0f, 1f)
             val barHeight = (minBarHeight + usableRange * clampedFraction).coerceIn(minBarHeight, maxBarHeight)
-            val barTop = size.height - barHeight
+            val barTop = totalHeight - barHeight
             val barX = i * (barWidth + barGap)
 
             drawRoundRect(
-                color = barColor,
+                color = visualizerColor,
                 topLeft = Offset(barX, barTop),
                 size = Size(barWidth, barHeight),
                 cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
@@ -1556,6 +1619,7 @@ private fun UpNextTrackRow(
     accentColor: Color,
     surfaceColor: Color,
     stage2Progress: Float = 0f,
+    isScrolling: Boolean = false,
     onClick: () -> Unit,
     onPlayNext: () -> Unit,
     onDelete: () -> Unit,
@@ -1591,46 +1655,25 @@ private fun UpNextTrackRow(
         }
     }
 
-    // Dynamic background transition during swipe:
-    // Initial drag state: Pure Black background (revealed first when user swipes left or right).
-    // Threshold trigger state: Transitions to vibrant green (#22C55E) for Play Next (swipe right) and vibrant red (#EF4444) for Delete (swipe left).
-    val targetActionColor = when {
-        !isPastThreshold -> Color.Black
-        swipeOffset > 0f -> Color(0xFF22C55E)
-        else -> Color(0xFFEF4444)
-    }
-    val animatedActionBg by animateColorAsState(
-        targetValue = targetActionColor,
-        animationSpec = tween(160),
-        label = "swipe_action_bg"
-    )
+    // Zero-cost animation gating: idle rows during normal scrolling do not tick animators
+    val displacement = if (virtualDisplacementY != 0f) {
+        animateFloatAsState(
+            targetValue = virtualDisplacementY,
+            animationSpec = androidx.compose.animation.core.spring(
+                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+            ),
+            label = "queue_virtual_displacement"
+        ).value
+    } else 0f
 
-    // Icon scale and alpha animation as drag reaches action threshold
-    val progress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
-    val iconScale by animateFloatAsState(
-        targetValue = if (isPastThreshold) 1.2f else (0.70f + progress * 0.30f),
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
-        ),
-        label = "swipe_icon_scale"
-    )
-    val iconAlpha by animateFloatAsState(
-        targetValue = if (isPastThreshold) 1f else (0.45f + progress * 0.55f),
-        animationSpec = tween(120),
-        label = "swipe_icon_alpha"
-    )
+    val scale = if (isDragging) {
+        animateFloatAsState(1.01f, tween(120), label = "queue_drag_scale").value
+    } else 1f
 
-    val displacement by animateFloatAsState(
-        targetValue = virtualDisplacementY,
-        animationSpec = androidx.compose.animation.core.spring(
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
-            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
-        ),
-        label = "queue_virtual_displacement"
-    )
-    val scale by animateFloatAsState(if (isDragging) 1.01f else 1f, tween(120), label = "queue_drag_scale")
-    val elevation by animateFloatAsState(if (isDragging) 4f else 0f, tween(120), label = "queue_drag_elevation")
+    val elevation = if (isDragging) {
+        animateFloatAsState(4f, tween(120), label = "queue_drag_elevation").value
+    } else 0f
 
     // Active Item Highlight:
     // In stage 1 (p <= 1f), completely transparent so it has zero tint and matches the background perfectly.
@@ -1672,6 +1715,31 @@ private fun UpNextTrackRow(
     ) {
         // Step 1: Background Reveal Layer - strictly sits behind moving card, revealed only as card is swiped open
         if (isSwiping && !isCurrent) {
+            val targetActionColor = when {
+                !isPastThreshold -> Color.Black
+                swipeOffset > 0f -> Color(0xFF22C55E)
+                else -> Color(0xFFEF4444)
+            }
+            val animatedActionBg by animateColorAsState(
+                targetValue = targetActionColor,
+                animationSpec = tween(160),
+                label = "swipe_action_bg"
+            )
+            val progress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
+            val iconScale by animateFloatAsState(
+                targetValue = if (isPastThreshold) 1.2f else (0.70f + progress * 0.30f),
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                ),
+                label = "swipe_icon_scale"
+            )
+            val iconAlpha by animateFloatAsState(
+                targetValue = if (isPastThreshold) 1f else (0.45f + progress * 0.55f),
+                animationSpec = tween(120),
+                label = "swipe_icon_alpha"
+            )
+
             val showingPlayNext = swipeOffset > 0f
             Box(
                 modifier = Modifier
@@ -1780,20 +1848,20 @@ private fun UpNextTrackRow(
                 .padding(start = 6.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Album Art with rounded corners
+            // Fixed dimensions (48.dp) with lightweight placeholder first & scroll-decoupled loading
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.05f)),
+                    .clip(RoundedCornerShape(4.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                TrackArtworkImage(
+                FastArtworkThumbnail(
                     track = track,
-                    contentDescription = track.title,
-                    modifier = Modifier.fillMaxSize(),
+                    size = 48.dp,
+                    shape = RoundedCornerShape(4.dp),
                     thumbnailSizePx = 128,
-                    crossfade = true
+                    isScrolling = isScrolling,
+                    contentDescription = track.title
                 )
                 if (isCurrent) {
                     // Subtle dark gradient scrim at the bottom ~32% for high wave contrast
@@ -1913,16 +1981,15 @@ fun UpNextTrackItem(
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Color.White.copy(alpha = 0.05f)),
+                .clip(RoundedCornerShape(2.dp)),
             contentAlignment = Alignment.Center
         ) {
-            TrackArtworkImage(
+            FastArtworkThumbnail(
                 track = track,
-                contentDescription = track.title,
-                modifier = Modifier.fillMaxSize(),
+                size = 48.dp,
+                shape = RoundedCornerShape(2.dp),
                 thumbnailSizePx = 128,
-                crossfade = false
+                contentDescription = track.title
             )
             if (isPlaying) {
                 // Subtle dark gradient scrim at the bottom ~32% for high wave contrast

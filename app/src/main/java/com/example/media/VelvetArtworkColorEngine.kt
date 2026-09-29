@@ -120,7 +120,8 @@ data class TrackThemeColors(
     val debug: VelvetPaletteDebug? = null,
     val isNeutralArtwork: Boolean = false,
     val dominantCoverage: Double = 0.0,
-    val accentCoverage: Double = 0.0
+    val accentCoverage: Double = 0.0,
+    val visualizerColor: Color = accent
 )
 
 private data class Lab(val l: Double, val a: Double, val b: Double) {
@@ -278,6 +279,78 @@ object VelvetArtworkColorEngine {
     fun getDefaultBitmap(context: Context): Bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
         eraseColor(Color(0xFF18070D).toArgb())
     }
+
+    /**
+     * Secondary artwork color extractor for the player visualizer:
+     * After the background color has been chosen from the artwork, this function selects
+     * another distinct, vibrant color present in the artwork.
+     * Ensures the visualizer stands out with a complementary, rich color from the artwork,
+     * while completely preserving the background palette.
+     */
+    fun extractVisualizerColorFromBitmap(
+        bitmap: Bitmap?,
+        chosenBackgroundColor: Color
+    ): Color {
+        if (bitmap == null) return Color(0xFFE5A93C) // Warm luminous fallback
+        return try {
+            val pixels = samplePixels(bitmap)
+            if (pixels.isEmpty()) return Color(0xFFE5A93C)
+
+            val clusters = kMeans(pixels)
+            val total = pixels.size.toDouble()
+            val bgHsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(chosenBackgroundColor.toArgb(), bgHsv)
+            val bgHue = bgHsv[0]
+
+            // Find clusters from the artwork that are distinct in hue/chroma from the background
+            val candidates = clusters.map { cluster ->
+                val color = toColor(cluster.center)
+                val hsv = FloatArray(3)
+                android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+                val hue = hsv[0]
+                val sat = hsv[1]
+                val value = hsv[2]
+                val coverage = cluster.count / total
+
+                // Angular hue distance [0..180]
+                val rawDiff = abs(hue - bgHue)
+                val hueDiff = if (rawDiff > 180f) 360f - rawDiff else rawDiff
+
+                // Score candidate: prioritize distinct hue from background, good saturation, and visible coverage
+                val distinctnessScore = (hueDiff / 180f) // 0 to 1
+                val chromaScore = (sat * 0.5f + cluster.center.chroma.toFloat() * 1.5f).coerceIn(0f, 1f)
+                val brightnessScore = (1f - abs(value - 0.70f)).coerceIn(0f, 1f)
+                val coverageScore = (coverage.toFloat() / 0.40f).coerceIn(0f, 1f)
+
+                val totalScore = distinctnessScore * 0.45f + chromaScore * 0.35f + brightnessScore * 0.10f + coverageScore * 0.10f
+
+                Pair(color, totalScore)
+            }.sortedByDescending { it.second }
+
+            // Pick the best distinct color candidate from the artwork
+            val bestCandidate = candidates.firstOrNull()?.first
+            if (bestCandidate != null) {
+                val candHsv = FloatArray(3)
+                android.graphics.Color.colorToHSV(bestCandidate.toArgb(), candHsv)
+                val tunedSat = if (candHsv[1] < 0.25f) 0.60f else candHsv[1].coerceIn(0.45f, 0.90f)
+                val tunedVal = candHsv[2].coerceIn(0.65f, 0.95f)
+                Color.hsv(candHsv[0], tunedSat, tunedVal)
+            } else {
+                Color(0xFFE5A93C)
+            }
+        } catch (_: Throwable) {
+            Color(0xFFE5A93C)
+        }
+    }
+
+    fun extractVisualizerColor(
+        context: Context,
+        track: Track,
+        chosenBackgroundColor: Color
+    ): Color = extractVisualizerColorFromBitmap(
+        resolveTrackBitmap(context, track),
+        chosenBackgroundColor
+    )
 
     fun generateThemePalette(baseColor: Color): TrackThemeColors =
         buildTheme(baseColor, null, false, 1.0, 0.0, null)
@@ -455,7 +528,14 @@ object VelvetArtworkColorEngine {
             debug = debug,
             isNeutralArtwork = neutral,
             dominantCoverage = dominantCoverage,
-            accentCoverage = accentCoverage
+            accentCoverage = accentCoverage,
+            visualizerColor = if (neutral || accent == null) {
+                Color.hsv((hue + 45f) % 360f, 0.65f, 0.85f)
+            } else {
+                val vHsv = FloatArray(3)
+                android.graphics.Color.colorToHSV(resolvedAccent.toArgb(), vHsv)
+                Color.hsv(vHsv[0], vHsv[1].coerceIn(0.55f, 0.95f), 0.88f)
+            }
         )
     }
 
