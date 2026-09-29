@@ -67,11 +67,6 @@ fun FastArtworkThumbnail(
         "art_thumb_${track.id}_$thumbnailSizePx"
     }
 
-    // Check if thumbnail is already cached in memory
-    val isInitiallyCached = remember(cacheKey) {
-        VelvetImageLoader.isInMemory(context, cacheKey)
-    }
-
     // Always enqueue immediately. Do NOT gate artwork behind scroll-idle state:
     // fast scrolling is exactly when newly exposed rows need to begin decoding.
     val request = remember(track.id, primaryData, fallbackResId, thumbnailSizePx) {
