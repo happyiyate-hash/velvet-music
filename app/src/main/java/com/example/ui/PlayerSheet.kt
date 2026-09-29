@@ -1861,7 +1861,6 @@ private fun UpNextTrackRow(
                     size = 48.dp,
                     shape = RoundedCornerShape(4.dp),
                     thumbnailSizePx = 128,
-                    isScrolling = isScrolling,
                     contentDescription = track.title
                 )
                 if (isCurrent) {
