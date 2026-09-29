@@ -441,16 +441,18 @@ private fun VelvetCornerAppLogo(
 ) {
     val context = LocalContext.current
     val logoResId = remember(context) {
-        val id = context.resources.getIdentifier("velvet_home_logo", "drawable", context.packageName)
-        if (id != 0) id else R.drawable.ic_velvet_logo
+        context.resources.getIdentifier("velvet_home_logo", "drawable", context.packageName)
     }
 
-    Image(
-        painter = painterResource(id = logoResId),
-        contentDescription = "Velvet App Logo",
-        contentScale = ContentScale.Fit,
-        modifier = modifier
-    )
+    // Use only velvet_home_logo.png. Never substitute another logo.
+    if (logoResId != 0) {
+        Image(
+            painter = painterResource(id = logoResId),
+            contentDescription = "Velvet App Logo",
+            contentScale = ContentScale.Fit,
+            modifier = modifier
+        )
+    }
 }
 
 /**
