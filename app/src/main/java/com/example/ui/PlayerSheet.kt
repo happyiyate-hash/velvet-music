@@ -16,6 +16,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -1060,7 +1061,7 @@ fun PlayerSheet(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 6.dp)
+                                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragStart = {
@@ -1770,7 +1771,7 @@ private fun UpNextTrackRow(
                     indication = null,
                     onClick = onClick
                 )
-                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 6.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Album Art with rounded corners
@@ -1789,47 +1790,45 @@ private fun UpNextTrackRow(
                     crossfade = true
                 )
                 if (isCurrent) {
+                    // Subtle dark gradient scrim at the bottom ~32% for high wave contrast
                     Box(
-                        Modifier.fillMaxSize().background(Color.Black.copy(alpha = .38f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AnimatedPlayingBars(
-                            color = Color.White,
-                            modifier = Modifier.size(24.dp),
-                            isPlaying = isPlaying
-                        )
-                    }
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(16.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))
+                                )
+                            )
+                    )
+                    // Tiny drawing animation visualizer starting from the bottom (10% to 20% height of the music)
+                    TinyBottomVisualizerWave(
+                        isPlaying = isPlaying,
+                        accentColor = accentColor,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(9.5.dp)
+                            .align(Alignment.BottomCenter)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-            // Title and Subtitle with Live Waveform Indicator for active track
+            // Title and Subtitle (Wave indicator removed from title as requested)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = track.title.substringBefore(" - "),
-                        fontSize = 15.sp,
-                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
-                        color = if (isCurrent) accentColor else Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (isCurrent) {
-                        LiveWaveformIndicator(
-                            isPlaying = isPlaying,
-                            color = accentColor,
-                            modifier = Modifier.size(width = 16.dp, height = 12.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = track.title.substringBefore(" - "),
+                    fontSize = 15.sp,
+                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (isCurrent) accentColor else Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
 
                 Spacer(modifier = Modifier.height(3.dp))
 
@@ -1842,10 +1841,10 @@ private fun UpNextTrackRow(
                 )
             }
 
-            // Drag Handle: 3 clean lines
+            // Drag Handle: 3 clean lines pushed to the far right with a small space
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(width = 32.dp, height = 44.dp)
                     .pointerInput(track.id) {
                         detectDragGestures(
                             onDragStart = { swipeOffset = 0f; onDragStart() },
@@ -1879,9 +1878,10 @@ private fun UpNextTrackRow(
  * YouTube Music Up Next Track Item:
  * - Spans edge-to-edge across screen with fillMaxWidth().
  * - Slightly brighter extraction tint if playing (dominantColor.copy(alpha = 0.18f)).
- * - Padding inside item content reaching almost edge to edge (horizontal = 8.dp, vertical = 6.dp).
- * - Music picture with sharp edges (2.dp) instead of full rounded corner.
- * - 3-line drag handle reaching near edge.
+ * - Padding inside item content reaching near edge (start = 6.dp, end = 2.dp).
+ * - Music picture with sharp edges (2.dp).
+ * - Tiny animated wave visualizer drawing animation at the bottom (10%-20% height).
+ * - 3-line drag handle pushed to far right with a small space.
  */
 @Composable
 fun UpNextTrackItem(
@@ -1900,7 +1900,7 @@ fun UpNextTrackItem(
         modifier = modifier
             .fillMaxWidth() // Spans edge-to-edge across screen
             .background(activeRowBg)
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), // Reaching almost edge to edge
+            .padding(start = 6.dp, end = 2.dp, top = 6.dp, bottom = 6.dp), // Pushed to far left and far right with small space
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Track Artwork with sharp edges (2.dp)
@@ -1919,14 +1919,31 @@ fun UpNextTrackItem(
                 crossfade = false
             )
             if (isPlaying) {
+                // Subtle dark gradient scrim at the bottom ~32% for high wave contrast
                 Box(
-                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)),
-                    contentAlignment = Alignment.Center
-                ) { AnimatedPlayingBars(Color.White, Modifier.size(24.dp)) }
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(16.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))
+                            )
+                        )
+                )
+                // Tiny drawing animation visualizer starting from the bottom (10% to 20% height of the music)
+                TinyBottomVisualizerWave(
+                    isPlaying = isPlaying,
+                    accentColor = dominantColor,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(9.5.dp)
+                        .align(Alignment.BottomCenter)
+                )
             }
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         // Title Column with clean spacing
         Column(
@@ -1951,9 +1968,9 @@ fun UpNextTrackItem(
             )
         }
 
-        // Drag Handle Icon: 3 lines reaching near edge
+        // Drag Handle Icon: 3 lines pushed to far right with a small space
         Box(
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(width = 32.dp, height = 40.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -1984,50 +2001,121 @@ private fun interpolateColor(start: Color, end: Color, fraction: Float): Color {
     )
 }
 
+/**
+ * Tiny bottom visualizer wave:
+ * - Placed at the very bottom of the playing music artwork, starting from the bottom edge and reaching 10% to 20% height (e.g. 9.5dp of 48dp).
+ * - Implements a proper smooth drawing animation: fluid harmonic wave with dynamic equalizer crest bars.
+ * - When playing, smoothly animates with organic harmonic oscillations.
+ * - When paused, gently settles to a calm low resting wave.
+ */
 @Composable
-private fun LiveWaveformIndicator(
+private fun TinyBottomVisualizerWave(
     isPlaying: Boolean,
-    color: Color,
+    accentColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "live_waveform")
-    val a by infinite.animateFloat(0.30f, 1.0f, androidx.compose.animation.core.infiniteRepeatable(tween(380, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w1")
-    val b by infinite.animateFloat(0.85f, 0.25f, androidx.compose.animation.core.infiniteRepeatable(tween(480, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w2")
-    val c by infinite.animateFloat(0.40f, 0.95f, androidx.compose.animation.core.infiniteRepeatable(tween(340, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w3")
-    val d by infinite.animateFloat(0.75f, 0.35f, androidx.compose.animation.core.infiniteRepeatable(tween(440, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "w4")
+    val infiniteTransition = rememberInfiniteTransition(label = "tiny_bottom_wave")
+    val phase1 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.2831855f, // 2 * PI
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1800, easing = LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "phase1"
+    )
+    val phase2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.2831855f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "phase2"
+    )
 
-    val h1 = if (isPlaying) a else 0.40f
-    val h2 = if (isPlaying) b else 0.75f
-    val h3 = if (isPlaying) c else 0.50f
-    val h4 = if (isPlaying) d else 0.35f
+    val playFraction by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0.25f,
+        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+        label = "play_fraction"
+    )
 
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        Box(Modifier.width(2.5.dp).height((13f * h1).dp).clip(RoundedCornerShape(1.dp)).background(color))
-        Box(Modifier.width(2.5.dp).height((13f * h2).dp).clip(RoundedCornerShape(1.dp)).background(color))
-        Box(Modifier.width(2.5.dp).height((13f * h3).dp).clip(RoundedCornerShape(1.dp)).background(color))
-        Box(Modifier.width(2.5.dp).height((13f * h4).dp).clip(RoundedCornerShape(1.dp)).background(color))
-    }
-}
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        if (width <= 0f || height <= 0f) return@Canvas
 
-@Composable
-private fun AnimatedPlayingBars(color: Color, modifier: Modifier = Modifier, isPlaying: Boolean = true) {
-    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "queue_playing")
-    val a by infinite.animateFloat(.30f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar1")
-    val b by infinite.animateFloat(.75f, .25f, androidx.compose.animation.core.infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar2")
-    val c by infinite.animateFloat(.45f, .95f, androidx.compose.animation.core.infiniteRepeatable(tween(360, easing = FastOutSlowInEasing), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse), label = "bar3")
+        // 1. Fluid sine-wave contour path anchored to the very bottom
+        val wavePath = Path()
+        wavePath.moveTo(0f, height)
 
-    val h1 = if (isPlaying) a else 0.40f
-    val h2 = if (isPlaying) b else 0.75f
-    val h3 = if (isPlaying) c else 0.50f
+        val steps = 24
+        val stepX = width / steps
+        for (i in 0..steps) {
+            val x = i * stepX
+            val normX = x / width
+            val sin1 = sin(normX * 12.566f + phase1 * playFraction)
+            val sin2 = cos(normX * 7.854f - phase2 * playFraction)
+            val waveHeightRatio = ((sin1 * 0.4f + sin2 * 0.35f + 0.75f) * 0.5f).coerceIn(0.15f, 0.95f) * playFraction
+            val y = height - (height * waveHeightRatio).coerceIn(1.5f.dp.toPx(), height)
+            if (i == 0) {
+                wavePath.lineTo(0f, y)
+            } else {
+                wavePath.lineTo(x, y)
+            }
+        }
+        wavePath.lineTo(width, height)
+        wavePath.close()
 
-    Row(modifier, Arrangement.spacedBy(2.dp), Alignment.Bottom) {
-        Box(Modifier.width(3.dp).height((18f * h1).dp).clip(RoundedCornerShape(2.dp)).background(color))
-        Box(Modifier.width(3.dp).height((18f * h2).dp).clip(RoundedCornerShape(2.dp)).background(color))
-        Box(Modifier.width(3.dp).height((18f * h3).dp).clip(RoundedCornerShape(2.dp)).background(color))
+        // Subtle gradient fill for the fluid wave
+        drawPath(
+            path = wavePath,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    accentColor.copy(alpha = 0.55f),
+                    accentColor.copy(alpha = 0.18f)
+                ),
+                startY = 0f,
+                endY = height
+            )
+        )
+
+        // 2. High-precision animated equalizer bars drawn in the foreground
+        val barCount = 5
+        val barWidth = 2.4.dp.toPx()
+        val totalBarsWidth = barCount * barWidth
+        val availableSpacing = (width - totalBarsWidth) / (barCount + 1).coerceAtLeast(1)
+        val spacing = availableSpacing.coerceIn(1.5.dp.toPx(), 4.dp.toPx())
+        val startOffset = (width - (barCount * barWidth + (barCount - 1) * spacing)) / 2f
+
+        for (b in 0 until barCount) {
+            val barX = startOffset + b * (barWidth + spacing)
+            val barPhase = when (b) {
+                0 -> phase1 * 1.3f
+                1 -> phase2 * 1.7f + 1.2f
+                2 -> phase1 * 2.1f + 2.5f
+                3 -> phase2 * 1.5f + 0.8f
+                else -> phase1 * 1.8f + 3.1f
+            }
+            val oscillation = (sin(barPhase) * 0.5f + 0.5f)
+            val baseRatio = when (b) {
+                0 -> 0.45f
+                1 -> 0.70f
+                2 -> 0.95f
+                3 -> 0.75f
+                else -> 0.50f
+            }
+            val activeHeight = height * (baseRatio * (0.35f + 0.65f * oscillation)) * playFraction
+            val clampedHeight = activeHeight.coerceIn(2.dp.toPx(), height)
+            val barTop = height - clampedHeight
+
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.95f),
+                topLeft = Offset(barX, barTop),
+                size = Size(barWidth, clampedHeight),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+            )
+        }
     }
 }
 
