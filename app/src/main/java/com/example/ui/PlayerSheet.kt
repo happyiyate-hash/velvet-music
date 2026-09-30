@@ -661,6 +661,7 @@ fun PlayerSheet(
             // Continuous lerp for elements inside the Card:
             val metadataY = lerp(collapsedMetadataY, expandedMetadataY, p1)
             val progressY = lerp(collapsedProgressY, expandedProgressY, p1)
+            val visualizerHeight = 34.dp
             val waveformY = cardHeight - visualizerHeight
             val contentPaddingHorizontal = lerp(22.dp, 18.dp, p1)
 
