@@ -27,6 +27,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -58,6 +60,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -176,6 +179,7 @@ import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
@@ -194,6 +198,92 @@ import kotlin.math.roundToInt
  * 7. Secondary Shuffle and Repeat controls positioned below the primary playback controls.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Continuous Inertial Scroll & Damped Spring Settling Engine for Up Next Queue:
+ *
+ * 1. Continuous Floating-Point Inertia:
+ *    - Captures release velocity from touch gesture.
+ *    - Propagates momentum with smooth exponential deceleration friction.
+ *    - Frame-independent timing (via withFrameNanos dt calculation) for seamless 60/90/120Hz consistency.
+ *
+ * 2. Damped Spring Settling:
+ *    - When momentum drops below threshold, gently and smoothly settles to the nearest row
+ *      using a physical damped spring (Hooke's law with damping ratio) instead of a hard jump/snap.
+ *
+ * 3. Unified Container Motion:
+ *    - Displaces the entire list container as one continuous unit.
+ *    - Selected row and highlight stay attached to their actual row position throughout the scroll.
+ */
+class InertialSpringFlingBehavior(
+    private val lazyListState: LazyListState,
+    private val rowHeightPx: Float,
+    private val friction: Float = 0.955f,
+    private val springStiffness: Float = 145f,
+    private val springDamping: Float = 0.88f
+) : FlingBehavior {
+
+    override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+        var velocity = initialVelocity
+        var lastFrameNanos = withFrameNanos { it }
+
+        // Phase 1: Physical Inertial Momentum (Continuous exponential deceleration)
+        while (abs(velocity) > 75f) {
+            withFrameNanos { nowNanos ->
+                val dt = ((nowNanos - lastFrameNanos) / 1_000_000_000f).coerceIn(0.001f, 0.045f)
+                lastFrameNanos = nowNanos
+
+                val step = velocity * dt
+                val consumed = scrollBy(step)
+
+                // If hit boundary (overscroll limit), terminate momentum
+                if (abs(consumed) < abs(step) * 0.35f) {
+                    velocity = 0f
+                } else {
+                    val decay = friction.pow(dt * 60f)
+                    velocity *= decay
+                }
+            }
+        }
+
+        // Phase 2: Damped Spring Settling to nearest intended row boundary
+        if (rowHeightPx > 0f) {
+            val currentOffset = lazyListState.firstVisibleItemScrollOffset.toFloat()
+            // Settle forward if more than halfway through, or backward if less
+            val targetDelta = if (currentOffset > rowHeightPx * 0.5f) {
+                (rowHeightPx - currentOffset)
+            } else {
+                -currentOffset
+            }
+
+            var remainingDistance = targetDelta
+            var springVelocity = velocity * 0.35f
+            var springLastNanos = withFrameNanos { it }
+
+            while (abs(remainingDistance) > 0.4f || abs(springVelocity) > 8f) {
+                withFrameNanos { nowNanos ->
+                    val dt = ((nowNanos - springLastNanos) / 1_000_000_000f).coerceIn(0.001f, 0.045f)
+                    springLastNanos = nowNanos
+
+                    val springForce = remainingDistance * springStiffness
+                    springVelocity += springForce * dt
+                    springVelocity *= springDamping.pow(dt * 60f)
+
+                    val delta = springVelocity * dt
+                    val consumed = scrollBy(delta)
+                    remainingDistance -= delta
+
+                    if (abs(consumed) < abs(delta) * 0.35f) {
+                        springVelocity = 0f
+                        remainingDistance = 0f
+                    }
+                }
+            }
+        }
+
+        return 0f
+    }
+}
+
 @Composable
 fun PlayerSheet(
     track: Track,
@@ -299,12 +389,12 @@ fun PlayerSheet(
     // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
     // YouTube Music Hierarchy: Index 0 is currently playing track, Index 1 is Up Next, etc.
     // Preserve the queue's physical order. Selecting a track must not move it to the top.
-    val queueItems = remember(queueTracks, track.id) {
+    val queueItems = remember(queueTracks) {
         val raw = if (queueTracks.isNotEmpty()) queueTracks.distinctBy { it.id }
         else com.example.model.SampleData.starterTracks.distinctBy { it.id }
         if (raw.any { it.id == track.id }) raw else raw + track
     }
-    var orderedQueueItems by remember(queueItems) { mutableStateOf(queueItems) }
+    var orderedQueueItems by remember { mutableStateOf(queueItems) }
     val queueListState = rememberLazyListState()
 
     var activeQueueDragId by remember { mutableStateOf<String?>(null) }
@@ -1142,9 +1232,18 @@ fun PlayerSheet(
                             }
                         }
 
-                        // Scrollable List: ONLY the music tracks scroll smoothly underneath, no dragging of the bottom sheet
+                        val rowHeightPx = with(density) { 60.dp.toPx() }
+                        val inertialFlingBehavior = remember(rowHeightPx) {
+                            InertialSpringFlingBehavior(
+                                lazyListState = queueListState,
+                                rowHeightPx = rowHeightPx
+                            )
+                        }
+
+                        // Scrollable List: Continuous inertial scrolling with soft damped spring settling
                         LazyColumn(
                             state = queueListState,
+                            flingBehavior = inertialFlingBehavior,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
@@ -1166,58 +1265,38 @@ fun PlayerSheet(
                                     surfaceColor = animatedBgMidLower,
                                     stage2Progress = p2,
                                     onClick = { onSelectQueueTrack(queueTrack) },
-                                onPlayNext = {
-                                    val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
-                                    val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
-                                    if (currentIndex >= 0) {
-                                        val destination = if (playingIndex >= 0) playingIndex + 1 else 0
-                                        val updated = orderedQueueItems.toMutableList().apply {
-                                            val moved = removeAt(currentIndex)
-                                            add(destination.coerceAtMost(size), moved)
+                                    onPlayNext = {
+                                        val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
+                                        val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
+                                        if (currentIndex >= 0) {
+                                            val destination = if (playingIndex >= 0) playingIndex + 1 else 0
+                                            val updated = orderedQueueItems.toMutableList().apply {
+                                                val moved = removeAt(currentIndex)
+                                                add(destination.coerceAtMost(size), moved)
+                                            }
+                                            orderedQueueItems = updated
+                                            onUpdateQueue?.invoke(updated)
                                         }
-                                        orderedQueueItems = updated
-                                        onUpdateQueue?.invoke(updated)
-                                        coroutineScope.launch {
-                                            queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
+                                    },
+                                    onDelete = {
+                                        if (!isCurrent && activeQueueDragId == null) {
+                                            val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
+                                            orderedQueueItems = updated
+                                            onUpdateQueue?.invoke(updated)
                                         }
-                                    }
-                                },
-                                onDelete = {
-                                    if (!isCurrent && activeQueueDragId == null) {
-                                        val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
-                                        orderedQueueItems = updated
-                                        onUpdateQueue?.invoke(updated)
-                                    }
-                                },
-                                onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
-                                onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
-                                onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
-                                isDragging = isDragging,
-                                dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
-                                virtualDisplacementY = run {
-                                    val dragId = activeQueueDragId ?: return@run 0f
-                                    if (isDragging) return@run 0f
-                                    val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
-                                    if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
-                                    val itemHeightPx = with(density) { 60.dp.toPx() }
-                                    when {
-                                        dragStartIndex < queueDragTargetIndex -> {
-                                            if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
-                                        }
-                                        dragStartIndex > queueDragTargetIndex -> {
-                                            if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
-                                        }
-                                        else -> 0f
-                                    }
-                                },
-                                isDropTarget = false
-                            )
+                                    },
+                                    onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
+                                    onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
+                                    onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
+                                    isDragging = isDragging,
+                                    dragOffsetY = if (isDragging) queueDragOffsetY else 0f
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
         // 7. THREE-DOT SONG ACTION BOTTOM SHEET
         if (showActionSheet) {
@@ -1732,8 +1811,6 @@ private fun UpNextTrackRow(
     onDragEnd: () -> Unit,
     isDragging: Boolean,
     dragOffsetY: Float,
-    virtualDisplacementY: Float,
-    isDropTarget: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var rowWidthPx by remember { mutableFloatStateOf(0f) }
@@ -1759,18 +1836,6 @@ private fun UpNextTrackRow(
         }
     }
 
-    // Zero-cost animation gating: idle rows during normal scrolling do not tick animators
-    val displacement = if (virtualDisplacementY != 0f) {
-        animateFloatAsState(
-            targetValue = virtualDisplacementY,
-            animationSpec = androidx.compose.animation.core.spring(
-                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
-                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
-            ),
-            label = "queue_virtual_displacement"
-        ).value
-    } else 0f
-
     val scale = if (isDragging) {
         animateFloatAsState(1.01f, tween(120), label = "queue_drag_scale").value
     } else 1f
@@ -1780,9 +1845,7 @@ private fun UpNextTrackRow(
     } else 0f
 
     // Active Item Highlight:
-    // In stage 1 (p <= 1f), completely transparent so it has zero tint and matches the background perfectly.
-    // In stage 2 (p > 1f), softly introduces the gold/accent color tint as user drags upward.
-    // When swiping, uses solid opaque surfaceColor (animatedBgBottom) so the moving row cleanly slides over the black/action reveal layer.
+    // Attached directly to row position. Travels naturally with scroll.
     val rowBaseBg = surfaceColor
     val activeRowBg = when {
         isDragging -> Color.White.copy(alpha = 0.16f).compositeOver(rowBaseBg)
@@ -1797,14 +1860,14 @@ private fun UpNextTrackRow(
         else -> Color.Transparent
     }
 
-    // Full-Bleed Surface Layer: Spans 100% width, no border, zero padding cutoffs
+    // Full-Bleed Surface Layer: Spans 100% width, moves as part of the unified scroll container
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(60.dp)
             .onSizeChanged { rowWidthPx = it.width.toFloat() }
             .graphicsLayer {
-                translationY = if (isDragging) dragOffsetY else displacement
+                translationY = if (isDragging) dragOffsetY else 0f
                 scaleX = scale
                 scaleY = scale
             }
@@ -1877,73 +1940,6 @@ private fun UpNextTrackRow(
                 .fillMaxSize()
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
                 .background(activeRowBg)
-                .pointerInput(track.id, isDragging) {
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            thresholdLatched = false
-                        },
-                        onDragCancel = {
-                            scope.launch {
-                                swipeSettle.snapTo(swipeOffset)
-                                swipeSettle.animateTo(0f, tween(180)) { swipeOffset = value }
-                                thresholdLatched = false
-                            }
-                        },
-                        onDragEnd = {
-                            val releaseOffset = swipeOffset
-                            val crossed = abs(releaseOffset) >= thresholdPx
-                            if (!crossed) {
-                                scope.launch {
-                                    swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(0f, androidx.compose.animation.core.spring(
-                                        stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
-                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
-                                    )) { swipeOffset = value }
-                                    thresholdLatched = false
-                                }
-                            } else if (releaseOffset > 0f) {
-                                scope.launch {
-                                    swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
-                                    onPlayNext()
-                                    swipeSettle.snapTo(0f)
-                                    swipeOffset = 0f
-                                    thresholdLatched = false
-                                }
-                            } else {
-                                scope.launch {
-                                    swipeSettle.snapTo(releaseOffset)
-                                    swipeSettle.animateTo(-swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
-                                    onDelete()
-                                    swipeSettle.snapTo(0f)
-                                    swipeOffset = 0f
-                                    thresholdLatched = false
-                                }
-                            }
-                        },
-                        onHorizontalDrag = { change, amount ->
-                            change.consume()
-                            if (!isDragging && !isCurrent) {
-                                val next = (swipeOffset + amount).coerceIn(-swipeLimitPx, swipeLimitPx)
-                                swipeOffset = next
-                            }
-                        }
-                    )
-                }
-                .pointerInput(track.id, isDragging) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = {
-                            swipeOffset = 0f
-                            onDragStart()
-                        },
-                        onDragEnd = onDragEnd,
-                        onDragCancel = onDragEnd,
-                        onDrag = { change, amount ->
-                            change.consume()
-                            onDragBy(amount.y)
-                        }
-                    )
-                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
