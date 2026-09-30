@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -201,7 +202,7 @@ fun HomeFeedScreen(
                     }
                 }
 
-                items(displayTracks, key = { it.id }) { track ->
+                itemsIndexed(displayTracks, key = { _, track -> track.id }) { index, track ->
                     val isCurrent = track.id == currentTrack.id
                     DeviceTrackRowItem(
                         track = track,
@@ -209,6 +210,7 @@ fun HomeFeedScreen(
                         isPlaying = isPlaying && isCurrent,
                         onClick = { onSelectTrack(track) },
                         onMenuClick = { onTrackMenuClick(track) },
+                        artworkLoadDelayMs = (index % 6) * 18L,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -649,6 +651,7 @@ private fun DeviceTrackRowItem(
     isPlaying: Boolean,
     onClick: () -> Unit,
     onMenuClick: () -> Unit,
+    artworkLoadDelayMs: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     val cleanTitle = track.title.substringBefore(" - ")
@@ -671,6 +674,7 @@ private fun DeviceTrackRowItem(
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
                 thumbnailSizePx = 128,
+                loadDelayMs = artworkLoadDelayMs,
                 modifier = Modifier.fillMaxSize()
             )
 
