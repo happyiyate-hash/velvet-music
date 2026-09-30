@@ -38,7 +38,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
@@ -188,7 +188,7 @@ fun HomeFeedScreen(
                     .weight(1f),
                 contentPadding = PaddingValues(
                     start = 14.dp,
-                    end = 14.dp,
+                    end = 6.dp,
                     top = 10.dp,
                     bottom = 120.dp
                 )
@@ -713,16 +713,16 @@ private fun DeviceTrackRowItem(
             )
         }
 
-        // Action Menu
+        // Action Menu: Vertical 3-dots (standing straight), pure white, bigger & mature
         IconButton(
             onClick = onMenuClick,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(44.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.MoreHoriz,
+                imageVector = Icons.Default.MoreVert,
                 contentDescription = "Track options",
-                tint = Color(0xFFC098A2),
-                modifier = Modifier.size(22.dp)
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
             )
         }
     }
