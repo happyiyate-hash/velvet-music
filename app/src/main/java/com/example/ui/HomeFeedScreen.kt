@@ -300,7 +300,7 @@ private fun VelvetTopHeaderCard(
                     Spacer(modifier = Modifier.width(3.dp))
 
                     ElvetGlassWordmark(
-                        modifier = Modifier.height(24.dp)
+                        modifier = Modifier.height(18.dp)
                     )
                 }
 
@@ -451,20 +451,20 @@ private fun ElvetGlassWordmark(
 ) {
     Canvas(
         modifier = modifier
-            .height(24.dp)
-            .width(82.dp)
+            .height(18.dp)
+            .width(68.dp)
     ) {
         val h = size.height
-        val strokeWidth = 2.0.dp.toPx()
-        val glowStrokeWidth = 3.6.dp.toPx()
+        val strokeWidth = 2.8.dp.toPx()
+        val glowStrokeWidth = 4.6.dp.toPx()
 
-        val charSpacing = 4.8.dp.toPx()
-        val eWidth = 11.2.dp.toPx()
-        val lWidth = 9.8.dp.toPx()
-        val vWidth = 13.2.dp.toPx()
-        val tWidth = 11.2.dp.toPx()
+        val charSpacing = 3.8.dp.toPx()
+        val eWidth = 9.2.dp.toPx()
+        val lWidth = 8.0.dp.toPx()
+        val vWidth = 10.8.dp.toPx()
+        val tWidth = 9.2.dp.toPx()
 
-        val cornerR = 2.4.dp.toPx()
+        val cornerR = 2.0.dp.toPx()
         val paths = mutableListOf<Path>()
 
         // 1. First 'E' (Rounded corners on outer joins)
@@ -562,7 +562,7 @@ private fun ElvetGlassWordmark(
             )
         }
 
-        // 2. Draw refined thin glass strokes
+        // 2. Draw refined glass strokes with increased thickness
         paths.forEach { path ->
             drawPath(
                 path = path,

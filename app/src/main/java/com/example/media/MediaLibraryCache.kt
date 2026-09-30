@@ -52,7 +52,7 @@ object MediaLibraryCache {
                         playCount = obj.optInt("playCount", 0),
                         dateAddedMs = obj.optLong("dateAddedMs", System.currentTimeMillis()),
                         contentUri = obj.optString("contentUri").takeIf { it.isNotBlank() },
-                        artworkUri = obj.optString("artworkUri").takeIf { it.isNotBlank() }
+                        artworkUri = obj.optString("artworkUri").takeIf { it.isNotBlank() && !it.contains("external/audio/albumart") }
                     )
                 )
             }

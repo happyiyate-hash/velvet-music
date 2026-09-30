@@ -127,14 +127,8 @@ object DeviceMediaManager {
                     val cleanArtist = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist
                     val trackId = "device_audio_$id"
 
-                    // Instant artwork URI construction: zero I/O blocking during scan.
-                    // Coil will lazily decode and cache artwork asynchronously only when the item is visible on screen!
+                    // Real audio artwork is decoded and cached by VelvetArtworkCache and TrackArtworkFetcher
                     val cover = FallbackArtworkPool.getPhotoForTrack(trackId, title, cleanArtist)
-                    val resolvedArtUri = if (albumId > 0) {
-                        ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId).toString()
-                    } else {
-                        "android.resource://${context.packageName}/$cover"
-                    }
 
                     tracks.add(
                         Track(
@@ -149,7 +143,7 @@ object DeviceMediaManager {
                             catalogSource = "Device Storage",
                             dateAddedMs = dateAdded,
                             contentUri = contentUri.toString(),
-                            artworkUri = resolvedArtUri
+                            artworkUri = null
                         )
                     )
                 }

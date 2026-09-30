@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +39,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Precision
 import coil.size.Scale
+import com.example.media.VelvetArtworkCache
 import com.example.model.FallbackArtworkPool
 import com.example.model.Track
 import kotlinx.coroutines.Dispatchers
@@ -59,39 +62,27 @@ fun TrackArtworkImage(
     crossfade: Boolean = true
 ) {
     val context = LocalContext.current
-    val fallbackResId = remember(track.id, track.coverResId, track.title, track.artist) {
-        if (track.coverResId != 0) {
-            track.coverResId
-        } else {
-            FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
-        }
-    }
-
-    val primaryData: Any = remember(track.artworkUri, fallbackResId) {
-        val uri = track.artworkUri
-        if (!uri.isNullOrBlank()) {
-            uri
-        } else {
-            fallbackResId
-        }
-    }
-
     val imageLoader = remember { VelvetImageLoader.get(context) }
-    val request = remember(track.id, primaryData, fallbackResId, thumbnailSizePx, crossfade) {
+
+    // Instant frame-0 memory check: if track was already displayed, show it synchronously!
+    val memoryBitmap: Bitmap? = remember(track.id) {
+        VelvetArtworkCache.getFromMemory(track.id)
+    }
+
+    val targetSize = thumbnailSizePx ?: 128
+    val request = remember(track.id, targetSize, crossfade) {
         val builder = ImageRequest.Builder(context)
-            .data(primaryData)
-            .error(fallbackResId)
-            .fallback(fallbackResId)
+            .data(track)
             .dispatcher(Dispatchers.IO)
-            .crossfade(crossfade)
+            .crossfade(if (crossfade) 180 else 0)
             .allowHardware(true)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
-            .memoryCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
-            .diskCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
+            .memoryCacheKey("track_${track.id}_$targetSize")
+            .diskCacheKey("track_${track.id}_$targetSize")
 
-        if (thumbnailSizePx != null && thumbnailSizePx > 0) {
-            builder.size(thumbnailSizePx, thumbnailSizePx)
+        if (targetSize > 0) {
+            builder.size(targetSize, targetSize)
                 .precision(Precision.EXACT)
                 .scale(Scale.FILL)
         }
@@ -99,15 +90,24 @@ fun TrackArtworkImage(
     }
 
     Box(
-        modifier = modifier.background(Color(0xFF18181C))
+        modifier = modifier.background(Color(0xFF141418))
     ) {
-        AsyncImage(
-            model = request,
-            imageLoader = imageLoader,
-            contentDescription = contentDescription,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = contentScale
-        )
+        if (memoryBitmap != null && !memoryBitmap.isRecycled) {
+            Image(
+                bitmap = memoryBitmap.asImageBitmap(),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale
+            )
+        } else {
+            AsyncImage(
+                model = request,
+                imageLoader = imageLoader,
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale
+            )
+        }
     }
 }
 
