@@ -428,31 +428,19 @@ private fun VelvetTopHeaderCard(
 
 /**
  * App Logo in the top navigation:
- * - Expected file path to upload in your GitHub repository:
- *   `app/src/main/res/drawable/velvet_home_logo.png`
- * - Treated as a pure SVG / transparent icon:
- *   NO borders, NO bounding background box, NO curvature.
- *   Blends directly into the background of the top navigation.
- * - When no custom logo file is uploaded yet, gracefully falls back to default icon.
+ * Directly calls app/src/main/res/drawable/velvet_home_logo.png (R.drawable.velvet_home_logo)
+ * Treated as a pure transparent vector/emblem without borders or backgrounds.
  */
 @Composable
 private fun VelvetCornerAppLogo(
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val logoResId = remember(context) {
-        context.resources.getIdentifier("velvet_home_logo", "drawable", context.packageName)
-    }
-
-    // Use only velvet_home_logo.png. Never substitute another logo.
-    if (logoResId != 0) {
-        Image(
-            painter = painterResource(id = logoResId),
-            contentDescription = "Velvet App Logo",
-            contentScale = ContentScale.Fit,
-            modifier = modifier
-        )
-    }
+    Image(
+        painter = painterResource(id = R.drawable.velvet_home_logo),
+        contentDescription = "Velvet App Logo",
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+    )
 }
 
 /**
