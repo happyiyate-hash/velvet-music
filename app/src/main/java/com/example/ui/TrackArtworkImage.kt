@@ -23,10 +23,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -59,7 +61,8 @@ fun TrackArtworkImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     thumbnailSizePx: Int? = null,
-    crossfade: Boolean = true
+    crossfade: Boolean = true,
+    loadDelayMs: Long = 0L
 ) {
     val context = LocalContext.current
     val imageLoader = remember { VelvetImageLoader.get(context) }
@@ -76,6 +79,18 @@ fun TrackArtworkImage(
     }
 
     var displayedBitmap by remember { mutableStateOf<Bitmap?>(memoryBitmap) }
+    var allowImageRequest by remember(track.id, memoryBitmap, loadDelayMs) {
+        mutableStateOf(memoryBitmap != null || loadDelayMs <= 0L)
+    }
+
+    LaunchedEffect(track.id, memoryBitmap, loadDelayMs) {
+        if (memoryBitmap != null) {
+            allowImageRequest = true
+            return@LaunchedEffect
+        }
+        if (loadDelayMs > 0L) kotlinx.coroutines.delay(loadDelayMs)
+        allowImageRequest = true
+    }
 
     LaunchedEffect(track.id) {
         val mem = if (isThumbnail) {
@@ -125,19 +140,24 @@ fun TrackArtworkImage(
                 contentScale = contentScale
             )
         }
-        AsyncImage(
-            model = request,
-            imageLoader = imageLoader,
-            contentDescription = contentDescription,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = contentScale,
-            onSuccess = { state ->
-                val d = state.result.drawable
-                if (d is android.graphics.drawable.BitmapDrawable) {
-                    displayedBitmap = d.bitmap
+        if (activeBmp == null && allowImageRequest) {
+            AsyncImage(
+                model = request,
+                imageLoader = imageLoader,
+                contentDescription = contentDescription,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = 1f },
+                contentScale = contentScale,
+                onSuccess = { state ->
+                    val d = state.result.drawable
+                    if (d is android.graphics.drawable.BitmapDrawable) {
+                        displayedBitmap = d.bitmap
+                        VelvetArtworkCache.putInMemory(track.id, d.bitmap)
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 }
 
