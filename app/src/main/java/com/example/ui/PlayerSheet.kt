@@ -175,6 +175,7 @@ import com.example.media.TrackThemeColors
 import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
@@ -477,7 +478,7 @@ fun PlayerSheet(
 
             // Collapsed state (p = 0f):
             // Shift bottom sheet downward so that only the drag handle peeks above system navigation.
-            val visualizerHeight = 28.dp
+            val visualizerHeight = 36.dp
             val collapsedPeekHeight = (navBarBottom + 20.dp).coerceIn(20.dp, 32.dp)
             val collapsedControlsY = totalHeight - collapsedPeekHeight - controlsHeight - 12.dp
             val collapsedCardHeight = collapsedControlsY - 6.dp
@@ -889,7 +890,6 @@ fun PlayerSheet(
                         DarkSilhouetteWaveform(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
-                            visualizerColor = animatedVisualizerColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1494,25 +1494,42 @@ private fun NowPlayingProgressBar(
     }
 }
 
+/**
+ * Continuous Liquid Waveform Visualizer (Velvet Acoustic Wave Engine):
+ *
+ * 1. Single Continuous Waveform:
+ *    - 128 continuous sampling points across the full card width.
+ *    - Rendered via smooth quadratic Bézier curve interpolation through midpoints.
+ *    - Never renders discrete bars, blocks, or segmented rectangles.
+ *
+ * 2. Centered Baseline with Symmetrical Mirroring:
+ *    - Horizontal baseline positioned exactly at the vertical center (centerY = totalHeight / 2).
+ *    - Audio energy symmetrically displaces both upward and downward around the baseline.
+ *
+ * 3. Water Pressure & Ripple Propagation:
+ *    - Temporal smoothing (rapid responsive attack, graceful liquid release).
+ *    - Spatial neighbor smoothing (weighted adjacent sample blending).
+ *    - 1D wave diffusion (Laplacian perturbation spreading disturbances smoothly outward).
+ *
+ * 4. Fixed Velvet Visualizer Color:
+ *    - Independent of album artwork colors to maintain a restrained, mature, signature Velvet identity.
+ *    - Fixed high-contrast platinum silver-lavender stroke on dark backgrounds with translucent ribbon fill.
+ *
+ * 5. Full Width & Quiet-State Continuity:
+ *    - Spans 100% of the player card width with minimal horizontal padding.
+ *    - During quiet/paused playback, gracefully preserves an organic, continuous micro-wave baseline.
+ */
 @Composable
 private fun DarkSilhouetteWaveform(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
-    visualizerColor: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    fixedWaveformColor: Color = Color(0xFFF2EDF6)
 ) {
-    val maxBars = 180
-    val restingProfile = remember {
-        FloatArray(maxBars) { i ->
-            val norm = i.toFloat() / (maxBars - 1).coerceAtLeast(1)
-            val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.16f
-            val wave2 = abs(cos(norm * 3.14159f * 3.6f)) * 0.10f
-            (0.08f + wave1 + wave2).coerceIn(0.06f, 0.30f)
-        }
-    }
-    val liveAmplitudes = remember {
-        FloatArray(maxBars) { i -> restingProfile[i] }
-    }
+    val numPoints = 128
+    val liveAmplitudes = remember { FloatArray(numPoints) { 0.04f } }
+    val smoothedAmplitudes = remember { FloatArray(numPoints) { 0.04f } }
+    val targetAmplitudes = remember { FloatArray(numPoints) { 0.04f } }
 
     val frameTicker = remember { mutableLongStateOf(0L) }
     LaunchedEffect(isPlaying) {
@@ -1526,86 +1543,176 @@ private fun DarkSilhouetteWaveform(
     }
 
     Canvas(modifier = modifier) {
-        @Suppress("UNUSED_VARIABLE")
         val ticker = frameTicker.longValue
         val totalWidth = size.width
         val totalHeight = size.height
         if (totalWidth <= 0f || totalHeight <= 0f) return@Canvas
 
-        // Fill edge-to-edge across both left and right sides of the player card
-        val barWidth = 2.0.dp.toPx()
-        val minGap = 1.0.dp.toPx()
-        val barCount = ((totalWidth + minGap) / (barWidth + minGap)).toInt().coerceIn(90, maxBars)
-        val barGap = if (barCount > 1) (totalWidth - (barWidth * barCount)) / (barCount - 1) else 0f
+        val centerY = totalHeight / 2f
+        val maxHalfHeight = (totalHeight / 2f) * 0.88f
+        val minHalfHeight = 1.0.dp.toPx()
 
+        val timeSeconds = (ticker / 1_000_000_000.0).toFloat()
+
+        // 1. Audio Feature Extraction & Perceptual Frequency Mapping
         val rawFft = telemetry.fftBars
         val fftSize = rawFft.size
         val subBassEnergy = if (fftSize >= 4) (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f else 0f
         val midEnergy = if (fftSize >= 24) (rawFft[8] + rawFft[12] + rawFft[16] + rawFft[20]) / 4f else 0f
         val highEnergy = if (fftSize >= 48) (rawFft[36] + rawFft[42] + rawFft[47]) / 3f else 0f
 
-        val minBarHeight = 2.0.dp.toPx()
-        // Restrict maximum height to 85% of visualizer height
-        val maxBarHeight = totalHeight * 0.85f
-        val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
+        val kickImpulse = if (telemetry.kickDetected) 0.65f else (subBassEnergy * 0.45f)
+        val snareImpulse = if (telemetry.snareDetected) 0.55f else (midEnergy * 0.38f)
+        val transientImpulse = (telemetry.transientSpike * 0.50f + highEnergy * 0.35f)
 
-        // Snappy rise (attack) and fast drop (decay)
-        val attackRate = 0.72f
-        val decayRate = 0.38f
-
-        for (i in 0 until barCount) {
-            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
-
-            // Perceptual frequency spectrum distribution
-            val fftIndex = (Math.pow(norm.toDouble(), 1.35) * (fftSize - 1)).toInt().coerceIn(0, (fftSize - 1).coerceAtLeast(0))
-            val binVal = if (fftIndex < fftSize) rawFft[fftIndex] else 0f
-            val prevVal = if (fftIndex > 0) rawFft[fftIndex - 1] else binVal
-            val nextVal = if (fftIndex < fftSize - 1) rawFft[fftIndex + 1] else binVal
-            val smoothBin = prevVal * 0.20f + binVal * 0.60f + nextVal * 0.20f
-
-            // 1. Kick and bass punch on lower spectrum
-            val kickWeight = if (norm < 0.28f) (1f - norm / 0.28f) else 0f
-            val kickBoost = if (telemetry.kickDetected) kickWeight * 0.55f else kickWeight * subBassEnergy * 0.40f
-
-            // 2. Snare and vocals on mid spectrum
-            val midDist = abs(norm - 0.45f) / 0.25f
-            val snareWeight = (1f - midDist).coerceIn(0f, 1f)
-            val snareBoost = if (telemetry.snareDetected) snareWeight * 0.50f else snareWeight * midEnergy * 0.35f
-
-            // 3. Hi-hats, percussions, transients on high spectrum
-            val highWeight = ((norm - 0.55f) / 0.45f).coerceIn(0f, 1f)
-            val transientBoost = highWeight * telemetry.transientSpike * 0.45f + highWeight * highEnergy * 0.35f
-
-            val soundResponse = (smoothBin * 0.60f + kickBoost + snareBoost + transientBoost + telemetry.rmsLevel * 0.12f)
-            // Restricted height so it remains elegant and bounded
-            val targetFraction = soundResponse.coerceIn(0.06f, 0.82f)
+        // 2. Synthesize Smooth Target Profile Across 128 Points
+        for (i in 0 until numPoints) {
+            val norm = i.toFloat() / (numPoints - 1).coerceAtLeast(1)
 
             if (isPlaying) {
-                val current = liveAmplitudes[i]
-                val updated = if (targetFraction > current) {
-                    current + (targetFraction - current) * attackRate
-                } else {
-                    current - (current - targetFraction) * decayRate
-                }
-                liveAmplitudes[i] = updated.coerceIn(0.04f, 0.85f)
+                // Symmetrical acoustic centers: bass centers at 32% and 68%, snare at 50%
+                val bassDist1 = abs(norm - 0.32f) / 0.22f
+                val bassWeight1 = exp(-bassDist1 * bassDist1 * 3.5f)
+                val bassDist2 = abs(norm - 0.68f) / 0.22f
+                val bassWeight2 = exp(-bassDist2 * bassDist2 * 3.5f)
+                val bassResponse = (bassWeight1 + bassWeight2) * kickImpulse
+
+                val midDist = abs(norm - 0.50f) / 0.28f
+                val midResponse = exp(-midDist * midDist * 4.0f) * snareImpulse
+
+                // Distributed frequency ripple
+                val fftIndex = (Math.pow(norm.toDouble(), 1.25) * (fftSize - 1)).toInt().coerceIn(0, (fftSize - 1).coerceAtLeast(0))
+                val binVal = if (fftIndex < fftSize) rawFft[fftIndex] else 0f
+                val freqResponse = binVal * 0.40f
+
+                // Subtle fluid organic wave undulation
+                val rippleWave = sin(norm * 12.5f - timeSeconds * 4.2f) * 0.05f * (kickImpulse + 0.15f)
+
+                // Combine audio forces
+                val combined = (bassResponse * 0.65f + midResponse * 0.55f + freqResponse * 0.45f + transientImpulse * 0.25f + telemetry.rmsLevel * 0.15f + rippleWave)
+                targetAmplitudes[i] = combined.coerceIn(0.04f, 0.95f)
             } else {
-                val target = restingProfile[i % restingProfile.size]
-                val current = liveAmplitudes[i]
-                liveAmplitudes[i] = (current - (current - target) * 0.28f).coerceIn(0.04f, 0.85f)
+                // Idle / paused: gentle, soothing baseline breathing wave
+                val resting = 0.035f + 0.020f * sin(norm * 6.28f * 1.5f + timeSeconds * 1.8f)
+                targetAmplitudes[i] = resting.coerceIn(0.02f, 0.10f)
             }
-
-            val clampedFraction = liveAmplitudes[i].coerceIn(0f, 1f)
-            val barHeight = (minBarHeight + usableRange * clampedFraction).coerceIn(minBarHeight, maxBarHeight)
-            val barTop = totalHeight - barHeight
-            val barX = i * (barWidth + barGap)
-
-            drawRoundRect(
-                color = visualizerColor,
-                topLeft = Offset(barX, barTop),
-                size = Size(barWidth, barHeight),
-                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
-            )
         }
+
+        // 3. Temporal Smoothing (Attack / Release)
+        val attackRate = 0.42f // quick responsive rise
+        val decayRate = 0.16f  // liquid, graceful settling
+        for (i in 0 until numPoints) {
+            val current = liveAmplitudes[i]
+            val target = targetAmplitudes[i]
+            liveAmplitudes[i] = if (target > current) {
+                current + (target - current) * attackRate
+            } else {
+                current - (current - target) * decayRate
+            }
+        }
+
+        // 4. Spatial Neighbor Smoothing (Gaussian 3-tap filter)
+        for (i in 1 until numPoints - 1) {
+            smoothedAmplitudes[i] = 0.24f * liveAmplitudes[i - 1] + 0.52f * liveAmplitudes[i] + 0.24f * liveAmplitudes[i + 1]
+        }
+        smoothedAmplitudes[0] = 0.70f * liveAmplitudes[0] + 0.30f * liveAmplitudes[1]
+        smoothedAmplitudes[numPoints - 1] = 0.70f * liveAmplitudes[numPoints - 1] + 0.30f * liveAmplitudes[numPoints - 2]
+
+        // 5. Water Pressure Ripple Propagation (Laplacian Wave Step)
+        for (i in 1 until numPoints - 1) {
+            val laplacian = (smoothedAmplitudes[i - 1] - 2f * smoothedAmplitudes[i] + smoothedAmplitudes[i + 1])
+            liveAmplitudes[i] = (smoothedAmplitudes[i] + laplacian * 0.18f).coerceIn(0.015f, 0.95f)
+        }
+
+        // 6. Calculate Mirrored Top and Bottom Coordinates
+        val stepX = totalWidth / (numPoints - 1).coerceAtLeast(1)
+        val topPointsX = FloatArray(numPoints)
+        val topPointsY = FloatArray(numPoints)
+        val bottomPointsY = FloatArray(numPoints)
+
+        for (i in 0 until numPoints) {
+            val norm = i.toFloat() / (numPoints - 1).coerceAtLeast(1)
+            // Edge taper window so wave connects seamlessly into edges
+            val edgeTaper = sin(norm * Math.PI.toFloat()).coerceIn(0f, 1f)
+            val window = (0.12f + 0.88f * edgeTaper).coerceIn(0f, 1f)
+
+            val amp = (minHalfHeight + (liveAmplitudes[i] * window) * maxHalfHeight).coerceAtLeast(minHalfHeight)
+            topPointsX[i] = i * stepX
+            topPointsY[i] = centerY - amp
+            bottomPointsY[i] = centerY + amp
+        }
+
+        // 7. Continuous Spline Path Construction (Quadratic Bézier Interpolation)
+        val topPath = Path().apply {
+            moveTo(topPointsX[0], topPointsY[0])
+            for (i in 0 until numPoints - 1) {
+                val midX = (topPointsX[i] + topPointsX[i + 1]) / 2f
+                val midY = (topPointsY[i] + topPointsY[i + 1]) / 2f
+                quadraticBezierTo(topPointsX[i], topPointsY[i], midX, midY)
+            }
+            lineTo(topPointsX[numPoints - 1], topPointsY[numPoints - 1])
+        }
+
+        val bottomPath = Path().apply {
+            moveTo(topPointsX[0], bottomPointsY[0])
+            for (i in 0 until numPoints - 1) {
+                val midX = (topPointsX[i] + topPointsX[i + 1]) / 2f
+                val midY = (bottomPointsY[i] + bottomPointsY[i + 1]) / 2f
+                quadraticBezierTo(topPointsX[i], bottomPointsY[i], midX, midY)
+            }
+            lineTo(topPointsX[numPoints - 1], bottomPointsY[numPoints - 1])
+        }
+
+        // Closed ribbon for subtle translucent liquid body
+        val ribbonPath = Path().apply {
+            addPath(topPath)
+            lineTo(topPointsX[numPoints - 1], bottomPointsY[numPoints - 1])
+            for (i in numPoints - 1 downTo 1) {
+                val midX = (topPointsX[i] + topPointsX[i - 1]) / 2f
+                val midY = (bottomPointsY[i] + bottomPointsY[i - 1]) / 2f
+                quadraticBezierTo(topPointsX[i], bottomPointsY[i], midX, midY)
+            }
+            lineTo(topPointsX[0], bottomPointsY[0])
+            close()
+        }
+
+        // 8. Draw Fixed-Color Velvet Liquid Waveform
+        val waveStrokeColor = fixedWaveformColor.copy(alpha = 0.88f)
+        val waveFillColor = fixedWaveformColor.copy(alpha = 0.12f)
+        val strokeWidthPx = 1.75.dp.toPx()
+
+        // Soft translucent liquid ribbon fill between upper and lower wave
+        drawPath(ribbonPath, color = waveFillColor)
+
+        // Crisp upper continuous wave contour
+        drawPath(
+            path = topPath,
+            color = waveStrokeColor,
+            style = Stroke(
+                width = strokeWidthPx,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+        )
+
+        // Crisp lower continuous wave contour
+        drawPath(
+            path = bottomPath,
+            color = waveStrokeColor,
+            style = Stroke(
+                width = strokeWidthPx,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+        )
+
+        // Subtle baseline connection hairline
+        drawLine(
+            color = fixedWaveformColor.copy(alpha = 0.16f),
+            start = Offset(0f, centerY),
+            end = Offset(totalWidth, centerY),
+            strokeWidth = 0.75.dp.toPx()
+        )
     }
 }
 
