@@ -13,8 +13,8 @@ import com.example.model.Track
 
 /**
  * Direct Coil Fetcher for Track models:
- * Resolves local storage audio album art and resource covers via VelvetArtworkCache
- * without making invalid MediaStore ContentProvider queries.
+ * Resolves local storage audio album art and resource covers via VelvetArtworkCache.
+ * Supports both razor-sharp full-resolution for PlayerSheet and fast downsampled thumbnails for lists.
  */
 class TrackArtworkFetcher(
     private val context: Context,
@@ -23,7 +23,13 @@ class TrackArtworkFetcher(
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult {
-        val bitmap = VelvetArtworkCache.getOrDecodeThumbnail(context, track)
+        val isThumbnail = options.parameters.value("is_thumbnail") as? Boolean ?: false
+        val bitmap = if (isThumbnail) {
+            VelvetArtworkCache.getOrDecodeThumbnail(context, track)
+        } else {
+            VelvetArtworkCache.getOrDecodeFullArtwork(context, track)
+        }
+
         return DrawableResult(
             drawable = BitmapDrawable(context.resources, bitmap),
             isSampled = false,

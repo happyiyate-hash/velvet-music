@@ -2477,6 +2477,7 @@ fun NowPlayingActionSheet(
                         track = track,
                         contentDescription = track.title,
                         contentScale = ContentScale.Crop,
+                        thumbnailSizePx = 128,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

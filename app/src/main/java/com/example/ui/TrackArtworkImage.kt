@@ -63,14 +63,18 @@ fun TrackArtworkImage(
 ) {
     val context = LocalContext.current
     val imageLoader = remember { VelvetImageLoader.get(context) }
+    val isThumbnail = thumbnailSizePx != null && thumbnailSizePx > 0
 
-    // Instant frame-0 memory check: if track was already displayed, show it synchronously!
-    val memoryBitmap: Bitmap? = remember(track.id) {
-        VelvetArtworkCache.getFromMemory(track.id)
+    // Instant frame-0 memory check: for thumbnails check thumbnail cache; for Player Sheet check full HD cache!
+    val memoryBitmap: Bitmap? = remember(track.id, isThumbnail) {
+        if (isThumbnail) {
+            VelvetArtworkCache.getFromMemory(track.id)
+        } else {
+            VelvetArtworkCache.getFullFromMemory(track.id)
+        }
     }
 
-    val targetSize = thumbnailSizePx ?: 128
-    val request = remember(track.id, targetSize, crossfade) {
+    val request = remember(track.id, thumbnailSizePx, crossfade, isThumbnail) {
         val builder = ImageRequest.Builder(context)
             .data(track)
             .dispatcher(Dispatchers.IO)
@@ -78,13 +82,19 @@ fun TrackArtworkImage(
             .allowHardware(true)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
-            .memoryCacheKey("track_${track.id}_$targetSize")
-            .diskCacheKey("track_${track.id}_$targetSize")
 
-        if (targetSize > 0) {
-            builder.size(targetSize, targetSize)
+        if (isThumbnail && thumbnailSizePx != null) {
+            builder.setParameter("is_thumbnail", true)
+                .memoryCacheKey("track_thumb_${track.id}_$thumbnailSizePx")
+                .diskCacheKey("track_thumb_${track.id}_$thumbnailSizePx")
+                .size(thumbnailSizePx, thumbnailSizePx)
                 .precision(Precision.EXACT)
                 .scale(Scale.FILL)
+        } else {
+            // Full-resolution artwork for PlayerSheet: full HD original clarity, zero downsample blur
+            builder.setParameter("is_thumbnail", false)
+                .memoryCacheKey("track_full_${track.id}")
+                .diskCacheKey("track_full_${track.id}")
         }
         builder.build()
     }

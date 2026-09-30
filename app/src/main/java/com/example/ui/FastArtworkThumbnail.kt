@@ -63,6 +63,7 @@ fun FastArtworkThumbnail(
     val request = remember(track.id, thumbnailSizePx) {
         ImageRequest.Builder(context)
             .data(track)
+            .setParameter("is_thumbnail", true)
             .dispatcher(Dispatchers.IO)
             .crossfade(180)
             .allowHardware(true)

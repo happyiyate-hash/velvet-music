@@ -1,6 +1,5 @@
 package com.example.media
 
-import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -18,44 +17,100 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * YouTube Music Style Ultra-Fast Artwork Engine:
+ * YouTube Music Style High-Fidelity Artwork Engine:
  *
- * 1. Frame-0 In-Memory Cache: Keeps decoded 128x128 thumbnails in RAM so returning
- *    to previously visible songs never displays a placeholder or re-decodes.
- * 2. Persistent On-Disk Thumbnail Cache: Extracted embedded album art is saved directly
- *    as a fast JPEG file in cacheDir/velvet_art/art_{track.id}.jpg.
- * 3. Native Android 10+ (Q) MediaStore Hardware Thumbnail Support:
- *    Avoids deprecated "content://media/external/audio/albumart" entirely.
- * 4. Fallback Guard: If a device audio track has no embedded artwork, assigns a rich
- *    photo from FallbackArtworkPool once and remembers it, so MediaStore is never
- *    queried repeatedly for missing art.
+ * 1. Full-Resolution Crisp Artwork (for Player Sheet):
+ *    - Decodes original embedded ID3 album art in full clarity (up to 1080x1080) with zero blur.
+ *    - Cached in `fullMemoryCache` so the player sheet always displays razor-sharp, crystal-clean album art.
+ * 2. Ultra-Fast Thumbnail Engine (for Music Lists & Up Next Queue):
+ *    - Decodes downscaled 128x128 thumbnails for instant, smooth 60fps scrolling without memory pressure.
+ * 3. Dual-Layer Persistence:
+ *    - Thumbnail disk cache: `cacheDir/velvet_art/art_{id}.jpg`
+ *    - Full-resolution disk cache: `cacheDir/velvet_art/art_full_{id}.jpg`
  */
 object VelvetArtworkCache {
     private const val THUMB_SIZE = 128
+    private const val FULL_ARTWORK_MAX_SIZE = 1200
 
-    // Memory cache holding up to 300 thumbnail bitmaps (~15MB RAM max)
-    private val memoryCache = object : LruCache<String, Bitmap>(300) {
+    // Memory cache for list/queue thumbnails (up to 300 thumbnails ~15MB RAM)
+    private val thumbnailMemoryCache = object : LruCache<String, Bitmap>(300) {
+        override fun sizeOf(key: String, value: Bitmap): Int = 1
+    }
+
+    // Memory cache for full-resolution player artwork (holds up to 15 HD album covers)
+    private val fullMemoryCache = object : LruCache<String, Bitmap>(15) {
         override fun sizeOf(key: String, value: Bitmap): Int = 1
     }
 
     // Tracks confirmed to have no embedded audio artwork to avoid redundant extraction attempts
     private val noEmbeddedArtTracks = ConcurrentHashMap<String, Boolean>()
 
-    fun getFromMemory(trackId: String): Bitmap? {
-        return memoryCache.get(trackId)
+    fun getFromMemory(trackId: String): Bitmap? = thumbnailMemoryCache.get(trackId)
+    fun putInMemory(trackId: String, bitmap: Bitmap) {
+        thumbnailMemoryCache.put(trackId, bitmap)
     }
 
-    fun putInMemory(trackId: String, bitmap: Bitmap) {
-        memoryCache.put(trackId, bitmap)
+    fun getFullFromMemory(trackId: String): Bitmap? = fullMemoryCache.get(trackId)
+    fun putFullInMemory(trackId: String, bitmap: Bitmap) {
+        fullMemoryCache.put(trackId, bitmap)
     }
 
     /**
-     * Resolves the artwork Bitmap synchronously from memory if available,
-     * or asynchronously from local disk / device storage.
+     * Resolves the FULL-RESOLUTION crisp artwork for the player sheet (zero blur, original quality).
+     */
+    suspend fun getOrDecodeFullArtwork(context: Context, track: Track): Bitmap = withContext(Dispatchers.IO) {
+        // 1. In-memory HD check (0ms)
+        val cached = fullMemoryCache.get(track.id)
+        if (cached != null && !cached.isRecycled) {
+            return@withContext cached
+        }
+
+        // 2. Persistent full-res disk cache check
+        val artDir = File(context.cacheDir, "velvet_art").apply { if (!exists()) mkdirs() }
+        val fullDiskFile = File(artDir, "art_full_${track.id}.jpg")
+        if (fullDiskFile.exists() && fullDiskFile.length() > 0) {
+            try {
+                val diskBmp = BitmapFactory.decodeFile(fullDiskFile.absolutePath)
+                if (diskBmp != null) {
+                    fullMemoryCache.put(track.id, diskBmp)
+                    return@withContext diskBmp
+                }
+            } catch (_: Throwable) {}
+        }
+
+        // 3. Extract original embedded ID3 artwork from device audio file at full HD clarity
+        if (noEmbeddedArtTracks[track.id] != true) {
+            val fullExtracted = extractDeviceArtworkFull(context, track)
+            if (fullExtracted != null) {
+                try {
+                    FileOutputStream(fullDiskFile).use { out ->
+                        fullExtracted.compress(Bitmap.CompressFormat.JPEG, 94, out)
+                    }
+                } catch (_: Throwable) {}
+                fullMemoryCache.put(track.id, fullExtracted)
+                return@withContext fullExtracted
+            } else {
+                noEmbeddedArtTracks[track.id] = true
+            }
+        }
+
+        // 4. Guaranteed crisp fallback photo from resource pool at full resolution
+        val fallbackRes = if (track.coverResId != 0) {
+            track.coverResId
+        } else {
+            FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
+        }
+        val fullFallbackBmp = decodeResourceFull(context, fallbackRes)
+        fullMemoryCache.put(track.id, fullFallbackBmp)
+        return@withContext fullFallbackBmp
+    }
+
+    /**
+     * Resolves downsampled 128x128 thumbnail for lists and queue items.
      */
     suspend fun getOrDecodeThumbnail(context: Context, track: Track): Bitmap = withContext(Dispatchers.IO) {
         // 1. In-memory check (0ms)
-        val cached = memoryCache.get(track.id)
+        val cached = thumbnailMemoryCache.get(track.id)
         if (cached != null && !cached.isRecycled) {
             return@withContext cached
         }
@@ -67,7 +122,7 @@ object VelvetArtworkCache {
             try {
                 val diskBmp = BitmapFactory.decodeFile(diskFile.absolutePath)
                 if (diskBmp != null) {
-                    memoryCache.put(track.id, diskBmp)
+                    thumbnailMemoryCache.put(track.id, diskBmp)
                     return@withContext diskBmp
                 }
             } catch (_: Throwable) {}
@@ -75,15 +130,14 @@ object VelvetArtworkCache {
 
         // 3. Extract device audio embedded artwork if not already known to be absent
         if (noEmbeddedArtTracks[track.id] != true) {
-            val extracted = extractDeviceArtwork(context, track)
+            val extracted = extractDeviceArtworkThumb(context, track)
             if (extracted != null) {
-                // Save to disk cache for instant subsequent app launches
                 try {
                     FileOutputStream(diskFile).use { out ->
                         extracted.compress(Bitmap.CompressFormat.JPEG, 90, out)
                     }
                 } catch (_: Throwable) {}
-                memoryCache.put(track.id, extracted)
+                thumbnailMemoryCache.put(track.id, extracted)
                 return@withContext extracted
             } else {
                 noEmbeddedArtTracks[track.id] = true
@@ -97,11 +151,59 @@ object VelvetArtworkCache {
             FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
         }
         val fallbackBmp = decodeResourceThumbnail(context, fallbackRes)
-        memoryCache.put(track.id, fallbackBmp)
+        thumbnailMemoryCache.put(track.id, fallbackBmp)
         return@withContext fallbackBmp
     }
 
-    private fun extractDeviceArtwork(context: Context, track: Track): Bitmap? {
+    private fun extractDeviceArtworkFull(context: Context, track: Track): Bitmap? {
+        val contentUriStr = track.contentUri ?: return null
+        val contentUri = try { Uri.parse(contentUriStr) } catch (_: Throwable) { return null }
+
+        // Method A: Android 10+ (Q) native loadThumbnail at HD resolution (1080x1080)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                val thumb = context.contentResolver.loadThumbnail(
+                    contentUri,
+                    Size(FULL_ARTWORK_MAX_SIZE, FULL_ARTWORK_MAX_SIZE),
+                    null
+                )
+                if (thumb != null) {
+                    return thumb
+                }
+            } catch (_: Throwable) {}
+        }
+
+        // Method B: MediaMetadataRetriever embeddedPicture (crystal-clear original ID3 image)
+        try {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, contentUri)
+                val picture = retriever.embeddedPicture
+                if (picture != null && picture.isNotEmpty()) {
+                    val opts = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                    }
+                    BitmapFactory.decodeByteArray(picture, 0, picture.size, opts)
+
+                    var sample = 1
+                    while (opts.outWidth / (sample * 2) >= FULL_ARTWORK_MAX_SIZE && opts.outHeight / (sample * 2) >= FULL_ARTWORK_MAX_SIZE) {
+                        sample *= 2
+                    }
+                    val decodeOpts = BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    }
+                    return BitmapFactory.decodeByteArray(picture, 0, picture.size, decodeOpts)
+                }
+            } finally {
+                retriever.release()
+            }
+        } catch (_: Throwable) {}
+
+        return null
+    }
+
+    private fun extractDeviceArtworkThumb(context: Context, track: Track): Bitmap? {
         val contentUriStr = track.contentUri ?: return null
         val contentUri = try { Uri.parse(contentUriStr) } catch (_: Throwable) { return null }
 
@@ -119,7 +221,7 @@ object VelvetArtworkCache {
             } catch (_: Throwable) {}
         }
 
-        // Method B: MediaMetadataRetriever embeddedPicture (universal ID3 reader)
+        // Method B: MediaMetadataRetriever embeddedPicture
         try {
             val retriever = MediaMetadataRetriever()
             try {
@@ -149,6 +251,15 @@ object VelvetArtworkCache {
         } catch (_: Throwable) {}
 
         return null
+    }
+
+    private fun decodeResourceFull(context: Context, resId: Int): Bitmap {
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = 1
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeResource(context.resources, resId, opts)
+            ?: Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
     }
 
     private fun decodeResourceThumbnail(context: Context, resId: Int): Bitmap {
