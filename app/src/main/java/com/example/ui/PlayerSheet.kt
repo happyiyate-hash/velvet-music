@@ -174,6 +174,7 @@ import kotlinx.coroutines.withContext
 import com.example.audio.AudioTelemetry
 import com.example.audio.RepeatMode
 import com.example.media.ArtworkColorExtractor
+import com.example.media.VelvetArtworkCache
 import com.example.media.TrackThemeColors
 import com.example.model.Track
 import kotlin.math.abs
@@ -392,6 +393,23 @@ fun PlayerSheet(
         }
     }
 
+    // Warm upcoming full-resolution artwork in the background. Playback/queue selection
+    // never waits for this work to finish.
+    LaunchedEffect(queueItems, track.id) {
+        val upcoming = queueItems
+            .dropWhile { it.id != track.id }
+            .drop(1)
+            .take(3)
+
+        withContext(Dispatchers.IO) {
+            upcoming.forEach { nextTrack ->
+                if (VelvetArtworkCache.getFullFromMemory(nextTrack.id) == null) {
+                    runCatching { VelvetArtworkCache.getOrDecodeFullArtwork(context, nextTrack) }
+                }
+            }
+        }
+    }
+
     fun beginQueueDrag(id: String, index: Int, canDrag: Boolean = true) {
         if (!canDrag || index < 0 || activeQueueDragId != null) return
         activeQueueDragId = id
@@ -405,10 +423,20 @@ fun PlayerSheet(
         val dragId = activeQueueDragId ?: return
         val startIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
         if (startIndex < 0) return
+
+        // Keep the finger-following offset continuous. Change the target slot only
+        // after the dragged artwork has substantially crossed its neighbor.
         queueDragOffsetY += deltaY
         val itemHeightPx = with(density) { 60.dp.toPx() }
-        val slots = (queueDragOffsetY / itemHeightPx).roundToInt()
-        val newTarget = (startIndex + slots).coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
+        val crossedSlots = when {
+            queueDragOffsetY >= 0f ->
+                kotlin.math.floor((queueDragOffsetY + itemHeightPx * 0.46f) / itemHeightPx).toInt()
+            else ->
+                kotlin.math.ceil((queueDragOffsetY - itemHeightPx * 0.46f) / itemHeightPx).toInt()
+        }
+        val newTarget = (startIndex + crossedSlots)
+            .coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
+
         if (newTarget != queueDragTargetIndex) {
             queueDragTargetIndex = newTarget
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -949,7 +977,7 @@ fun PlayerSheet(
                         )
                     }
 
-                    // PLAYER CARD AUDIO VISUALIZER (Spanning full width to both boundaries, sitting directly at bottom edge)
+                    // Thin vertical lines rising from the bottom edge of the player card.
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -958,7 +986,7 @@ fun PlayerSheet(
                             .graphicsLayer { alpha = stage1CardElementsAlpha }
                             .zIndex(10f)
                     ) {
-                        DarkSilhouetteWaveform(
+                        PlayerBottomVerticalLines(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
                             modifier = Modifier.fillMaxSize()
@@ -1601,228 +1629,62 @@ private fun NowPlayingProgressBar(
  *    - Gentle breathing undulating wave across the baseline; never a flat horizontal straight line.
  */
 @Composable
-private fun DarkSilhouetteWaveform(
+private fun PlayerBottomVerticalLines(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
-    modifier: Modifier = Modifier,
-    fixedWaveformColor: Color = Color(0xFFFFFFFF)
+    modifier: Modifier = Modifier
 ) {
-    val numPoints = 140
-    val liveAmplitudes = remember { FloatArray(numPoints) { 0.08f } }
-    val smoothedAmplitudes = remember { FloatArray(numPoints) { 0.08f } }
-    val targetAmplitudes = remember { FloatArray(numPoints) { 0.08f } }
-
+    val lineCount = 72
+    val heights = remember(lineCount) { FloatArray(lineCount) { 0.08f } }
     val frameTicker = remember { mutableLongStateOf(0L) }
+
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
             while (isActive) {
-                withFrameNanos { timeNanos ->
-                    frameTicker.longValue = timeNanos
-                }
+                withFrameNanos { frameTicker.longValue = it }
             }
         }
     }
 
     Canvas(modifier = modifier) {
-        val ticker = frameTicker.longValue
-        val totalWidth = size.width
-        val totalHeight = size.height
-        if (totalWidth <= 0f || totalHeight <= 0f) return@Canvas
+        if (size.width <= 0f || size.height <= 0f) return@Canvas
+        val time = frameTicker.longValue / 1_000_000_000f
+        val fft = telemetry.fftBars
 
-        val centerY = totalHeight / 2f
-        val maxHalfHeight = (totalHeight / 2f) * 0.90f
-        val minHalfHeight = 2.5.dp.toPx() // baseline minimal height for quiet state
-
-        val timeSeconds = (ticker / 1_000_000_000.0).toFloat()
-
-        // 1. Audio Energy Extraction & Frequency Synthesis
-        val rawFft = telemetry.fftBars
-        val fftSize = rawFft.size
-        val subBassEnergy = if (fftSize >= 4) (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f else 0f
-        val midEnergy = if (fftSize >= 24) (rawFft[8] + rawFft[12] + rawFft[16] + rawFft[20]) / 4f else 0f
-        val highEnergy = if (fftSize >= 48) (rawFft[36] + rawFft[42] + rawFft[47]) / 3f else 0f
-
-        val kickImpulse = if (telemetry.kickDetected) 0.75f else (subBassEnergy * 0.50f)
-        val snareImpulse = if (telemetry.snareDetected) 0.60f else (midEnergy * 0.40f)
-        val transientImpulse = (telemetry.transientSpike * 0.45f + highEnergy * 0.35f)
-
-        // 2. Synthesize Target Wave Envelope Across Points
-        for (i in 0 until numPoints) {
-            val norm = i.toFloat() / (numPoints - 1).coerceAtLeast(1)
-
-            if (isPlaying) {
-                // Symmetrical acoustic centers: bass centers at 32% and 68%, vocal in center at 50%
-                val bassDist1 = abs(norm - 0.32f) / 0.20f
-                val bassWeight1 = exp(-bassDist1 * bassDist1 * 4.0f)
-                val bassDist2 = abs(norm - 0.68f) / 0.20f
-                val bassWeight2 = exp(-bassDist2 * bassDist2 * 4.0f)
-                val bassResponse = (bassWeight1 + bassWeight2) * kickImpulse
-
-                val midDist = abs(norm - 0.50f) / 0.24f
-                val midResponse = exp(-midDist * midDist * 4.5f) * snareImpulse
-
-                val fftIndex = (Math.pow(norm.toDouble(), 1.25) * (fftSize - 1)).toInt().coerceIn(0, (fftSize - 1).coerceAtLeast(0))
-                val binVal = if (fftIndex < fftSize) rawFft[fftIndex] else 0f
-                val freqResponse = binVal * 0.42f
-
-                // Living fluid wave motion
-                val waveMotion = sin(norm * 14f - timeSeconds * 3.8f) * 0.06f * (kickImpulse + 0.2f)
-
-                val combined = (bassResponse * 0.60f + midResponse * 0.50f + freqResponse * 0.45f +
-                        transientImpulse * 0.25f + telemetry.rmsLevel * 0.18f + waveMotion)
-                targetAmplitudes[i] = combined.coerceIn(0.06f, 0.95f)
+        for (i in 0 until lineCount) {
+            val normalized = i.toFloat() / (lineCount - 1).coerceAtLeast(1)
+            val fftIndex = if (fft.isNotEmpty()) {
+                (normalized * (fft.size - 1)).toInt().coerceIn(0, fft.lastIndex)
+            } else 0
+            val raw = if (fft.isNotEmpty()) fft[fftIndex].coerceIn(0f, 1f) else 0f
+            val breathing = (kotlin.math.sin(time * 2.2f + i * 0.24f) * 0.5f + 0.5f) * 0.035f
+            val target = if (isPlaying) {
+                (0.10f + raw * 0.78f + breathing).coerceIn(0.06f, 0.92f)
             } else {
-                // 1. Quiet Section: Low amplitude, still visible (not completely flat, smooth wave peaks)
-                val wave1 = sin(norm * 3.14159f * 3.2f + timeSeconds * 1.5f) * 0.045f
-                val wave2 = cos(norm * 3.14159f * 5.6f - timeSeconds * 1.1f) * 0.035f
-                val quietAmp = (0.06f + wave1 + wave2).coerceIn(0.035f, 0.14f)
-                targetAmplitudes[i] = quietAmp
+                heights[i]
             }
-        }
 
-        // 3. Temporal Smoothing (Attack / Decay)
-        val attackRate = 0.42f
-        val decayRate = 0.15f
-        for (i in 0 until numPoints) {
-            val current = liveAmplitudes[i]
-            val target = targetAmplitudes[i]
-            liveAmplitudes[i] = if (target > current) {
-                current + (target - current) * attackRate
+            val current = heights[i]
+            heights[i] = if (isPlaying) {
+                if (target > current) {
+                    current + (target - current) * 0.28f
+                } else {
+                    current + (target - current) * 0.10f
+                }
             } else {
-                current - (current - target) * decayRate
+                current
             }
-        }
 
-        // 4. Spatial Neighbor Smoothing (5-tap Gaussian Filter for silky liquid continuity)
-        for (i in 0 until numPoints) {
-            val p0 = liveAmplitudes[(i - 2).coerceAtLeast(0)]
-            val p1 = liveAmplitudes[(i - 1).coerceAtLeast(0)]
-            val p2 = liveAmplitudes[i]
-            val p3 = liveAmplitudes[(i + 1).coerceAtMost(numPoints - 1)]
-            val p4 = liveAmplitudes[(i + 2).coerceAtMost(numPoints - 1)]
-            smoothedAmplitudes[i] = p0 * 0.08f + p1 * 0.24f + p2 * 0.36f + p3 * 0.24f + p4 * 0.08f
-        }
-
-        // 5. Water Ripple Diffusion
-        for (i in 1 until numPoints - 1) {
-            val laplacian = (smoothedAmplitudes[i - 1] - 2f * smoothedAmplitudes[i] + smoothedAmplitudes[i + 1])
-            liveAmplitudes[i] = (smoothedAmplitudes[i] + laplacian * 0.16f).coerceIn(0.03f, 0.95f)
-        }
-
-        // 6. Coordinates and Edge Taper Window
-        val stepX = totalWidth / (numPoints - 1).coerceAtLeast(1)
-        val topY = FloatArray(numPoints)
-        val bottomY = FloatArray(numPoints)
-        val wave1Y = FloatArray(numPoints)
-        val wave2Y = FloatArray(numPoints)
-        val posX = FloatArray(numPoints)
-
-        for (i in 0 until numPoints) {
-            val norm = i.toFloat() / (numPoints - 1).coerceAtLeast(1)
-            // Cosine edge window so ends taper gracefully into the margins
-            val edgeWindow = sin(norm * 3.14159f).pow(0.45f)
-            val envelope = (minHalfHeight + (liveAmplitudes[i] * edgeWindow) * maxHalfHeight)
-
-            posX[i] = i * stepX
-            topY[i] = centerY - envelope
-            bottomY[i] = centerY + envelope
-
-            // Harmonic inner waves for the signature acoustic vibration look
-            val harmonic1 = sin(norm * 16f - timeSeconds * 3.2f) * envelope * 0.65f
-            val harmonic2 = cos(norm * 22f + timeSeconds * 2.4f) * envelope * 0.45f
-            wave1Y[i] = centerY + harmonic1
-            wave2Y[i] = centerY + harmonic2
-        }
-
-        // 7. Render Dense Vertical Resonant Threads (from Top to Bottom envelope)
-        val threadWidthPx = 1.3.dp.toPx()
-        val white = fixedWaveformColor
-        val threadColorMuted = Color(0xFFE5E7EB)
-
-        for (i in 0 until numPoints) {
-            val norm = i.toFloat() / (numPoints - 1).coerceAtLeast(1)
-            val edgeFade = sin(norm * 3.14159f).pow(0.5f)
-            val lineAlpha = (0.35f + 0.55f * edgeFade).coerceIn(0.15f, 0.90f)
-
+            val lineHeight = (size.height * heights[i]).coerceIn(2.dp.toPx(), size.height)
+            val x = normalized * size.width
             drawLine(
-                color = threadColorMuted.copy(alpha = lineAlpha),
-                start = Offset(posX[i], topY[i]),
-                end = Offset(posX[i], bottomY[i]),
-                strokeWidth = threadWidthPx,
+                color = Color.White.copy(alpha = 0.62f),
+                start = Offset(x, size.height),
+                end = Offset(x, size.height - lineHeight),
+                strokeWidth = 1.15.dp.toPx(),
                 cap = StrokeCap.Round
             )
         }
-
-        // 8. Continuous Smooth Bézier Curves for Outer Envelope Contours
-        val topEnvelopePath = Path().apply {
-            moveTo(posX[0], topY[0])
-            for (i in 0 until numPoints - 1) {
-                val midX = (posX[i] + posX[i + 1]) / 2f
-                val midY = (topY[i] + topY[i + 1]) / 2f
-                quadraticBezierTo(posX[i], topY[i], midX, midY)
-            }
-            lineTo(posX[numPoints - 1], topY[numPoints - 1])
-        }
-
-        val bottomEnvelopePath = Path().apply {
-            moveTo(posX[0], bottomY[0])
-            for (i in 0 until numPoints - 1) {
-                val midX = (posX[i] + posX[i + 1]) / 2f
-                val midY = (bottomY[i] + bottomY[i + 1]) / 2f
-                quadraticBezierTo(posX[i], bottomY[i], midX, midY)
-            }
-            lineTo(posX[numPoints - 1], bottomY[numPoints - 1])
-        }
-
-        // Harmonic inner thread curves
-        val harmonicPath1 = Path().apply {
-            moveTo(posX[0], wave1Y[0])
-            for (i in 0 until numPoints - 1) {
-                val midX = (posX[i] + posX[i + 1]) / 2f
-                val midY = (wave1Y[i] + wave1Y[i + 1]) / 2f
-                quadraticBezierTo(posX[i], wave1Y[i], midX, midY)
-            }
-            lineTo(posX[numPoints - 1], wave1Y[numPoints - 1])
-        }
-
-        val harmonicPath2 = Path().apply {
-            moveTo(posX[0], wave2Y[0])
-            for (i in 0 until numPoints - 1) {
-                val midX = (posX[i] + posX[i + 1]) / 2f
-                val midY = (wave2Y[i] + wave2Y[i + 1]) / 2f
-                quadraticBezierTo(posX[i], wave2Y[i], midX, midY)
-            }
-            lineTo(posX[numPoints - 1], wave2Y[numPoints - 1])
-        }
-
-        val contourStrokePx = 1.35.dp.toPx()
-        val harmonicStrokePx = 1.0.dp.toPx()
-
-        // Crisp White Top Envelope Contour
-        drawPath(
-            path = topEnvelopePath,
-            color = white.copy(alpha = 0.95f),
-            style = Stroke(width = contourStrokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-
-        // Crisp White Bottom Envelope Contour
-        drawPath(
-            path = bottomEnvelopePath,
-            color = white.copy(alpha = 0.95f),
-            style = Stroke(width = contourStrokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-
-        // Luminous Harmonic Weave Threads
-        drawPath(
-            path = harmonicPath1,
-            color = white.copy(alpha = 0.45f),
-            style = Stroke(width = harmonicStrokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-        drawPath(
-            path = harmonicPath2,
-            color = white.copy(alpha = 0.35f),
-            style = Stroke(width = harmonicStrokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
     }
 }
 
@@ -1872,8 +1734,8 @@ private fun UpNextTrackRow(
     val slotShiftAnim by animateFloatAsState(
         targetValue = targetSlotShiftY,
         animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = 0.78f, // gentle spring bounce like YouTube Music!
-            stiffness = 140f     // slow, graceful movement!
+            dampingRatio = 0.86f,
+            stiffness = 72f
         ),
         label = "queue_slot_spring_shift"
     )
