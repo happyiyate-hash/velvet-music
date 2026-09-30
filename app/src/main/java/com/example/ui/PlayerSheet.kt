@@ -384,23 +384,15 @@ fun PlayerSheet(
 
     var activeQueueDragId by remember { mutableStateOf<String?>(null) }
     var activeQueueDragIndex by remember { mutableIntStateOf(-1) }
+    var activeQueueDragOriginalIndex by remember { mutableIntStateOf(-1) }
     var queueDragOffsetY by remember { mutableFloatStateOf(0f) }
-    var queueDragTargetIndex by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(queueItems) {
-        if (activeQueueDragId == null) {
-            orderedQueueItems = queueItems
-        }
+        if (activeQueueDragId == null) orderedQueueItems = queueItems
     }
 
-    // Warm upcoming full-resolution artwork in the background. Playback/queue selection
-    // never waits for this work to finish.
     LaunchedEffect(queueItems, track.id) {
-        val upcoming = queueItems
-            .dropWhile { it.id != track.id }
-            .drop(1)
-            .take(3)
-
+        val upcoming = queueItems.dropWhile { it.id != track.id }.drop(1).take(3)
         withContext(Dispatchers.IO) {
             upcoming.forEach { nextTrack ->
                 if (VelvetArtworkCache.getFullFromMemory(nextTrack.id) == null) {
@@ -414,51 +406,50 @@ fun PlayerSheet(
         if (!canDrag || index < 0 || activeQueueDragId != null) return
         activeQueueDragId = id
         activeQueueDragIndex = index
+        activeQueueDragOriginalIndex = index
         queueDragOffsetY = 0f
-        queueDragTargetIndex = index
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
     fun updateQueueDrag(deltaY: Float) {
-        val dragId = activeQueueDragId ?: return
-        val startIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
-        if (startIndex < 0) return
-
-        // Keep the finger-following offset continuous. Change the target slot only
-        // after the dragged artwork has substantially crossed its neighbor.
+        if (activeQueueDragId == null || activeQueueDragIndex < 0) return
         queueDragOffsetY += deltaY
-        val itemHeightPx = with(density) { 60.dp.toPx() }
-        val crossedSlots = when {
-            queueDragOffsetY >= 0f ->
-                kotlin.math.floor((queueDragOffsetY + itemHeightPx * 0.46f) / itemHeightPx).toInt()
-            else ->
-                kotlin.math.ceil((queueDragOffsetY - itemHeightPx * 0.46f) / itemHeightPx).toInt()
-        }
-        val newTarget = (startIndex + crossedSlots)
-            .coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
+        val rowHeightPx = with(density) { 60.dp.toPx() }
 
-        if (newTarget != queueDragTargetIndex) {
-            queueDragTargetIndex = newTarget
+        while (queueDragOffsetY >= rowHeightPx * 0.50f && activeQueueDragIndex < orderedQueueItems.lastIndex) {
+            val from = activeQueueDragIndex
+            val mutable = orderedQueueItems.toMutableList()
+            val moved = mutable.removeAt(from)
+            mutable.add(from + 1, moved)
+            orderedQueueItems = mutable
+            activeQueueDragIndex = from + 1
+            queueDragOffsetY -= rowHeightPx
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+
+        while (queueDragOffsetY <= -rowHeightPx * 0.50f && activeQueueDragIndex > 0) {
+            val from = activeQueueDragIndex
+            val mutable = orderedQueueItems.toMutableList()
+            val moved = mutable.removeAt(from)
+            mutable.add(from - 1, moved)
+            orderedQueueItems = mutable
+            activeQueueDragIndex = from - 1
+            queueDragOffsetY += rowHeightPx
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
     }
 
     fun finishQueueDrag() {
-        val dragId = activeQueueDragId
-        val from = if (dragId != null) orderedQueueItems.indexOfFirst { it.id == dragId } else -1
-        val to = queueDragTargetIndex
-        if (dragId != null && from >= 0 && to >= 0 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
-            val updatedQueue = orderedQueueItems.toMutableList().apply {
-                add(to, removeAt(from))
-            }
-            orderedQueueItems = updatedQueue
-            onReorderQueue?.invoke(from, to)
-            onUpdateQueue?.invoke(updatedQueue)
+        val original = activeQueueDragOriginalIndex
+        val final = activeQueueDragIndex
+        if (activeQueueDragId != null && original >= 0 && final >= 0 && original != final) {
+            onReorderQueue?.invoke(original, final)
+            onUpdateQueue?.invoke(orderedQueueItems)
         }
         activeQueueDragId = null
         activeQueueDragIndex = -1
+        activeQueueDragOriginalIndex = -1
         queueDragOffsetY = 0f
-        queueDragTargetIndex = -1
     }
 
     // YouTube Music-style Artwork Background Color System:
@@ -1267,24 +1258,9 @@ fun PlayerSheet(
                                 val isCurrent = queueTrack.id == track.id
                                 val isDragging = queueTrack.id == activeQueueDragId
 
-                                // YouTube Music dynamic spring shift:
-                                // When an item is dragged over another item, the other item smoothly slides into the empty slot
-                                val targetShift = run {
-                                    val dragId = activeQueueDragId ?: return@run 0f
-                                    if (isDragging) return@run 0f
-                                    val fromIndex = activeQueueDragIndex
-                                    val toIndex = queueDragTargetIndex
-                                    if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) return@run 0f
-                                    when {
-                                        fromIndex < toIndex -> {
-                                            if (queueIndex in (fromIndex + 1)..toIndex) -rowHeightPx else 0f
-                                        }
-                                        fromIndex > toIndex -> {
-                                            if (queueIndex in toIndex until fromIndex) rowHeightPx else 0f
-                                        }
-                                        else -> 0f
-                                    }
-                                }
+                                // Real queue order is changed during the gesture.
+                                // Do not add a second synthetic translation.
+                                val targetShift = 0f
 
                                 UpNextTrackRow(
                                     track = queueTrack,
@@ -1319,7 +1295,8 @@ fun PlayerSheet(
                                     onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
                                     isDragging = isDragging,
                                     dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
-                                    targetSlotShiftY = targetShift
+                                    targetSlotShiftY = targetShift,
+                                    queueIndex = queueIndex
                                 )
                             }
                         }
@@ -1706,6 +1683,7 @@ private fun UpNextTrackRow(
     isDragging: Boolean,
     dragOffsetY: Float,
     targetSlotShiftY: Float = 0f,
+    queueIndex: Int = -1,
     modifier: Modifier = Modifier
 ) {
     var rowWidthPx by remember { mutableFloatStateOf(0f) }
@@ -1731,15 +1709,30 @@ private fun UpNextTrackRow(
         }
     }
 
-    // Smooth, slow spring bounce like YouTube Music when another row slides into empty space:
-    val slotShiftAnim by animateFloatAsState(
-        targetValue = targetSlotShiftY,
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = 0.86f,
-            stiffness = 72f
-        ),
-        label = "queue_slot_spring_shift"
-    )
+    // Animate a row from its previous logical slot into its new logical slot.
+    // This is separate from the dragged row, whose position follows the finger.
+    val rowHeightPx = with(density) { 60.dp.toPx() }
+    val slotAnim = remember(track.id) { Animatable(0f) }
+    var previousQueueIndex by remember(track.id) { mutableIntStateOf(queueIndex) }
+
+    LaunchedEffect(queueIndex) {
+        if (previousQueueIndex != queueIndex && !isDragging) {
+            val slotDelta = previousQueueIndex - queueIndex
+            previousQueueIndex = queueIndex
+            slotAnim.snapTo(slotDelta * rowHeightPx)
+            slotAnim.animateTo(
+                0f,
+                animationSpec = spring(
+                    dampingRatio = 0.86f,
+                    stiffness = 72f
+                )
+            )
+        } else {
+            previousQueueIndex = queueIndex
+        }
+    }
+
+    val slotShiftAnim = if (isDragging) 0f else slotAnim.value
 
     val scale by animateFloatAsState(
         targetValue = if (isDragging) 1.025f else 1f,
