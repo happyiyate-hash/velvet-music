@@ -320,42 +320,26 @@ fun PlayerSheet(
     var showLyricsSheet by remember { mutableStateOf(false) }
 
     // Dynamically derive the calm, restrained palette based on the current artwork.
-    // The resolved bitmap is passed directly into the color extractor state update loop.
-    var resolvedArtworkBitmap by remember(track.id, track.artworkUri, track.coverResId) {
-        val initial = ArtworkColorExtractor.resolveTrackBitmap(context, track)
-            ?: if (track.coverResId != 0) {
-                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-            } else null
-        mutableStateOf<Bitmap?>(initial)
-    }
-    var themeColors by remember(track.id, track.artworkUri, track.coverResId) {
-        val initial = resolvedArtworkBitmap
-            ?: ArtworkColorExtractor.resolveTrackBitmap(context, track)
-            ?: if (track.coverResId != 0) {
-                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-            } else null
-        mutableStateOf(
-            if (initial != null) ArtworkColorExtractor.extractColorsFromBitmap(initial)
-            else ArtworkColorExtractor.generateThemePalette(track.dominantColor)
-        )
+    // Instant frame-0 derivation from dominantColor (0ms latency, zero main-thread disk I/O).
+    var resolvedArtworkBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var themeColors by remember(track.id) {
+        mutableStateOf(ArtworkColorExtractor.generateThemePalette(track.dominantColor))
     }
 
     LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
-        if (resolvedArtworkBitmap == null) {
-            withContext(Dispatchers.IO) {
-                val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
-                    ?: if (track.coverResId != 0) {
-                        runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-                    } else null
-                val extractedColors = if (bitmap != null) {
-                    ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
-                } else {
-                    ArtworkColorExtractor.generateThemePalette(track.dominantColor)
-                }
-                withContext(Dispatchers.Main) {
-                    resolvedArtworkBitmap = bitmap
-                    themeColors = extractedColors
-                }
+        withContext(Dispatchers.IO) {
+            val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
+                ?: if (track.coverResId != 0) {
+                    runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+                } else null
+            val extractedColors = if (bitmap != null) {
+                ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+            } else {
+                ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+            }
+            withContext(Dispatchers.Main) {
+                resolvedArtworkBitmap = bitmap
+                themeColors = extractedColors
             }
         }
     }
@@ -568,14 +552,12 @@ fun PlayerSheet(
 
             // Collapsed state (p = 0f):
             // Shift bottom sheet downward so that only the drag handle peeks above system navigation.
-            val visualizerHeight = 36.dp
             val collapsedPeekHeight = (navBarBottom + 20.dp).coerceIn(20.dp, 32.dp)
             val collapsedControlsY = totalHeight - collapsedPeekHeight - controlsHeight - 12.dp
             val collapsedCardHeight = collapsedControlsY - 6.dp
-            val collapsedWaveformY = collapsedCardHeight - visualizerHeight
-            val collapsedProgressY = collapsedWaveformY - 26.dp
-            val collapsedMetadataY = collapsedProgressY - 44.dp
-            val collapsedArtworkBottom = collapsedMetadataY - 10.dp
+            val collapsedProgressY = collapsedCardHeight - 34.dp
+            val collapsedMetadataY = collapsedProgressY - 48.dp
+            val collapsedArtworkBottom = collapsedMetadataY - 12.dp
 
             // Collapsed state (p = 0f): Original centered display with rounded corners and proper margins:
             val collapsedArtworkHeight = (minOf(totalWidth - 32.dp, collapsedArtworkBottom - (statusBarTop + 46.dp) - 6.dp)).coerceIn(240.dp, 330.dp)
@@ -593,9 +575,8 @@ fun PlayerSheet(
             val expandedArtworkBottom = expandedArtworkTop + expandedArtworkHeight // = totalWidth
             val expandedCardHeight = expandedArtworkBottom
 
-            val expandedWaveformY = expandedCardHeight - visualizerHeight
-            val expandedProgressY = expandedWaveformY - 26.dp
-            val expandedMetadataY = expandedProgressY - 44.dp
+            val expandedProgressY = expandedCardHeight - 34.dp
+            val expandedMetadataY = expandedProgressY - 48.dp
 
             // Stage 2 Mini Artwork Targets:
             // Reduced size: ~20% larger than 48dp queue art = 56dp. Pushed to far left with small space (10dp).
@@ -1257,6 +1238,25 @@ fun PlayerSheet(
                                 val isCurrent = queueTrack.id == track.id
                                 val isDragging = queueTrack.id == activeQueueDragId
 
+                                // YouTube Music dynamic spring shift:
+                                // When an item is dragged over another item, the other item smoothly slides into the empty slot
+                                val targetShift = run {
+                                    val dragId = activeQueueDragId ?: return@run 0f
+                                    if (isDragging) return@run 0f
+                                    val fromIndex = activeQueueDragIndex
+                                    val toIndex = queueDragTargetIndex
+                                    if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) return@run 0f
+                                    when {
+                                        fromIndex < toIndex -> {
+                                            if (queueIndex in (fromIndex + 1)..toIndex) -rowHeightPx else 0f
+                                        }
+                                        fromIndex > toIndex -> {
+                                            if (queueIndex in toIndex until fromIndex) rowHeightPx else 0f
+                                        }
+                                        else -> 0f
+                                    }
+                                }
+
                                 UpNextTrackRow(
                                     track = queueTrack,
                                     isCurrent = isCurrent,
@@ -1289,7 +1289,8 @@ fun PlayerSheet(
                                     onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
                                     onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
                                     isDragging = isDragging,
-                                    dragOffsetY = if (isDragging) queueDragOffsetY else 0f
+                                    dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
+                                    targetSlotShiftY = targetShift
                                 )
                             }
                         }
@@ -1574,41 +1575,42 @@ private fun NowPlayingProgressBar(
 }
 
 /**
- * Continuous Liquid Waveform Visualizer (Velvet Acoustic Wave Engine):
+ * Velvet Music Player - Visualizer (Continuous Symmetrical Acoustic Waveform):
  *
- * 1. Single Continuous Waveform:
- *    - 128 continuous sampling points across the full card width.
- *    - Rendered via smooth quadratic Bézier curve interpolation through midpoints.
- *    - Never renders discrete bars, blocks, or segmented rectangles.
+ * Implements the exact Velvet visualizer specification from design mockup:
+ * 1. Continuous Wave (not individual bars):
+ *    - 140 fine sampling points across the full available width.
+ *    - Vertical resonant threads connect top and bottom symmetrical amplitudes at each sample point.
+ *    - Continuous Catmull-Rom / Bézier spline curves trace the upper and lower wave envelope contours.
+ *    - Subtle harmonic phase ribbons weave through the wave body, forming the silky acoustic string vibration texture.
  *
- * 2. Centered Baseline with Symmetrical Mirroring:
- *    - Horizontal baseline positioned exactly at the vertical center (centerY = totalHeight / 2).
- *    - Audio energy symmetrically displaces both upward and downward around the baseline.
+ * 2. Centered Baseline & Symmetrical Amplitude:
+ *    - Center baseline (centerY = totalHeight / 2).
+ *    - Movement occurs symmetrically both above and below the baseline.
  *
- * 3. Water Pressure & Ripple Propagation:
- *    - Temporal smoothing (rapid responsive attack, graceful liquid release).
- *    - Spatial neighbor smoothing (weighted adjacent sample blending).
- *    - 1D wave diffusion (Laplacian perturbation spreading disturbances smoothly outward).
+ * 3. Smooth Physical Animation:
+ *    - 5-tap Gaussian spatial smoothing blends neighbors into a cohesive liquid waveform.
+ *    - Temporal attack (0.42f) and release (0.15f) for natural, fluid sound wave response.
+ *    - Wave propagation ripples disturbances across the full width.
  *
- * 4. Fixed Velvet Visualizer Color:
- *    - Independent of album artwork colors to maintain a restrained, mature, signature Velvet identity.
- *    - Fixed high-contrast platinum silver-lavender stroke on dark backgrounds with translucent ribbon fill.
+ * 4. Fixed Color (#FFFFFF / #E5E7EB):
+ *    - Pure crisp white with subtle gray threading. Zero extraction from album art.
  *
- * 5. Full Width & Quiet-State Continuity:
- *    - Spans 100% of the player card width with minimal horizontal padding.
- *    - During quiet/paused playback, gracefully preserves an organic, continuous micro-wave baseline.
+ * 5. Quiet-State Living Continuity:
+ *    - Low amplitude, still visible (not completely flat).
+ *    - Gentle breathing undulating wave across the baseline; never a flat horizontal straight line.
  */
 @Composable
 private fun DarkSilhouetteWaveform(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
     modifier: Modifier = Modifier,
-    fixedWaveformColor: Color = Color(0xFFF2EDF6)
+    fixedWaveformColor: Color = Color(0xFFFFFFFF)
 ) {
-    val numPoints = 128
-    val liveAmplitudes = remember { FloatArray(numPoints) { 0.04f } }
-    val smoothedAmplitudes = remember { FloatArray(numPoints) { 0.04f } }
-    val targetAmplitudes = remember { FloatArray(numPoints) { 0.04f } }
+    val numPoints = 140
+    val liveAmplitudes = remember { FloatArray(numPoints) { 0.08f } }
+    val smoothedAmplitudes = remember { FloatArray(numPoints) { 0.08f } }
+    val targetAmplitudes = remember { FloatArray(numPoints) { 0.08f } }
 
     val frameTicker = remember { mutableLongStateOf(0L) }
     LaunchedEffect(isPlaying) {
@@ -1628,58 +1630,59 @@ private fun DarkSilhouetteWaveform(
         if (totalWidth <= 0f || totalHeight <= 0f) return@Canvas
 
         val centerY = totalHeight / 2f
-        val maxHalfHeight = (totalHeight / 2f) * 0.88f
-        val minHalfHeight = 1.0.dp.toPx()
+        val maxHalfHeight = (totalHeight / 2f) * 0.90f
+        val minHalfHeight = 2.5.dp.toPx() // baseline minimal height for quiet state
 
         val timeSeconds = (ticker / 1_000_000_000.0).toFloat()
 
-        // 1. Audio Feature Extraction & Perceptual Frequency Mapping
+        // 1. Audio Energy Extraction & Frequency Synthesis
         val rawFft = telemetry.fftBars
         val fftSize = rawFft.size
         val subBassEnergy = if (fftSize >= 4) (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f else 0f
         val midEnergy = if (fftSize >= 24) (rawFft[8] + rawFft[12] + rawFft[16] + rawFft[20]) / 4f else 0f
         val highEnergy = if (fftSize >= 48) (rawFft[36] + rawFft[42] + rawFft[47]) / 3f else 0f
 
-        val kickImpulse = if (telemetry.kickDetected) 0.65f else (subBassEnergy * 0.45f)
-        val snareImpulse = if (telemetry.snareDetected) 0.55f else (midEnergy * 0.38f)
-        val transientImpulse = (telemetry.transientSpike * 0.50f + highEnergy * 0.35f)
+        val kickImpulse = if (telemetry.kickDetected) 0.75f else (subBassEnergy * 0.50f)
+        val snareImpulse = if (telemetry.snareDetected) 0.60f else (midEnergy * 0.40f)
+        val transientImpulse = (telemetry.transientSpike * 0.45f + highEnergy * 0.35f)
 
-        // 2. Synthesize Smooth Target Profile Across 128 Points
+        // 2. Synthesize Target Wave Envelope Across Points
         for (i in 0 until numPoints) {
             val norm = i.toFloat() / (numPoints - 1).coerceAtLeast(1)
 
             if (isPlaying) {
-                // Symmetrical acoustic centers: bass centers at 32% and 68%, snare at 50%
-                val bassDist1 = abs(norm - 0.32f) / 0.22f
-                val bassWeight1 = exp(-bassDist1 * bassDist1 * 3.5f)
-                val bassDist2 = abs(norm - 0.68f) / 0.22f
-                val bassWeight2 = exp(-bassDist2 * bassDist2 * 3.5f)
+                // Symmetrical acoustic centers: bass centers at 32% and 68%, vocal in center at 50%
+                val bassDist1 = abs(norm - 0.32f) / 0.20f
+                val bassWeight1 = exp(-bassDist1 * bassDist1 * 4.0f)
+                val bassDist2 = abs(norm - 0.68f) / 0.20f
+                val bassWeight2 = exp(-bassDist2 * bassDist2 * 4.0f)
                 val bassResponse = (bassWeight1 + bassWeight2) * kickImpulse
 
-                val midDist = abs(norm - 0.50f) / 0.28f
-                val midResponse = exp(-midDist * midDist * 4.0f) * snareImpulse
+                val midDist = abs(norm - 0.50f) / 0.24f
+                val midResponse = exp(-midDist * midDist * 4.5f) * snareImpulse
 
-                // Distributed frequency ripple
                 val fftIndex = (Math.pow(norm.toDouble(), 1.25) * (fftSize - 1)).toInt().coerceIn(0, (fftSize - 1).coerceAtLeast(0))
                 val binVal = if (fftIndex < fftSize) rawFft[fftIndex] else 0f
-                val freqResponse = binVal * 0.40f
+                val freqResponse = binVal * 0.42f
 
-                // Subtle fluid organic wave undulation
-                val rippleWave = sin(norm * 12.5f - timeSeconds * 4.2f) * 0.05f * (kickImpulse + 0.15f)
+                // Living fluid wave motion
+                val waveMotion = sin(norm * 14f - timeSeconds * 3.8f) * 0.06f * (kickImpulse + 0.2f)
 
-                // Combine audio forces
-                val combined = (bassResponse * 0.65f + midResponse * 0.55f + freqResponse * 0.45f + transientImpulse * 0.25f + telemetry.rmsLevel * 0.15f + rippleWave)
-                targetAmplitudes[i] = combined.coerceIn(0.04f, 0.95f)
+                val combined = (bassResponse * 0.60f + midResponse * 0.50f + freqResponse * 0.45f +
+                        transientImpulse * 0.25f + telemetry.rmsLevel * 0.18f + waveMotion)
+                targetAmplitudes[i] = combined.coerceIn(0.06f, 0.95f)
             } else {
-                // Idle / paused: gentle, soothing baseline breathing wave
-                val resting = 0.035f + 0.020f * sin(norm * 6.28f * 1.5f + timeSeconds * 1.8f)
-                targetAmplitudes[i] = resting.coerceIn(0.02f, 0.10f)
+                // 1. Quiet Section: Low amplitude, still visible (not completely flat, smooth wave peaks)
+                val wave1 = sin(norm * 3.14159f * 3.2f + timeSeconds * 1.5f) * 0.045f
+                val wave2 = cos(norm * 3.14159f * 5.6f - timeSeconds * 1.1f) * 0.035f
+                val quietAmp = (0.06f + wave1 + wave2).coerceIn(0.035f, 0.14f)
+                targetAmplitudes[i] = quietAmp
             }
         }
 
-        // 3. Temporal Smoothing (Attack / Release)
-        val attackRate = 0.42f // quick responsive rise
-        val decayRate = 0.16f  // liquid, graceful settling
+        // 3. Temporal Smoothing (Attack / Decay)
+        val attackRate = 0.42f
+        val decayRate = 0.15f
         for (i in 0 until numPoints) {
             val current = liveAmplitudes[i]
             val target = targetAmplitudes[i]
@@ -1690,107 +1693,135 @@ private fun DarkSilhouetteWaveform(
             }
         }
 
-        // 4. Spatial Neighbor Smoothing (Gaussian 3-tap filter)
-        for (i in 1 until numPoints - 1) {
-            smoothedAmplitudes[i] = 0.24f * liveAmplitudes[i - 1] + 0.52f * liveAmplitudes[i] + 0.24f * liveAmplitudes[i + 1]
+        // 4. Spatial Neighbor Smoothing (5-tap Gaussian Filter for silky liquid continuity)
+        for (i in 0 until numPoints) {
+            val p0 = liveAmplitudes[(i - 2).coerceAtLeast(0)]
+            val p1 = liveAmplitudes[(i - 1).coerceAtLeast(0)]
+            val p2 = liveAmplitudes[i]
+            val p3 = liveAmplitudes[(i + 1).coerceAtMost(numPoints - 1)]
+            val p4 = liveAmplitudes[(i + 2).coerceAtMost(numPoints - 1)]
+            smoothedAmplitudes[i] = p0 * 0.08f + p1 * 0.24f + p2 * 0.36f + p3 * 0.24f + p4 * 0.08f
         }
-        smoothedAmplitudes[0] = 0.70f * liveAmplitudes[0] + 0.30f * liveAmplitudes[1]
-        smoothedAmplitudes[numPoints - 1] = 0.70f * liveAmplitudes[numPoints - 1] + 0.30f * liveAmplitudes[numPoints - 2]
 
-        // 5. Water Pressure Ripple Propagation (Laplacian Wave Step)
+        // 5. Water Ripple Diffusion
         for (i in 1 until numPoints - 1) {
             val laplacian = (smoothedAmplitudes[i - 1] - 2f * smoothedAmplitudes[i] + smoothedAmplitudes[i + 1])
-            liveAmplitudes[i] = (smoothedAmplitudes[i] + laplacian * 0.18f).coerceIn(0.015f, 0.95f)
+            liveAmplitudes[i] = (smoothedAmplitudes[i] + laplacian * 0.16f).coerceIn(0.03f, 0.95f)
         }
 
-        // 6. Calculate Mirrored Top and Bottom Coordinates
+        // 6. Coordinates and Edge Taper Window
         val stepX = totalWidth / (numPoints - 1).coerceAtLeast(1)
-        val topPointsX = FloatArray(numPoints)
-        val topPointsY = FloatArray(numPoints)
-        val bottomPointsY = FloatArray(numPoints)
+        val topY = FloatArray(numPoints)
+        val bottomY = FloatArray(numPoints)
+        val wave1Y = FloatArray(numPoints)
+        val wave2Y = FloatArray(numPoints)
+        val posX = FloatArray(numPoints)
 
         for (i in 0 until numPoints) {
             val norm = i.toFloat() / (numPoints - 1).coerceAtLeast(1)
-            // Edge taper window so wave connects seamlessly into edges
-            val edgeTaper = sin(norm * Math.PI.toFloat()).coerceIn(0f, 1f)
-            val window = (0.12f + 0.88f * edgeTaper).coerceIn(0f, 1f)
+            // Cosine edge window so ends taper gracefully into the margins
+            val edgeWindow = sin(norm * 3.14159f).pow(0.45f)
+            val envelope = (minHalfHeight + (liveAmplitudes[i] * edgeWindow) * maxHalfHeight)
 
-            val amp = (minHalfHeight + (liveAmplitudes[i] * window) * maxHalfHeight).coerceAtLeast(minHalfHeight)
-            topPointsX[i] = i * stepX
-            topPointsY[i] = centerY - amp
-            bottomPointsY[i] = centerY + amp
+            posX[i] = i * stepX
+            topY[i] = centerY - envelope
+            bottomY[i] = centerY + envelope
+
+            // Harmonic inner waves for the signature acoustic vibration look
+            val harmonic1 = sin(norm * 16f - timeSeconds * 3.2f) * envelope * 0.65f
+            val harmonic2 = cos(norm * 22f + timeSeconds * 2.4f) * envelope * 0.45f
+            wave1Y[i] = centerY + harmonic1
+            wave2Y[i] = centerY + harmonic2
         }
 
-        // 7. Continuous Spline Path Construction (Quadratic Bézier Interpolation)
-        val topPath = Path().apply {
-            moveTo(topPointsX[0], topPointsY[0])
-            for (i in 0 until numPoints - 1) {
-                val midX = (topPointsX[i] + topPointsX[i + 1]) / 2f
-                val midY = (topPointsY[i] + topPointsY[i + 1]) / 2f
-                quadraticBezierTo(topPointsX[i], topPointsY[i], midX, midY)
-            }
-            lineTo(topPointsX[numPoints - 1], topPointsY[numPoints - 1])
-        }
+        // 7. Render Dense Vertical Resonant Threads (from Top to Bottom envelope)
+        val threadWidthPx = 1.3.dp.toPx()
+        val white = fixedWaveformColor
+        val threadColorMuted = Color(0xFFE5E7EB)
 
-        val bottomPath = Path().apply {
-            moveTo(topPointsX[0], bottomPointsY[0])
-            for (i in 0 until numPoints - 1) {
-                val midX = (topPointsX[i] + topPointsX[i + 1]) / 2f
-                val midY = (bottomPointsY[i] + bottomPointsY[i + 1]) / 2f
-                quadraticBezierTo(topPointsX[i], bottomPointsY[i], midX, midY)
-            }
-            lineTo(topPointsX[numPoints - 1], bottomPointsY[numPoints - 1])
-        }
+        for (i in 0 until numPoints) {
+            val norm = i.toFloat() / (numPoints - 1).coerceAtLeast(1)
+            val edgeFade = sin(norm * 3.14159f).pow(0.5f)
+            val lineAlpha = (0.35f + 0.55f * edgeFade).coerceIn(0.15f, 0.90f)
 
-        // Closed ribbon for subtle translucent liquid body
-        val ribbonPath = Path().apply {
-            addPath(topPath)
-            lineTo(topPointsX[numPoints - 1], bottomPointsY[numPoints - 1])
-            for (i in numPoints - 1 downTo 1) {
-                val midX = (topPointsX[i] + topPointsX[i - 1]) / 2f
-                val midY = (bottomPointsY[i] + bottomPointsY[i - 1]) / 2f
-                quadraticBezierTo(topPointsX[i], bottomPointsY[i], midX, midY)
-            }
-            lineTo(topPointsX[0], bottomPointsY[0])
-            close()
-        }
-
-        // 8. Draw Fixed-Color Velvet Liquid Waveform
-        val waveStrokeColor = fixedWaveformColor.copy(alpha = 0.88f)
-        val waveFillColor = fixedWaveformColor.copy(alpha = 0.12f)
-        val strokeWidthPx = 1.75.dp.toPx()
-
-        // Soft translucent liquid ribbon fill between upper and lower wave
-        drawPath(ribbonPath, color = waveFillColor)
-
-        // Crisp upper continuous wave contour
-        drawPath(
-            path = topPath,
-            color = waveStrokeColor,
-            style = Stroke(
-                width = strokeWidthPx,
-                cap = StrokeCap.Round,
-                join = StrokeJoin.Round
+            drawLine(
+                color = threadColorMuted.copy(alpha = lineAlpha),
+                start = Offset(posX[i], topY[i]),
+                end = Offset(posX[i], bottomY[i]),
+                strokeWidth = threadWidthPx,
+                cap = StrokeCap.Round
             )
+        }
+
+        // 8. Continuous Smooth Bézier Curves for Outer Envelope Contours
+        val topEnvelopePath = Path().apply {
+            moveTo(posX[0], topY[0])
+            for (i in 0 until numPoints - 1) {
+                val midX = (posX[i] + posX[i + 1]) / 2f
+                val midY = (topY[i] + topY[i + 1]) / 2f
+                quadraticBezierTo(posX[i], topY[i], midX, midY)
+            }
+            lineTo(posX[numPoints - 1], topY[numPoints - 1])
+        }
+
+        val bottomEnvelopePath = Path().apply {
+            moveTo(posX[0], bottomY[0])
+            for (i in 0 until numPoints - 1) {
+                val midX = (posX[i] + posX[i + 1]) / 2f
+                val midY = (bottomY[i] + bottomY[i + 1]) / 2f
+                quadraticBezierTo(posX[i], bottomY[i], midX, midY)
+            }
+            lineTo(posX[numPoints - 1], bottomY[numPoints - 1])
+        }
+
+        // Harmonic inner thread curves
+        val harmonicPath1 = Path().apply {
+            moveTo(posX[0], wave1Y[0])
+            for (i in 0 until numPoints - 1) {
+                val midX = (posX[i] + posX[i + 1]) / 2f
+                val midY = (wave1Y[i] + wave1Y[i + 1]) / 2f
+                quadraticBezierTo(posX[i], wave1Y[i], midX, midY)
+            }
+            lineTo(posX[numPoints - 1], wave1Y[numPoints - 1])
+        }
+
+        val harmonicPath2 = Path().apply {
+            moveTo(posX[0], wave2Y[0])
+            for (i in 0 until numPoints - 1) {
+                val midX = (posX[i] + posX[i + 1]) / 2f
+                val midY = (wave2Y[i] + wave2Y[i + 1]) / 2f
+                quadraticBezierTo(posX[i], wave2Y[i], midX, midY)
+            }
+            lineTo(posX[numPoints - 1], wave2Y[numPoints - 1])
+        }
+
+        val contourStrokePx = 1.35.dp.toPx()
+        val harmonicStrokePx = 1.0.dp.toPx()
+
+        // Crisp White Top Envelope Contour
+        drawPath(
+            path = topEnvelopePath,
+            color = white.copy(alpha = 0.95f),
+            style = Stroke(width = contourStrokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
 
-        // Crisp lower continuous wave contour
+        // Crisp White Bottom Envelope Contour
         drawPath(
-            path = bottomPath,
-            color = waveStrokeColor,
-            style = Stroke(
-                width = strokeWidthPx,
-                cap = StrokeCap.Round,
-                join = StrokeJoin.Round
-            )
+            path = bottomEnvelopePath,
+            color = white.copy(alpha = 0.95f),
+            style = Stroke(width = contourStrokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
 
-        // Subtle baseline connection hairline
-        drawLine(
-            color = fixedWaveformColor.copy(alpha = 0.16f),
-            start = Offset(0f, centerY),
-            end = Offset(totalWidth, centerY),
-            strokeWidth = 0.75.dp.toPx()
+        // Luminous Harmonic Weave Threads
+        drawPath(
+            path = harmonicPath1,
+            color = white.copy(alpha = 0.45f),
+            style = Stroke(width = harmonicStrokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+        drawPath(
+            path = harmonicPath2,
+            color = white.copy(alpha = 0.35f),
+            style = Stroke(width = harmonicStrokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
     }
 }
@@ -1811,6 +1842,7 @@ private fun UpNextTrackRow(
     onDragEnd: () -> Unit,
     isDragging: Boolean,
     dragOffsetY: Float,
+    targetSlotShiftY: Float = 0f,
     modifier: Modifier = Modifier
 ) {
     var rowWidthPx by remember { mutableFloatStateOf(0f) }
@@ -1836,16 +1868,30 @@ private fun UpNextTrackRow(
         }
     }
 
-    val scale = if (isDragging) {
-        animateFloatAsState(1.01f, tween(120), label = "queue_drag_scale").value
-    } else 1f
+    // Smooth, slow spring bounce like YouTube Music when another row slides into empty space:
+    val slotShiftAnim by animateFloatAsState(
+        targetValue = targetSlotShiftY,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = 0.78f, // gentle spring bounce like YouTube Music!
+            stiffness = 140f     // slow, graceful movement!
+        ),
+        label = "queue_slot_spring_shift"
+    )
 
-    val elevation = if (isDragging) {
-        animateFloatAsState(4f, tween(120), label = "queue_drag_elevation").value
-    } else 0f
+    val scale by animateFloatAsState(
+        targetValue = if (isDragging) 1.025f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(stiffness = Spring.StiffnessMediumLow),
+        label = "queue_drag_scale"
+    )
+
+    val elevation by animateFloatAsState(
+        targetValue = if (isDragging) 8f else 0f,
+        animationSpec = tween(140),
+        label = "queue_drag_elevation"
+    )
 
     // Active Item Highlight:
-    // Attached directly to row position. Travels naturally with scroll.
+    // Attached directly to row position. Travels naturally with scroll and drag.
     val rowBaseBg = surfaceColor
     val activeRowBg = when {
         isDragging -> Color.White.copy(alpha = 0.16f).compositeOver(rowBaseBg)
@@ -1867,16 +1913,16 @@ private fun UpNextTrackRow(
             .height(60.dp)
             .onSizeChanged { rowWidthPx = it.width.toFloat() }
             .graphicsLayer {
-                translationY = if (isDragging) dragOffsetY else 0f
+                translationY = if (isDragging) dragOffsetY else slotShiftAnim
                 scaleX = scale
                 scaleY = scale
             }
-            .zIndex(if (isDragging) 5f else 0f)
+            .zIndex(if (isDragging) 10f else 0f)
             .shadow(
                 elevation = elevation.dp,
                 shape = RectangleShape,
-                ambientColor = Color.Black.copy(alpha = 0.45f),
-                spotColor = Color.Black.copy(alpha = 0.45f),
+                ambientColor = Color.Black.copy(alpha = 0.5f),
+                spotColor = Color.Black.copy(alpha = 0.5f),
                 clip = false
             )
     ) {

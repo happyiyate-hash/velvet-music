@@ -65,12 +65,26 @@ fun TrackArtworkImage(
     val imageLoader = remember { VelvetImageLoader.get(context) }
     val isThumbnail = thumbnailSizePx != null && thumbnailSizePx > 0
 
-    // Instant frame-0 memory check: for thumbnails check thumbnail cache; for Player Sheet check full HD cache!
+    // Instant frame-0 memory check: for thumbnails check thumbnail cache; for Player Sheet check full HD cache, then thumbnail cache!
     val memoryBitmap: Bitmap? = remember(track.id, isThumbnail) {
         if (isThumbnail) {
             VelvetArtworkCache.getFromMemory(track.id)
         } else {
             VelvetArtworkCache.getFullFromMemory(track.id)
+                ?: VelvetArtworkCache.getFromMemory(track.id)
+        }
+    }
+
+    var displayedBitmap by remember { mutableStateOf<Bitmap?>(memoryBitmap) }
+
+    LaunchedEffect(track.id) {
+        val mem = if (isThumbnail) {
+            VelvetArtworkCache.getFromMemory(track.id)
+        } else {
+            VelvetArtworkCache.getFullFromMemory(track.id) ?: VelvetArtworkCache.getFromMemory(track.id)
+        }
+        if (mem != null && !mem.isRecycled) {
+            displayedBitmap = mem
         }
     }
 
@@ -102,22 +116,28 @@ fun TrackArtworkImage(
     Box(
         modifier = modifier.background(Color(0xFF141418))
     ) {
-        if (memoryBitmap != null && !memoryBitmap.isRecycled) {
+        val activeBmp = memoryBitmap ?: displayedBitmap
+        if (activeBmp != null && !activeBmp.isRecycled) {
             Image(
-                bitmap = memoryBitmap.asImageBitmap(),
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
-            )
-        } else {
-            AsyncImage(
-                model = request,
-                imageLoader = imageLoader,
+                bitmap = activeBmp.asImageBitmap(),
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale
             )
         }
+        AsyncImage(
+            model = request,
+            imageLoader = imageLoader,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = contentScale,
+            onSuccess = { state ->
+                val d = state.result.drawable
+                if (d is android.graphics.drawable.BitmapDrawable) {
+                    displayedBitmap = d.bitmap
+                }
+            }
+        )
     }
 }
 
