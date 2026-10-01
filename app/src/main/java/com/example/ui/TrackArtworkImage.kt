@@ -40,20 +40,14 @@ import coil.size.Scale
 import com.example.model.FallbackArtworkPool
 import com.example.model.Track
 import kotlinx.coroutines.Dispatchers
-import android.graphics.Bitmap
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.graphics.asImageBitmap
-import com.example.media.VelvetArtworkCache
 
 /**
  * Universal Track Artwork renderer:
- * 1. Instant Cache-First: Memory-cached artwork is rendered synchronously on frame 0 (0ms latency).
- * 2. Unblurred & Sharp: Displays crisp, unblurred bitmaps without heavy downsampling.
- * 3. Decoupled Asynchronous Decoding: IO dispatcher resolves new device cover art in background.
- * 4. Guaranteed Fallback: Seamlessly falls back to rich fallback pool artwork.
+ * 1. Fully Asynchronous: Decoding runs strictly on Dispatchers.IO, never blocking the main UI thread.
+ * 2. Guaranteed Replacement Artwork: If track has no artwork or MediaStore URI fails,
+ *    instantly falls back to the app's rich fallback pool artwork.
+ * 3. Exact Downscaling: Resizes bitmaps to exact target visual dimensions (128x128 px).
+ * 4. Asynchronous Crossfade: Smooth transition with zero-jank caching.
  */
 @Composable
 fun TrackArtworkImage(
@@ -65,79 +59,55 @@ fun TrackArtworkImage(
     crossfade: Boolean = true
 ) {
     val context = LocalContext.current
-    val isThumbnail = thumbnailSizePx != null && thumbnailSizePx < 256
-
-    var cachedBitmap by androidx.compose.runtime.remember(track.id, isThumbnail) {
-        androidx.compose.runtime.mutableStateOf(
-            if (isThumbnail) VelvetArtworkCache.getThumbnailBitmap(track.id)
-            else VelvetArtworkCache.getArtworkBitmap(track.id)
-        )
-    }
-
-    androidx.compose.runtime.LaunchedEffect(track.id, isThumbnail) {
-        if (cachedBitmap == null) {
-            VelvetArtworkCache.loadArtworkAsync(context, track, isThumbnail) { loaded ->
-                cachedBitmap = loaded
-            }
-        }
-    }
-
-    val currentBmp = cachedBitmap
-    Box(
-        modifier = modifier.background(Color(0xFF141518)),
-        contentAlignment = Alignment.Center
-    ) {
-        if (currentBmp != null && !currentBmp.isRecycled) {
-            Image(
-                bitmap = currentBmp.asImageBitmap(),
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
-            )
+    val fallbackResId = remember(track.id, track.coverResId, track.title, track.artist) {
+        if (track.coverResId != 0) {
+            track.coverResId
         } else {
-            val fallbackResId = remember(track.id, track.coverResId, track.title, track.artist) {
-                if (track.coverResId != 0) {
-                    track.coverResId
-                } else {
-                    FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
-                }
-            }
-
-            val primaryData: Any = remember(track.artworkUri, fallbackResId) {
-                val uri = track.artworkUri
-                if (!uri.isNullOrBlank()) uri else fallbackResId
-            }
-
-            val imageLoader = remember { VelvetImageLoader.get(context) }
-            val request = remember(track.id, primaryData, fallbackResId, thumbnailSizePx, crossfade) {
-                val builder = ImageRequest.Builder(context)
-                    .data(primaryData)
-                    .error(fallbackResId)
-                    .fallback(fallbackResId)
-                    .dispatcher(Dispatchers.IO)
-                    .crossfade(crossfade)
-                    .allowHardware(true)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .memoryCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
-                    .diskCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
-
-                if (thumbnailSizePx != null && thumbnailSizePx > 0) {
-                    builder.size(thumbnailSizePx, thumbnailSizePx)
-                        .precision(Precision.EXACT)
-                        .scale(Scale.FILL)
-                }
-                builder.build()
-            }
-
-            AsyncImage(
-                model = request,
-                imageLoader = imageLoader,
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
-            )
+            FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
         }
+    }
+
+    val primaryData: Any = remember(track.artworkUri, fallbackResId) {
+        val uri = track.artworkUri
+        if (!uri.isNullOrBlank()) {
+            uri
+        } else {
+            fallbackResId
+        }
+    }
+
+    val imageLoader = remember { VelvetImageLoader.get(context) }
+    val request = remember(track.id, primaryData, fallbackResId, thumbnailSizePx, crossfade) {
+        val builder = ImageRequest.Builder(context)
+            .data(primaryData)
+            .error(fallbackResId)
+            .fallback(fallbackResId)
+            .dispatcher(Dispatchers.IO)
+            .crossfade(crossfade)
+            .allowHardware(true)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
+            .diskCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
+
+        if (thumbnailSizePx != null && thumbnailSizePx > 0) {
+            builder.size(thumbnailSizePx, thumbnailSizePx)
+                .precision(Precision.EXACT)
+                .scale(Scale.FILL)
+        }
+        builder.build()
+    }
+
+    Box(
+        modifier = modifier.background(Color(0xFF18181C))
+    ) {
+        AsyncImage(
+            model = request,
+            imageLoader = imageLoader,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = contentScale
+        )
     }
 }
 

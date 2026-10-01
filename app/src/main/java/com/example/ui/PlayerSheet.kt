@@ -172,7 +172,6 @@ import com.example.audio.AudioTelemetry
 import com.example.audio.RepeatMode
 import com.example.media.ArtworkColorExtractor
 import com.example.media.TrackThemeColors
-import com.example.media.VelvetArtworkCache
 import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.cos
@@ -193,153 +192,7 @@ import kotlin.math.roundToInt
  *    using the extracted artwork color.
  * 7. Secondary Shuffle and Repeat controls positioned below the primary playback controls.
  */
-@Composable
-fun PlayerBottomVerticalLines(
-    isPlaying: Boolean,
-    telemetry: AudioTelemetry,
-    modifier: Modifier = Modifier
-) {
-    val lineCount = 76
-    val heights = remember(lineCount) { FloatArray(lineCount) { 0.04f } }
-    val frameTicker = remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (isActive) {
-                withFrameNanos { frameTicker.longValue = it }
-            }
-        }
-    }
-
-    // 6 wave centers across the visualizer, distributed around and through the center
-    val nodes = remember {
-        arrayOf(
-            // center, halfWidth, bassWeight, midWeight, trebleWeight
-            floatArrayOf(0.12f, 0.09f, 0.65f, 0.35f, 0.50f),
-            floatArrayOf(0.28f, 0.10f, 0.90f, 0.70f, 0.20f),
-            floatArrayOf(0.43f, 0.11f, 1.00f, 0.50f, 0.10f),
-            floatArrayOf(0.57f, 0.11f, 1.00f, 0.50f, 0.20f),
-            floatArrayOf(0.72f, 0.10f, 0.90f, 0.75f, 0.25f),
-            floatArrayOf(0.88f, 0.09f, 0.65f, 0.35f, 0.60f)
-        )
-    }
-
-    Canvas(modifier = modifier) {
-        if (size.width <= 0f || size.height <= 0f) return@Canvas
-        val time = frameTicker.longValue / 1_000_000_000f
-        val fft = telemetry.fftBars
-
-        // 1. Extract frequency bands
-        val bassRaw = if (fft.isNotEmpty()) {
-            var sum = 0f
-            val count = minOf(6, fft.size)
-            for (b in 0 until count) sum += fft[b]
-            sum / count.coerceAtLeast(1)
-        } else 0f
-        val kickBoost = if (telemetry.kickDetected) 0.35f else 0f
-        val bassEnergy = (bassRaw * 1.55f + kickBoost + telemetry.transientSpike * 0.40f).coerceIn(0f, 1f)
-
-        // Speech, vocals, and melodic mid-tones (bins 6..24)
-        val speechEnergy = if (fft.size > 20) {
-            var sum = 0f
-            val count = minOf(25, fft.size) - 6
-            for (b in 6 until 6 + count) sum += fft[b]
-            (sum / count.coerceAtLeast(1) * 1.7f).coerceIn(0f, 1f)
-        } else 0f
-
-        // High frequencies / sparkle (bins 25..55)
-        val trebleEnergy = if (fft.size > 30) {
-            var sum = 0f
-            val end = minOf(55, fft.size)
-            for (b in 25 until end) sum += fft[b]
-            (sum / (end - 25).coerceAtLeast(1) * 1.8f).coerceIn(0f, 1f)
-        } else 0f
-
-        val snareBoost = if (telemetry.snareDetected) 0.22f else 0f
-
-        // Compute energy target for each of the 6 triangle wave nodes
-        val nodeAmplitudes = FloatArray(nodes.size)
-        for (n in nodes.indices) {
-            val cfg = nodes[n]
-            val bWeight = cfg[2]
-            val mWeight = cfg[3]
-            val tWeight = cfg[4]
-            val snareFactor = if (n == 3 || n == 4) snareBoost else 0f
-            val combined = (bassEnergy * bWeight + speechEnergy * mWeight + trebleEnergy * tWeight + snareFactor)
-            nodeAmplitudes[n] = (combined * 0.90f).coerceIn(0f, 0.96f)
-        }
-
-        val strokePx = 1.35.dp.toPx()
-        val minLineHeightPx = 2.5.dp.toPx()
-
-        for (i in 0 until lineCount) {
-            val normalized = i.toFloat() / (lineCount - 1).coerceAtLeast(1)
-
-            // Direct tone/speech reaction for lines (especially between triangle peaks)
-            val fftIndex = if (fft.isNotEmpty()) {
-                (normalized * (fft.size - 1)).toInt().coerceIn(0, fft.lastIndex)
-            } else 0
-            val lineTone = if (fft.isNotEmpty()) fft[fftIndex].coerceIn(0f, 1f) else 0f
-
-            // Calculate triangle wave contribution across all scattered nodes
-            var waveTarget = 0f
-            for (n in nodes.indices) {
-                val cfg = nodes[n]
-                val center = cfg[0]
-                val halfWidth = cfg[1]
-                val dist = abs(normalized - center)
-                if (dist < halfWidth) {
-                    // Triangle wave profile: 1.0 at center, slopes linearly down to 0 at edges
-                    val triangleProfile = 1f - (dist / halfWidth)
-                    val value = nodeAmplitudes[n] * triangleProfile
-                    if (value > waveTarget) {
-                        waveTarget = value
-                    }
-                }
-            }
-
-            // Space between peaks and general spectrum tone interaction
-            val ambientBreathing = if (isPlaying) {
-                (sin(time * 3.2f + i * 0.22f) * 0.5f + 0.5f) * 0.028f
-            } else 0f
-
-            val target = if (isPlaying) {
-                // Triangle waves create the dominant peaks; lineTone ensures tones/speech affect lines everywhere
-                (maxOf(waveTarget, lineTone * 0.52f) + ambientBreathing + 0.04f).coerceIn(0.04f, 0.95f)
-            } else {
-                0.03f
-            }
-
-            val current = heights[i]
-            heights[i] = if (isPlaying) {
-                if (target > current) {
-                    // Instant, quick attack: snaps up immediately to the beat!
-                    current + (target - current) * 0.86f
-                } else {
-                    // Rapid decay: drops down instantly without sluggish lingering!
-                    current - (current - target) * 0.48f
-                }
-            } else {
-                // Quickly settle down when paused
-                current * 0.82f
-            }
-
-            val lineHeight = (size.height * heights[i]).coerceIn(minLineHeightPx, size.height)
-            val x = normalized * size.width
-            val lineAlpha = (0.45f + heights[i] * 0.45f).coerceIn(0.40f, 0.92f)
-
-            drawLine(
-                color = Color.White.copy(alpha = lineAlpha),
-                start = Offset(x, size.height),
-                end = Offset(x, size.height - lineHeight),
-                strokeWidth = strokePx,
-                cap = StrokeCap.Round
-            )
-        }
-    }
-}
-
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSheet(
     track: Track,
@@ -376,18 +229,43 @@ fun PlayerSheet(
     var showLyricsSheet by remember { mutableStateOf(false) }
 
     // Dynamically derive the calm, restrained palette based on the current artwork.
-    // Instant cache-first lookup with zero UI thread blocking during track switches.
-    var resolvedArtworkBitmap by remember(track.id) {
-        mutableStateOf(VelvetArtworkCache.getArtworkBitmap(track.id))
+    // The resolved bitmap is passed directly into the color extractor state update loop.
+    var resolvedArtworkBitmap by remember(track.id, track.artworkUri, track.coverResId) {
+        val initial = ArtworkColorExtractor.resolveTrackBitmap(context, track)
+            ?: if (track.coverResId != 0) {
+                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+            } else null
+        mutableStateOf<Bitmap?>(initial)
     }
-    var themeColors by remember(track.id) {
-        mutableStateOf(VelvetArtworkCache.getThemeColors(context, track))
+    var themeColors by remember(track.id, track.artworkUri, track.coverResId) {
+        val initial = resolvedArtworkBitmap
+            ?: ArtworkColorExtractor.resolveTrackBitmap(context, track)
+            ?: if (track.coverResId != 0) {
+                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+            } else null
+        mutableStateOf(
+            if (initial != null) ArtworkColorExtractor.extractColorsFromBitmap(initial)
+            else ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+        )
     }
 
-    LaunchedEffect(track.id) {
-        VelvetArtworkCache.observeThemeColors(context, track) { updatedColors ->
-            themeColors = updatedColors
-            resolvedArtworkBitmap = VelvetArtworkCache.getArtworkBitmap(track.id)
+    LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
+        if (resolvedArtworkBitmap == null) {
+            withContext(Dispatchers.IO) {
+                val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
+                    ?: if (track.coverResId != 0) {
+                        runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+                    } else null
+                val extractedColors = if (bitmap != null) {
+                    ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+                } else {
+                    ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+                }
+                withContext(Dispatchers.Main) {
+                    resolvedArtworkBitmap = bitmap
+                    themeColors = extractedColors
+                }
+            }
         }
     }
 
@@ -1008,9 +886,10 @@ fun PlayerSheet(
                             .graphicsLayer { alpha = stage1CardElementsAlpha }
                             .zIndex(10f)
                     ) {
-                        PlayerBottomVerticalLines(
+                        DarkSilhouetteWaveform(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
+                            visualizerColor = animatedVisualizerColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1249,10 +1128,17 @@ fun PlayerSheet(
                             )
                         }
 
-                        // Decoupled prefetch of queue artwork: warm memory cache ahead of time on Dispatchers.IO
-                        LaunchedEffect(orderedQueueItems) {
+                        // Keep a rolling artwork window warm even while the queue is moving.
+                        // Newly exposed rows must begin decoding during the scroll, not after it stops.
+                        LaunchedEffect(queueListState.firstVisibleItemIndex) {
                             if (orderedQueueItems.isNotEmpty()) {
-                                VelvetArtworkCache.prefetchTracks(context, orderedQueueItems)
+                                val firstVisible = queueListState.firstVisibleItemIndex
+                                val prefetchRange = firstVisible..(firstVisible + 12)
+                                for (idx in prefetchRange) {
+                                    if (idx in orderedQueueItems.indices) {
+                                        FastArtworkThumbnailDefaults.prefetch(context, orderedQueueItems[idx], 128)
+                                    }
+                                }
                             }
                         }
 
@@ -1743,13 +1629,36 @@ private fun UpNextTrackRow(
     isDropTarget: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    var rowWidthPx by remember { mutableFloatStateOf(0f) }
+    var swipeOffset by remember(track.id) { mutableFloatStateOf(0f) }
+    var thresholdLatched by remember(track.id) { mutableStateOf(false) }
+    val swipeSettle = remember(track.id) { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val thresholdPx = if (rowWidthPx > 0f) rowWidthPx * 0.38f else with(density) { 140.dp.toPx() }
+    val swipeLimitPx = with(density) { 600.dp.toPx() }
+
+    val isSwiping = abs(swipeOffset) > 1f
+    val isPastThreshold = abs(swipeOffset) >= thresholdPx
+
+    // Trigger one short haptic vibration exactly at the instant threshold is crossed into action mode
+    LaunchedEffect(isPastThreshold) {
+        if (isPastThreshold && !thresholdLatched) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            thresholdLatched = true
+        } else if (!isPastThreshold) {
+            thresholdLatched = false
+        }
+    }
+
     // Zero-cost animation gating: idle rows during normal scrolling do not tick animators
     val displacement = if (virtualDisplacementY != 0f) {
         animateFloatAsState(
             targetValue = virtualDisplacementY,
             animationSpec = androidx.compose.animation.core.spring(
-                stiffness = 72f,
-                dampingRatio = 0.86f
+                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
             ),
             label = "queue_virtual_displacement"
         ).value
@@ -1763,9 +1672,14 @@ private fun UpNextTrackRow(
         animateFloatAsState(4f, tween(120), label = "queue_drag_elevation").value
     } else 0f
 
+    // Active Item Highlight:
+    // In stage 1 (p <= 1f), completely transparent so it has zero tint and matches the background perfectly.
+    // In stage 2 (p > 1f), softly introduces the gold/accent color tint as user drags upward.
+    // When swiping, uses solid opaque surfaceColor (animatedBgBottom) so the moving row cleanly slides over the black/action reveal layer.
     val rowBaseBg = surfaceColor
     val activeRowBg = when {
         isDragging -> Color.White.copy(alpha = 0.16f).compositeOver(rowBaseBg)
+        isSwiping -> rowBaseBg
         isCurrent -> {
             if (stage2Progress > 0.05f) {
                 accentColor.copy(alpha = 0.14f * stage2Progress)
@@ -1781,6 +1695,7 @@ private fun UpNextTrackRow(
         modifier = modifier
             .fillMaxWidth()
             .height(60.dp)
+            .onSizeChanged { rowWidthPx = it.width.toFloat() }
             .graphicsLayer {
                 translationY = if (isDragging) dragOffsetY else displacement
                 scaleX = scale
@@ -1795,10 +1710,133 @@ private fun UpNextTrackRow(
                 clip = false
             )
     ) {
+        // Step 1: Background Reveal Layer - strictly sits behind moving card, revealed only as card is swiped open
+        if (isSwiping && !isCurrent) {
+            val targetActionColor = when {
+                !isPastThreshold -> Color.Black
+                swipeOffset > 0f -> Color(0xFF22C55E)
+                else -> Color(0xFFEF4444)
+            }
+            val animatedActionBg by animateColorAsState(
+                targetValue = targetActionColor,
+                animationSpec = tween(160),
+                label = "swipe_action_bg"
+            )
+            val progress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
+            val iconScale by animateFloatAsState(
+                targetValue = if (isPastThreshold) 1.2f else (0.70f + progress * 0.30f),
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                ),
+                label = "swipe_icon_scale"
+            )
+            val iconAlpha by animateFloatAsState(
+                targetValue = if (isPastThreshold) 1f else (0.45f + progress * 0.55f),
+                animationSpec = tween(120),
+                label = "swipe_icon_alpha"
+            )
+
+            val showingPlayNext = swipeOffset > 0f
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(animatedActionBg),
+                contentAlignment = if (showingPlayNext) Alignment.CenterStart else Alignment.CenterEnd
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp)
+                        .graphicsLayer {
+                            scaleX = iconScale
+                            scaleY = iconScale
+                            alpha = iconAlpha
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (showingPlayNext) Icons.Default.QueueMusic else Icons.Default.Delete,
+                        contentDescription = if (showingPlayNext) "Play Next" else "Delete",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+
+        // Step 2: Track Row Content - Solid opaque surface
         Row(
             modifier = Modifier
                 .fillMaxSize()
+                .offset { IntOffset(swipeOffset.roundToInt(), 0) }
                 .background(activeRowBg)
+                .pointerInput(track.id, isDragging) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            thresholdLatched = false
+                        },
+                        onDragCancel = {
+                            scope.launch {
+                                swipeSettle.snapTo(swipeOffset)
+                                swipeSettle.animateTo(0f, tween(180)) { swipeOffset = value }
+                                thresholdLatched = false
+                            }
+                        },
+                        onDragEnd = {
+                            val releaseOffset = swipeOffset
+                            val crossed = abs(releaseOffset) >= thresholdPx
+                            if (!crossed) {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(0f, androidx.compose.animation.core.spring(
+                                        stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+                                    )) { swipeOffset = value }
+                                    thresholdLatched = false
+                                }
+                            } else if (releaseOffset > 0f) {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
+                                    onPlayNext()
+                                    swipeSettle.snapTo(0f)
+                                    swipeOffset = 0f
+                                    thresholdLatched = false
+                                }
+                            } else {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(-swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
+                                    onDelete()
+                                    swipeSettle.snapTo(0f)
+                                    swipeOffset = 0f
+                                    thresholdLatched = false
+                                }
+                            }
+                        },
+                        onHorizontalDrag = { change, amount ->
+                            change.consume()
+                            if (!isDragging && !isCurrent) {
+                                val next = (swipeOffset + amount).coerceIn(-swipeLimitPx, swipeLimitPx)
+                                swipeOffset = next
+                            }
+                        }
+                    )
+                }
+                .pointerInput(track.id, isDragging) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = {
+                            swipeOffset = 0f
+                            onDragStart()
+                        },
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragEnd,
+                        onDrag = { change, amount ->
+                            change.consume()
+                            onDragBy(amount.y)
+                        }
+                    )
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1807,21 +1845,22 @@ private fun UpNextTrackRow(
                 .padding(start = 6.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Fixed dimensions (48.dp) with YouTube Music style float-in
+            // Fixed dimensions (48.dp) with lightweight placeholder first & scroll-decoupled loading
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(2.dp)),
+                    .clip(RoundedCornerShape(4.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 FastArtworkThumbnail(
                     track = track,
                     size = 48.dp,
-                    shape = RoundedCornerShape(2.dp),
-                    thumbnailSizePx = 144,
+                    shape = RoundedCornerShape(4.dp),
+                    thumbnailSizePx = 128,
                     contentDescription = track.title
                 )
                 if (isCurrent) {
+                    // Subtle dark gradient scrim at the bottom ~32% for high wave contrast
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1833,6 +1872,7 @@ private fun UpNextTrackRow(
                                 )
                             )
                     )
+                    // Tiny drawing animation visualizer starting from the bottom (10% to 20% height of the music)
                     TinyBottomVisualizerWave(
                         isPlaying = isPlaying,
                         accentColor = accentColor,
@@ -1846,7 +1886,7 @@ private fun UpNextTrackRow(
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            // Title and Subtitle
+            // Title and Subtitle (Wave indicator removed from title as requested)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
@@ -1874,10 +1914,10 @@ private fun UpNextTrackRow(
             // Drag Handle: 3 clean lines pushed to the far right with a small space
             Box(
                 modifier = Modifier
-                    .size(width = 36.dp, height = 48.dp)
+                    .size(width = 32.dp, height = 44.dp)
                     .pointerInput(track.id) {
                         detectDragGestures(
-                            onDragStart = { onDragStart() },
+                            onDragStart = { swipeOffset = 0f; onDragStart() },
                             onDragEnd = onDragEnd,
                             onDragCancel = onDragEnd,
                             onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }

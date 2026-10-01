@@ -87,7 +87,6 @@ import kotlinx.coroutines.launch
 import com.example.audio.RepeatMode
 import com.example.audio.VelvetAudioEngine
 import com.example.media.DeviceMediaManager
-import com.example.media.VelvetArtworkCache
 import com.example.model.SampleData
 import com.example.model.Track
 import com.example.ui.theme.VelvetActiveGlow
@@ -141,7 +140,6 @@ fun VelvetApp() {
                 val loaded = DeviceMediaManager.loadDeviceTracks(context)
                 if (loaded.isNotEmpty()) {
                     audioEngine.setDeviceTracks(loaded)
-                    VelvetArtworkCache.prefetchTracks(context, loaded)
                 }
             }
         }
@@ -154,7 +152,6 @@ fun VelvetApp() {
         }
         if (cached.isNotEmpty()) {
             audioEngine.setDeviceTracks(cached)
-            VelvetArtworkCache.prefetchTracks(context, cached)
         }
         if (DeviceMediaManager.hasAudioPermission(context) && DeviceMediaManager.hasRecordAudioPermission(context)) {
             val loaded = withContext(Dispatchers.IO) {
@@ -162,7 +159,6 @@ fun VelvetApp() {
             }
             if (loaded.isNotEmpty()) {
                 audioEngine.setDeviceTracks(loaded)
-                VelvetArtworkCache.prefetchTracks(context, loaded)
             }
         } else {
             mediaPermissionLauncher.launch(DeviceMediaManager.allMediaPermissions)

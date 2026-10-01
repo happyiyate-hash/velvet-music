@@ -158,8 +158,29 @@ object VelvetArtworkColorEngine {
     fun extractColors(context: Context, track: Track): TrackThemeColors =
         extractColorsFromBitmap(resolveTrackBitmap(context, track))
 
-    fun resolveTrackBitmap(context: Context, track: Track): Bitmap? =
-        VelvetArtworkCache.getOrResolveTrackBitmap(context, track, isThumbnail = false)
+    fun resolveTrackBitmap(context: Context, track: Track): Bitmap? = try {
+        when {
+            !track.artworkUri.isNullOrBlank() -> decodeUri(context, Uri.parse(track.artworkUri), 4)
+            track.contentUri != null -> {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, Uri.parse(track.contentUri))
+                    retriever.embeddedPicture?.let {
+                        BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+                    }
+                } finally {
+                    retriever.release()
+                }
+            }
+            track.coverResId != 0 -> BitmapFactory.decodeResource(
+                context.resources, track.coverResId,
+                BitmapFactory.Options().apply { inSampleSize = 8 }
+            )
+            else -> null
+        }
+    } catch (_: Exception) {
+        null
+    }
 
     fun extractColorsFromBitmap(bitmap: Bitmap?): TrackThemeColors {
         if (bitmap == null) return fallback()
