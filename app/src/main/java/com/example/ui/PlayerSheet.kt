@@ -193,6 +193,66 @@ import kotlin.math.roundToInt
  * 7. Secondary Shuffle and Repeat controls positioned below the primary playback controls.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+fun PlayerBottomVerticalLines(
+    isPlaying: Boolean,
+    telemetry: AudioTelemetry,
+    modifier: Modifier = Modifier
+) {
+    val lineCount = 72
+    val heights = remember(lineCount) { FloatArray(lineCount) { 0.08f } }
+    val frameTicker = remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isActive) {
+                withFrameNanos { frameTicker.longValue = it }
+            }
+        }
+    }
+
+    Canvas(modifier = modifier) {
+        if (size.width <= 0f || size.height <= 0f) return@Canvas
+        val time = frameTicker.longValue / 1_000_000_000f
+        val fft = telemetry.fftBars
+
+        for (i in 0 until lineCount) {
+            val normalized = i.toFloat() / (lineCount - 1).coerceAtLeast(1)
+            val fftIndex = if (fft.isNotEmpty()) {
+                (normalized * (fft.size - 1)).toInt().coerceIn(0, fft.lastIndex)
+            } else 0
+            val raw = if (fft.isNotEmpty()) fft[fftIndex].coerceIn(0f, 1f) else 0f
+            val breathing = (kotlin.math.sin(time * 2.2f + i * 0.24f) * 0.5f + 0.5f) * 0.035f
+            val target = if (isPlaying) {
+                (0.10f + raw * 0.78f + breathing).coerceIn(0.06f, 0.92f)
+            } else {
+                heights[i]
+            }
+
+            val current = heights[i]
+            heights[i] = if (isPlaying) {
+                if (target > current) {
+                    current + (target - current) * 0.28f
+                } else {
+                    current + (target - current) * 0.10f
+                }
+            } else {
+                current
+            }
+
+            val lineHeight = (size.height * heights[i]).coerceIn(2.dp.toPx(), size.height)
+            val x = normalized * size.width
+            drawLine(
+                color = Color.White.copy(alpha = 0.62f),
+                start = Offset(x, size.height),
+                end = Offset(x, size.height - lineHeight),
+                strokeWidth = 1.15.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+
 @Composable
 fun PlayerSheet(
     track: Track,
@@ -886,10 +946,9 @@ fun PlayerSheet(
                             .graphicsLayer { alpha = stage1CardElementsAlpha }
                             .zIndex(10f)
                     ) {
-                        DarkSilhouetteWaveform(
+                        PlayerBottomVerticalLines(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
-                            visualizerColor = animatedVisualizerColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1657,8 +1716,8 @@ private fun UpNextTrackRow(
         animateFloatAsState(
             targetValue = virtualDisplacementY,
             animationSpec = androidx.compose.animation.core.spring(
-                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
-                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+                stiffness = 72f,
+                dampingRatio = 0.86f
             ),
             label = "queue_virtual_displacement"
         ).value
