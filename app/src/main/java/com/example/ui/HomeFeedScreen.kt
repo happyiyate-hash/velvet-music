@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,7 +38,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
@@ -189,7 +188,7 @@ fun HomeFeedScreen(
                     .weight(1f),
                 contentPadding = PaddingValues(
                     start = 14.dp,
-                    end = 6.dp,
+                    end = 14.dp,
                     top = 10.dp,
                     bottom = 120.dp
                 )
@@ -202,7 +201,7 @@ fun HomeFeedScreen(
                     }
                 }
 
-                itemsIndexed(displayTracks, key = { _, track -> track.id }) { index, track ->
+                items(displayTracks, key = { it.id }) { track ->
                     val isCurrent = track.id == currentTrack.id
                     DeviceTrackRowItem(
                         track = track,
@@ -210,7 +209,6 @@ fun HomeFeedScreen(
                         isPlaying = isPlaying && isCurrent,
                         onClick = { onSelectTrack(track) },
                         onMenuClick = { onTrackMenuClick(track) },
-                        artworkLoadDelayMs = (index % 6) * 18L,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -651,7 +649,6 @@ private fun DeviceTrackRowItem(
     isPlaying: Boolean,
     onClick: () -> Unit,
     onMenuClick: () -> Unit,
-    artworkLoadDelayMs: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     val cleanTitle = track.title.substringBefore(" - ")
@@ -674,7 +671,6 @@ private fun DeviceTrackRowItem(
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
                 thumbnailSizePx = 128,
-                loadDelayMs = artworkLoadDelayMs,
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -717,16 +713,16 @@ private fun DeviceTrackRowItem(
             )
         }
 
-        // Action Menu: Vertical 3-dots (standing straight), pure white, bigger & mature
+        // Action Menu
         IconButton(
             onClick = onMenuClick,
-            modifier = Modifier.size(44.dp)
+            modifier = Modifier.size(36.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.MoreVert,
+                imageVector = Icons.Default.MoreHoriz,
                 contentDescription = "Track options",
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
+                tint = Color(0xFFC098A2),
+                modifier = Modifier.size(22.dp)
             )
         }
     }

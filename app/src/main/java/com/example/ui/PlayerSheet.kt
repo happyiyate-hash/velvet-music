@@ -27,8 +27,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.FlingBehavior
-import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -60,7 +58,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -174,13 +171,10 @@ import kotlinx.coroutines.withContext
 import com.example.audio.AudioTelemetry
 import com.example.audio.RepeatMode
 import com.example.media.ArtworkColorExtractor
-import com.example.media.VelvetArtworkCache
 import com.example.media.TrackThemeColors
 import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.exp
-import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
@@ -199,92 +193,6 @@ import kotlin.math.roundToInt
  * 7. Secondary Shuffle and Repeat controls positioned below the primary playback controls.
  */
 @OptIn(ExperimentalMaterial3Api::class)
-/**
- * Continuous Inertial Scroll & Damped Spring Settling Engine for Up Next Queue:
- *
- * 1. Continuous Floating-Point Inertia:
- *    - Captures release velocity from touch gesture.
- *    - Propagates momentum with smooth exponential deceleration friction.
- *    - Frame-independent timing (via withFrameNanos dt calculation) for seamless 60/90/120Hz consistency.
- *
- * 2. Damped Spring Settling:
- *    - When momentum drops below threshold, gently and smoothly settles to the nearest row
- *      using a physical damped spring (Hooke's law with damping ratio) instead of a hard jump/snap.
- *
- * 3. Unified Container Motion:
- *    - Displaces the entire list container as one continuous unit.
- *    - Selected row and highlight stay attached to their actual row position throughout the scroll.
- */
-class InertialSpringFlingBehavior(
-    private val lazyListState: LazyListState,
-    private val rowHeightPx: Float,
-    private val friction: Float = 0.955f,
-    private val springStiffness: Float = 145f,
-    private val springDamping: Float = 0.88f
-) : FlingBehavior {
-
-    override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
-        var velocity = initialVelocity
-        var lastFrameNanos = withFrameNanos { it }
-
-        // Phase 1: Physical Inertial Momentum (Continuous exponential deceleration)
-        while (abs(velocity) > 75f) {
-            withFrameNanos { nowNanos ->
-                val dt = ((nowNanos - lastFrameNanos) / 1_000_000_000f).coerceIn(0.001f, 0.045f)
-                lastFrameNanos = nowNanos
-
-                val step = velocity * dt
-                val consumed = scrollBy(step)
-
-                // If hit boundary (overscroll limit), terminate momentum
-                if (abs(consumed) < abs(step) * 0.35f) {
-                    velocity = 0f
-                } else {
-                    val decay = friction.pow(dt * 60f)
-                    velocity *= decay
-                }
-            }
-        }
-
-        // Phase 2: Damped Spring Settling to nearest intended row boundary
-        if (rowHeightPx > 0f) {
-            val currentOffset = lazyListState.firstVisibleItemScrollOffset.toFloat()
-            // Settle forward if more than halfway through, or backward if less
-            val targetDelta = if (currentOffset > rowHeightPx * 0.5f) {
-                (rowHeightPx - currentOffset)
-            } else {
-                -currentOffset
-            }
-
-            var remainingDistance = targetDelta
-            var springVelocity = velocity * 0.35f
-            var springLastNanos = withFrameNanos { it }
-
-            while (abs(remainingDistance) > 0.4f || abs(springVelocity) > 8f) {
-                withFrameNanos { nowNanos ->
-                    val dt = ((nowNanos - springLastNanos) / 1_000_000_000f).coerceIn(0.001f, 0.045f)
-                    springLastNanos = nowNanos
-
-                    val springForce = remainingDistance * springStiffness
-                    springVelocity += springForce * dt
-                    springVelocity *= springDamping.pow(dt * 60f)
-
-                    val delta = springVelocity * dt
-                    val consumed = scrollBy(delta)
-                    remainingDistance -= delta
-
-                    if (abs(consumed) < abs(delta) * 0.35f) {
-                        springVelocity = 0f
-                        remainingDistance = 0f
-                    }
-                }
-            }
-        }
-
-        return 0f
-    }
-}
-
 @Composable
 fun PlayerSheet(
     track: Track,
@@ -321,26 +229,42 @@ fun PlayerSheet(
     var showLyricsSheet by remember { mutableStateOf(false) }
 
     // Dynamically derive the calm, restrained palette based on the current artwork.
-    // Instant frame-0 derivation from dominantColor (0ms latency, zero main-thread disk I/O).
-    var resolvedArtworkBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var themeColors by remember(track.id) {
-        mutableStateOf(ArtworkColorExtractor.generateThemePalette(track.dominantColor))
+    // The resolved bitmap is passed directly into the color extractor state update loop.
+    var resolvedArtworkBitmap by remember(track.id, track.artworkUri, track.coverResId) {
+        val initial = ArtworkColorExtractor.resolveTrackBitmap(context, track)
+            ?: if (track.coverResId != 0) {
+                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+            } else null
+        mutableStateOf<Bitmap?>(initial)
+    }
+    var themeColors by remember(track.id, track.artworkUri, track.coverResId) {
+        val initial = resolvedArtworkBitmap
+            ?: ArtworkColorExtractor.resolveTrackBitmap(context, track)
+            ?: if (track.coverResId != 0) {
+                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+            } else null
+        mutableStateOf(
+            if (initial != null) ArtworkColorExtractor.extractColorsFromBitmap(initial)
+            else ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+        )
     }
 
     LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
-        withContext(Dispatchers.IO) {
-            val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
-                ?: if (track.coverResId != 0) {
-                    runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-                } else null
-            val extractedColors = if (bitmap != null) {
-                ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
-            } else {
-                ArtworkColorExtractor.generateThemePalette(track.dominantColor)
-            }
-            withContext(Dispatchers.Main) {
-                resolvedArtworkBitmap = bitmap
-                themeColors = extractedColors
+        if (resolvedArtworkBitmap == null) {
+            withContext(Dispatchers.IO) {
+                val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
+                    ?: if (track.coverResId != 0) {
+                        runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
+                    } else null
+                val extractedColors = if (bitmap != null) {
+                    ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+                } else {
+                    ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+                }
+                withContext(Dispatchers.Main) {
+                    resolvedArtworkBitmap = bitmap
+                    themeColors = extractedColors
+                }
             }
         }
     }
@@ -374,31 +298,22 @@ fun PlayerSheet(
     // Up Next Queue items (uses passed queueTracks or falls back to sample queue tracks)
     // YouTube Music Hierarchy: Index 0 is currently playing track, Index 1 is Up Next, etc.
     // Preserve the queue's physical order. Selecting a track must not move it to the top.
-    val queueItems = remember(queueTracks) {
+    val queueItems = remember(queueTracks, track.id) {
         val raw = if (queueTracks.isNotEmpty()) queueTracks.distinctBy { it.id }
         else com.example.model.SampleData.starterTracks.distinctBy { it.id }
         if (raw.any { it.id == track.id }) raw else raw + track
     }
-    var orderedQueueItems by remember { mutableStateOf(queueItems) }
+    var orderedQueueItems by remember(queueItems) { mutableStateOf(queueItems) }
     val queueListState = rememberLazyListState()
 
     var activeQueueDragId by remember { mutableStateOf<String?>(null) }
     var activeQueueDragIndex by remember { mutableIntStateOf(-1) }
-    var activeQueueDragOriginalIndex by remember { mutableIntStateOf(-1) }
     var queueDragOffsetY by remember { mutableFloatStateOf(0f) }
+    var queueDragTargetIndex by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(queueItems) {
-        if (activeQueueDragId == null) orderedQueueItems = queueItems
-    }
-
-    LaunchedEffect(queueItems, track.id) {
-        val upcoming = queueItems.dropWhile { it.id != track.id }.drop(1).take(3)
-        withContext(Dispatchers.IO) {
-            upcoming.forEach { nextTrack ->
-                if (VelvetArtworkCache.getFullFromMemory(nextTrack.id) == null) {
-                    runCatching { VelvetArtworkCache.getOrDecodeFullArtwork(context, nextTrack) }
-                }
-            }
+        if (activeQueueDragId == null) {
+            orderedQueueItems = queueItems
         }
     }
 
@@ -406,50 +321,41 @@ fun PlayerSheet(
         if (!canDrag || index < 0 || activeQueueDragId != null) return
         activeQueueDragId = id
         activeQueueDragIndex = index
-        activeQueueDragOriginalIndex = index
         queueDragOffsetY = 0f
+        queueDragTargetIndex = index
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
     fun updateQueueDrag(deltaY: Float) {
-        if (activeQueueDragId == null || activeQueueDragIndex < 0) return
+        val dragId = activeQueueDragId ?: return
+        val startIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
+        if (startIndex < 0) return
         queueDragOffsetY += deltaY
-        val rowHeightPx = with(density) { 60.dp.toPx() }
-
-        while (queueDragOffsetY >= rowHeightPx * 0.50f && activeQueueDragIndex < orderedQueueItems.lastIndex) {
-            val from = activeQueueDragIndex
-            val mutable = orderedQueueItems.toMutableList()
-            val moved = mutable.removeAt(from)
-            mutable.add(from + 1, moved)
-            orderedQueueItems = mutable
-            activeQueueDragIndex = from + 1
-            queueDragOffsetY -= rowHeightPx
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-
-        while (queueDragOffsetY <= -rowHeightPx * 0.50f && activeQueueDragIndex > 0) {
-            val from = activeQueueDragIndex
-            val mutable = orderedQueueItems.toMutableList()
-            val moved = mutable.removeAt(from)
-            mutable.add(from - 1, moved)
-            orderedQueueItems = mutable
-            activeQueueDragIndex = from - 1
-            queueDragOffsetY += rowHeightPx
+        val itemHeightPx = with(density) { 60.dp.toPx() }
+        val slots = (queueDragOffsetY / itemHeightPx).roundToInt()
+        val newTarget = (startIndex + slots).coerceIn(0, orderedQueueItems.lastIndex.coerceAtLeast(0))
+        if (newTarget != queueDragTargetIndex) {
+            queueDragTargetIndex = newTarget
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
     }
 
     fun finishQueueDrag() {
-        val original = activeQueueDragOriginalIndex
-        val final = activeQueueDragIndex
-        if (activeQueueDragId != null && original >= 0 && final >= 0 && original != final) {
-            onReorderQueue?.invoke(original, final)
-            onUpdateQueue?.invoke(orderedQueueItems)
+        val dragId = activeQueueDragId
+        val from = if (dragId != null) orderedQueueItems.indexOfFirst { it.id == dragId } else -1
+        val to = queueDragTargetIndex
+        if (dragId != null && from >= 0 && to >= 0 && from < orderedQueueItems.size && to < orderedQueueItems.size && from != to) {
+            val updatedQueue = orderedQueueItems.toMutableList().apply {
+                add(to, removeAt(from))
+            }
+            orderedQueueItems = updatedQueue
+            onReorderQueue?.invoke(from, to)
+            onUpdateQueue?.invoke(updatedQueue)
         }
         activeQueueDragId = null
         activeQueueDragIndex = -1
-        activeQueueDragOriginalIndex = -1
         queueDragOffsetY = 0f
+        queueDragTargetIndex = -1
     }
 
     // YouTube Music-style Artwork Background Color System:
@@ -571,12 +477,14 @@ fun PlayerSheet(
 
             // Collapsed state (p = 0f):
             // Shift bottom sheet downward so that only the drag handle peeks above system navigation.
+            val visualizerHeight = 28.dp
             val collapsedPeekHeight = (navBarBottom + 20.dp).coerceIn(20.dp, 32.dp)
             val collapsedControlsY = totalHeight - collapsedPeekHeight - controlsHeight - 12.dp
             val collapsedCardHeight = collapsedControlsY - 6.dp
-            val collapsedProgressY = collapsedCardHeight - 34.dp
-            val collapsedMetadataY = collapsedProgressY - 48.dp
-            val collapsedArtworkBottom = collapsedMetadataY - 12.dp
+            val collapsedWaveformY = collapsedCardHeight - visualizerHeight
+            val collapsedProgressY = collapsedWaveformY - 26.dp
+            val collapsedMetadataY = collapsedProgressY - 44.dp
+            val collapsedArtworkBottom = collapsedMetadataY - 10.dp
 
             // Collapsed state (p = 0f): Original centered display with rounded corners and proper margins:
             val collapsedArtworkHeight = (minOf(totalWidth - 32.dp, collapsedArtworkBottom - (statusBarTop + 46.dp) - 6.dp)).coerceIn(240.dp, 330.dp)
@@ -594,8 +502,9 @@ fun PlayerSheet(
             val expandedArtworkBottom = expandedArtworkTop + expandedArtworkHeight // = totalWidth
             val expandedCardHeight = expandedArtworkBottom
 
-            val expandedProgressY = expandedCardHeight - 34.dp
-            val expandedMetadataY = expandedProgressY - 48.dp
+            val expandedWaveformY = expandedCardHeight - visualizerHeight
+            val expandedProgressY = expandedWaveformY - 26.dp
+            val expandedMetadataY = expandedProgressY - 44.dp
 
             // Stage 2 Mini Artwork Targets:
             // Reduced size: ~20% larger than 48dp queue art = 56dp. Pushed to far left with small space (10dp).
@@ -652,7 +561,6 @@ fun PlayerSheet(
             // Continuous lerp for elements inside the Card:
             val metadataY = lerp(collapsedMetadataY, expandedMetadataY, p1)
             val progressY = lerp(collapsedProgressY, expandedProgressY, p1)
-            val visualizerHeight = 34.dp
             val waveformY = cardHeight - visualizerHeight
             val contentPaddingHorizontal = lerp(22.dp, 18.dp, p1)
 
@@ -969,7 +877,7 @@ fun PlayerSheet(
                         )
                     }
 
-                    // Thin vertical lines rising from the bottom edge of the player card.
+                    // PLAYER CARD AUDIO VISUALIZER (Spanning full width to both boundaries, sitting directly at bottom edge)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -978,9 +886,10 @@ fun PlayerSheet(
                             .graphicsLayer { alpha = stage1CardElementsAlpha }
                             .zIndex(10f)
                     ) {
-                        PlayerBottomVerticalLines(
+                        DarkSilhouetteWaveform(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
+                            visualizerColor = animatedVisualizerColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1233,18 +1142,9 @@ fun PlayerSheet(
                             }
                         }
 
-                        val rowHeightPx = with(density) { 60.dp.toPx() }
-                        val inertialFlingBehavior = remember(rowHeightPx) {
-                            InertialSpringFlingBehavior(
-                                lazyListState = queueListState,
-                                rowHeightPx = rowHeightPx
-                            )
-                        }
-
-                        // Scrollable List: Continuous inertial scrolling with soft damped spring settling
+                        // Scrollable List: ONLY the music tracks scroll smoothly underneath, no dragging of the bottom sheet
                         LazyColumn(
                             state = queueListState,
-                            flingBehavior = inertialFlingBehavior,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
@@ -1258,10 +1158,6 @@ fun PlayerSheet(
                                 val isCurrent = queueTrack.id == track.id
                                 val isDragging = queueTrack.id == activeQueueDragId
 
-                                // Real queue order is changed during the gesture.
-                                // Do not add a second synthetic translation.
-                                val targetShift = 0f
-
                                 UpNextTrackRow(
                                     track = queueTrack,
                                     isCurrent = isCurrent,
@@ -1270,40 +1166,58 @@ fun PlayerSheet(
                                     surfaceColor = animatedBgMidLower,
                                     stage2Progress = p2,
                                     onClick = { onSelectQueueTrack(queueTrack) },
-                                    onPlayNext = {
-                                        val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
-                                        val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
-                                        if (currentIndex >= 0) {
-                                            val destination = if (playingIndex >= 0) playingIndex + 1 else 0
-                                            val updated = orderedQueueItems.toMutableList().apply {
-                                                val moved = removeAt(currentIndex)
-                                                add(destination.coerceAtMost(size), moved)
-                                            }
-                                            orderedQueueItems = updated
-                                            onUpdateQueue?.invoke(updated)
+                                onPlayNext = {
+                                    val playingIndex = orderedQueueItems.indexOfFirst { it.id == track.id }
+                                    val currentIndex = orderedQueueItems.indexOfFirst { it.id == queueTrack.id }
+                                    if (currentIndex >= 0) {
+                                        val destination = if (playingIndex >= 0) playingIndex + 1 else 0
+                                        val updated = orderedQueueItems.toMutableList().apply {
+                                            val moved = removeAt(currentIndex)
+                                            add(destination.coerceAtMost(size), moved)
                                         }
-                                    },
-                                    onDelete = {
-                                        if (!isCurrent && activeQueueDragId == null) {
-                                            val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
-                                            orderedQueueItems = updated
-                                            onUpdateQueue?.invoke(updated)
+                                        orderedQueueItems = updated
+                                        onUpdateQueue?.invoke(updated)
+                                        coroutineScope.launch {
+                                            queueListState.animateScrollToItem(playingIndex.coerceAtLeast(0))
                                         }
-                                    },
-                                    onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
-                                    onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
-                                    onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
-                                    isDragging = isDragging,
-                                    dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
-                                    targetSlotShiftY = targetShift,
-                                    queueIndex = queueIndex
-                                )
-                            }
+                                    }
+                                },
+                                onDelete = {
+                                    if (!isCurrent && activeQueueDragId == null) {
+                                        val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
+                                        orderedQueueItems = updated
+                                        onUpdateQueue?.invoke(updated)
+                                    }
+                                },
+                                onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
+                                onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
+                                onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
+                                isDragging = isDragging,
+                                dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
+                                virtualDisplacementY = run {
+                                    val dragId = activeQueueDragId ?: return@run 0f
+                                    if (isDragging) return@run 0f
+                                    val dragStartIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
+                                    if (dragStartIndex < 0 || queueDragTargetIndex < 0 || dragStartIndex == queueDragTargetIndex) return@run 0f
+                                    val itemHeightPx = with(density) { 60.dp.toPx() }
+                                    when {
+                                        dragStartIndex < queueDragTargetIndex -> {
+                                            if (queueIndex in (dragStartIndex + 1)..queueDragTargetIndex) -itemHeightPx else 0f
+                                        }
+                                        dragStartIndex > queueDragTargetIndex -> {
+                                            if (queueIndex in queueDragTargetIndex until dragStartIndex) itemHeightPx else 0f
+                                        }
+                                        else -> 0f
+                                    }
+                                },
+                                isDropTarget = false
+                            )
                         }
                     }
                 }
             }
         }
+    }
 
         // 7. THREE-DOT SONG ACTION BOTTOM SHEET
         if (showActionSheet) {
@@ -1580,87 +1494,116 @@ private fun NowPlayingProgressBar(
     }
 }
 
-/**
- * Velvet Music Player - Visualizer (Continuous Symmetrical Acoustic Waveform):
- *
- * Implements the exact Velvet visualizer specification from design mockup:
- * 1. Continuous Wave (not individual bars):
- *    - 140 fine sampling points across the full available width.
- *    - Vertical resonant threads connect top and bottom symmetrical amplitudes at each sample point.
- *    - Continuous Catmull-Rom / Bézier spline curves trace the upper and lower wave envelope contours.
- *    - Subtle harmonic phase ribbons weave through the wave body, forming the silky acoustic string vibration texture.
- *
- * 2. Centered Baseline & Symmetrical Amplitude:
- *    - Center baseline (centerY = totalHeight / 2).
- *    - Movement occurs symmetrically both above and below the baseline.
- *
- * 3. Smooth Physical Animation:
- *    - 5-tap Gaussian spatial smoothing blends neighbors into a cohesive liquid waveform.
- *    - Temporal attack (0.42f) and release (0.15f) for natural, fluid sound wave response.
- *    - Wave propagation ripples disturbances across the full width.
- *
- * 4. Fixed Color (#FFFFFF / #E5E7EB):
- *    - Pure crisp white with subtle gray threading. Zero extraction from album art.
- *
- * 5. Quiet-State Living Continuity:
- *    - Low amplitude, still visible (not completely flat).
- *    - Gentle breathing undulating wave across the baseline; never a flat horizontal straight line.
- */
 @Composable
-private fun PlayerBottomVerticalLines(
+private fun DarkSilhouetteWaveform(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
+    visualizerColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val lineCount = 72
-    val heights = remember(lineCount) { FloatArray(lineCount) { 0.08f } }
-    val frameTicker = remember { mutableLongStateOf(0L) }
+    val maxBars = 180
+    val restingProfile = remember {
+        FloatArray(maxBars) { i ->
+            val norm = i.toFloat() / (maxBars - 1).coerceAtLeast(1)
+            val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.16f
+            val wave2 = abs(cos(norm * 3.14159f * 3.6f)) * 0.10f
+            (0.08f + wave1 + wave2).coerceIn(0.06f, 0.30f)
+        }
+    }
+    val liveAmplitudes = remember {
+        FloatArray(maxBars) { i -> restingProfile[i] }
+    }
 
+    val frameTicker = remember { mutableLongStateOf(0L) }
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
             while (isActive) {
-                withFrameNanos { frameTicker.longValue = it }
+                withFrameNanos { timeNanos ->
+                    frameTicker.longValue = timeNanos
+                }
             }
         }
     }
 
     Canvas(modifier = modifier) {
-        if (size.width <= 0f || size.height <= 0f) return@Canvas
-        val time = frameTicker.longValue / 1_000_000_000f
-        val fft = telemetry.fftBars
+        @Suppress("UNUSED_VARIABLE")
+        val ticker = frameTicker.longValue
+        val totalWidth = size.width
+        val totalHeight = size.height
+        if (totalWidth <= 0f || totalHeight <= 0f) return@Canvas
 
-        for (i in 0 until lineCount) {
-            val normalized = i.toFloat() / (lineCount - 1).coerceAtLeast(1)
-            val fftIndex = if (fft.isNotEmpty()) {
-                (normalized * (fft.size - 1)).toInt().coerceIn(0, fft.lastIndex)
-            } else 0
-            val raw = if (fft.isNotEmpty()) fft[fftIndex].coerceIn(0f, 1f) else 0f
-            val breathing = (kotlin.math.sin(time * 2.2f + i * 0.24f) * 0.5f + 0.5f) * 0.035f
-            val target = if (isPlaying) {
-                (0.10f + raw * 0.78f + breathing).coerceIn(0.06f, 0.92f)
-            } else {
-                heights[i]
-            }
+        // Fill edge-to-edge across both left and right sides of the player card
+        val barWidth = 2.0.dp.toPx()
+        val minGap = 1.0.dp.toPx()
+        val barCount = ((totalWidth + minGap) / (barWidth + minGap)).toInt().coerceIn(90, maxBars)
+        val barGap = if (barCount > 1) (totalWidth - (barWidth * barCount)) / (barCount - 1) else 0f
 
-            val current = heights[i]
-            heights[i] = if (isPlaying) {
-                if (target > current) {
-                    current + (target - current) * 0.28f
+        val rawFft = telemetry.fftBars
+        val fftSize = rawFft.size
+        val subBassEnergy = if (fftSize >= 4) (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f else 0f
+        val midEnergy = if (fftSize >= 24) (rawFft[8] + rawFft[12] + rawFft[16] + rawFft[20]) / 4f else 0f
+        val highEnergy = if (fftSize >= 48) (rawFft[36] + rawFft[42] + rawFft[47]) / 3f else 0f
+
+        val minBarHeight = 2.0.dp.toPx()
+        // Restrict maximum height to 85% of visualizer height
+        val maxBarHeight = totalHeight * 0.85f
+        val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
+
+        // Snappy rise (attack) and fast drop (decay)
+        val attackRate = 0.72f
+        val decayRate = 0.38f
+
+        for (i in 0 until barCount) {
+            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+
+            // Perceptual frequency spectrum distribution
+            val fftIndex = (Math.pow(norm.toDouble(), 1.35) * (fftSize - 1)).toInt().coerceIn(0, (fftSize - 1).coerceAtLeast(0))
+            val binVal = if (fftIndex < fftSize) rawFft[fftIndex] else 0f
+            val prevVal = if (fftIndex > 0) rawFft[fftIndex - 1] else binVal
+            val nextVal = if (fftIndex < fftSize - 1) rawFft[fftIndex + 1] else binVal
+            val smoothBin = prevVal * 0.20f + binVal * 0.60f + nextVal * 0.20f
+
+            // 1. Kick and bass punch on lower spectrum
+            val kickWeight = if (norm < 0.28f) (1f - norm / 0.28f) else 0f
+            val kickBoost = if (telemetry.kickDetected) kickWeight * 0.55f else kickWeight * subBassEnergy * 0.40f
+
+            // 2. Snare and vocals on mid spectrum
+            val midDist = abs(norm - 0.45f) / 0.25f
+            val snareWeight = (1f - midDist).coerceIn(0f, 1f)
+            val snareBoost = if (telemetry.snareDetected) snareWeight * 0.50f else snareWeight * midEnergy * 0.35f
+
+            // 3. Hi-hats, percussions, transients on high spectrum
+            val highWeight = ((norm - 0.55f) / 0.45f).coerceIn(0f, 1f)
+            val transientBoost = highWeight * telemetry.transientSpike * 0.45f + highWeight * highEnergy * 0.35f
+
+            val soundResponse = (smoothBin * 0.60f + kickBoost + snareBoost + transientBoost + telemetry.rmsLevel * 0.12f)
+            // Restricted height so it remains elegant and bounded
+            val targetFraction = soundResponse.coerceIn(0.06f, 0.82f)
+
+            if (isPlaying) {
+                val current = liveAmplitudes[i]
+                val updated = if (targetFraction > current) {
+                    current + (targetFraction - current) * attackRate
                 } else {
-                    current + (target - current) * 0.10f
+                    current - (current - targetFraction) * decayRate
                 }
+                liveAmplitudes[i] = updated.coerceIn(0.04f, 0.85f)
             } else {
-                current
+                val target = restingProfile[i % restingProfile.size]
+                val current = liveAmplitudes[i]
+                liveAmplitudes[i] = (current - (current - target) * 0.28f).coerceIn(0.04f, 0.85f)
             }
 
-            val lineHeight = (size.height * heights[i]).coerceIn(2.dp.toPx(), size.height)
-            val x = normalized * size.width
-            drawLine(
-                color = Color.White.copy(alpha = 0.62f),
-                start = Offset(x, size.height),
-                end = Offset(x, size.height - lineHeight),
-                strokeWidth = 1.15.dp.toPx(),
-                cap = StrokeCap.Round
+            val clampedFraction = liveAmplitudes[i].coerceIn(0f, 1f)
+            val barHeight = (minBarHeight + usableRange * clampedFraction).coerceIn(minBarHeight, maxBarHeight)
+            val barTop = totalHeight - barHeight
+            val barX = i * (barWidth + barGap)
+
+            drawRoundRect(
+                color = visualizerColor,
+                topLeft = Offset(barX, barTop),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
             )
         }
     }
@@ -1682,8 +1625,8 @@ private fun UpNextTrackRow(
     onDragEnd: () -> Unit,
     isDragging: Boolean,
     dragOffsetY: Float,
-    targetSlotShiftY: Float = 0f,
-    queueIndex: Int = -1,
+    virtualDisplacementY: Float,
+    isDropTarget: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var rowWidthPx by remember { mutableFloatStateOf(0f) }
@@ -1709,45 +1652,30 @@ private fun UpNextTrackRow(
         }
     }
 
-    // Animate a row from its previous logical slot into its new logical slot.
-    // This is separate from the dragged row, whose position follows the finger.
-    val rowHeightPx = with(density) { 60.dp.toPx() }
-    val slotAnim = remember(track.id) { Animatable(0f) }
-    var previousQueueIndex by remember(track.id) { mutableIntStateOf(queueIndex) }
+    // Zero-cost animation gating: idle rows during normal scrolling do not tick animators
+    val displacement = if (virtualDisplacementY != 0f) {
+        animateFloatAsState(
+            targetValue = virtualDisplacementY,
+            animationSpec = androidx.compose.animation.core.spring(
+                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+            ),
+            label = "queue_virtual_displacement"
+        ).value
+    } else 0f
 
-    LaunchedEffect(queueIndex) {
-        if (previousQueueIndex != queueIndex && !isDragging) {
-            val slotDelta = previousQueueIndex - queueIndex
-            previousQueueIndex = queueIndex
-            slotAnim.snapTo(slotDelta * rowHeightPx)
-            slotAnim.animateTo(
-                0f,
-                animationSpec = spring(
-                    dampingRatio = 0.86f,
-                    stiffness = 72f
-                )
-            )
-        } else {
-            previousQueueIndex = queueIndex
-        }
-    }
+    val scale = if (isDragging) {
+        animateFloatAsState(1.01f, tween(120), label = "queue_drag_scale").value
+    } else 1f
 
-    val slotShiftAnim = if (isDragging) 0f else slotAnim.value
-
-    val scale by animateFloatAsState(
-        targetValue = if (isDragging) 1.025f else 1f,
-        animationSpec = androidx.compose.animation.core.spring(stiffness = Spring.StiffnessMediumLow),
-        label = "queue_drag_scale"
-    )
-
-    val elevation by animateFloatAsState(
-        targetValue = if (isDragging) 8f else 0f,
-        animationSpec = tween(140),
-        label = "queue_drag_elevation"
-    )
+    val elevation = if (isDragging) {
+        animateFloatAsState(4f, tween(120), label = "queue_drag_elevation").value
+    } else 0f
 
     // Active Item Highlight:
-    // Attached directly to row position. Travels naturally with scroll and drag.
+    // In stage 1 (p <= 1f), completely transparent so it has zero tint and matches the background perfectly.
+    // In stage 2 (p > 1f), softly introduces the gold/accent color tint as user drags upward.
+    // When swiping, uses solid opaque surfaceColor (animatedBgBottom) so the moving row cleanly slides over the black/action reveal layer.
     val rowBaseBg = surfaceColor
     val activeRowBg = when {
         isDragging -> Color.White.copy(alpha = 0.16f).compositeOver(rowBaseBg)
@@ -1762,23 +1690,23 @@ private fun UpNextTrackRow(
         else -> Color.Transparent
     }
 
-    // Full-Bleed Surface Layer: Spans 100% width, moves as part of the unified scroll container
+    // Full-Bleed Surface Layer: Spans 100% width, no border, zero padding cutoffs
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(60.dp)
             .onSizeChanged { rowWidthPx = it.width.toFloat() }
             .graphicsLayer {
-                translationY = if (isDragging) dragOffsetY else slotShiftAnim
+                translationY = if (isDragging) dragOffsetY else displacement
                 scaleX = scale
                 scaleY = scale
             }
-            .zIndex(if (isDragging) 10f else 0f)
+            .zIndex(if (isDragging) 5f else 0f)
             .shadow(
                 elevation = elevation.dp,
                 shape = RectangleShape,
-                ambientColor = Color.Black.copy(alpha = 0.5f),
-                spotColor = Color.Black.copy(alpha = 0.5f),
+                ambientColor = Color.Black.copy(alpha = 0.45f),
+                spotColor = Color.Black.copy(alpha = 0.45f),
                 clip = false
             )
     ) {
@@ -1842,6 +1770,73 @@ private fun UpNextTrackRow(
                 .fillMaxSize()
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
                 .background(activeRowBg)
+                .pointerInput(track.id, isDragging) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            thresholdLatched = false
+                        },
+                        onDragCancel = {
+                            scope.launch {
+                                swipeSettle.snapTo(swipeOffset)
+                                swipeSettle.animateTo(0f, tween(180)) { swipeOffset = value }
+                                thresholdLatched = false
+                            }
+                        },
+                        onDragEnd = {
+                            val releaseOffset = swipeOffset
+                            val crossed = abs(releaseOffset) >= thresholdPx
+                            if (!crossed) {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(0f, androidx.compose.animation.core.spring(
+                                        stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy
+                                    )) { swipeOffset = value }
+                                    thresholdLatched = false
+                                }
+                            } else if (releaseOffset > 0f) {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
+                                    onPlayNext()
+                                    swipeSettle.snapTo(0f)
+                                    swipeOffset = 0f
+                                    thresholdLatched = false
+                                }
+                            } else {
+                                scope.launch {
+                                    swipeSettle.snapTo(releaseOffset)
+                                    swipeSettle.animateTo(-swipeLimitPx, tween(190, easing = FastOutSlowInEasing)) { swipeOffset = value }
+                                    onDelete()
+                                    swipeSettle.snapTo(0f)
+                                    swipeOffset = 0f
+                                    thresholdLatched = false
+                                }
+                            }
+                        },
+                        onHorizontalDrag = { change, amount ->
+                            change.consume()
+                            if (!isDragging && !isCurrent) {
+                                val next = (swipeOffset + amount).coerceIn(-swipeLimitPx, swipeLimitPx)
+                                swipeOffset = next
+                            }
+                        }
+                    )
+                }
+                .pointerInput(track.id, isDragging) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = {
+                            swipeOffset = 0f
+                            onDragStart()
+                        },
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragEnd,
+                        onDrag = { change, amount ->
+                            change.consume()
+                            onDragBy(amount.y)
+                        }
+                    )
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -2482,7 +2477,6 @@ fun NowPlayingActionSheet(
                         track = track,
                         contentDescription = track.title,
                         contentScale = ContentScale.Crop,
-                        thumbnailSizePx = 128,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
