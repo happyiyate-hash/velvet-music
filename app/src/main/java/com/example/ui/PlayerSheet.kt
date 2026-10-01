@@ -172,6 +172,7 @@ import com.example.audio.AudioTelemetry
 import com.example.audio.RepeatMode
 import com.example.media.ArtworkColorExtractor
 import com.example.media.TrackThemeColors
+import com.example.media.VelvetArtworkCache
 import com.example.model.Track
 import kotlin.math.abs
 import kotlin.math.cos
@@ -228,42 +229,33 @@ fun PlayerSheet(
     var showVisualizerSheet by remember { mutableStateOf(false) }
     var showLyricsSheet by remember { mutableStateOf(false) }
 
-    // Dynamically derive the calm, restrained palette based on the current artwork.
-    // The resolved bitmap is passed directly into the color extractor state update loop.
-    var resolvedArtworkBitmap by remember(track.id, track.artworkUri, track.coverResId) {
-        val initial = ArtworkColorExtractor.resolveTrackBitmap(context, track)
-            ?: if (track.coverResId != 0) {
-                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-            } else null
-        mutableStateOf<Bitmap?>(initial)
+    // Instant 0ms palette and artwork resolution using universal in-memory VelvetArtworkCache
+    var resolvedArtworkBitmap by remember(track.id) {
+        mutableStateOf<Bitmap?>(VelvetArtworkCache.getBitmap(track.id))
     }
-    var themeColors by remember(track.id, track.artworkUri, track.coverResId) {
-        val initial = resolvedArtworkBitmap
-            ?: ArtworkColorExtractor.resolveTrackBitmap(context, track)
-            ?: if (track.coverResId != 0) {
-                runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-            } else null
-        mutableStateOf(
-            if (initial != null) ArtworkColorExtractor.extractColorsFromBitmap(initial)
-            else ArtworkColorExtractor.generateThemePalette(track.dominantColor)
-        )
+    var themeColors by remember(track.id) {
+        val cachedColors = VelvetArtworkCache.getColors(track.id)
+        val initialColors = cachedColors
+            ?: resolvedArtworkBitmap?.let { ArtworkColorExtractor.extractColorsFromBitmap(it) }
+            ?: ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+        mutableStateOf(initialColors)
     }
 
-    LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
-        if (resolvedArtworkBitmap == null) {
+    LaunchedEffect(track.id) {
+        if (resolvedArtworkBitmap == null || VelvetArtworkCache.getColors(track.id) == null) {
             withContext(Dispatchers.IO) {
-                val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
-                    ?: if (track.coverResId != 0) {
-                        runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-                    } else null
-                val extractedColors = if (bitmap != null) {
-                    ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
-                } else {
-                    ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+                val bitmap = VelvetArtworkCache.getBitmap(track.id)
+                    ?: VelvetArtworkCache.resolveBitmap(context, track, 512)
+                val colors = VelvetArtworkCache.getColors(track.id)
+                    ?: (if (bitmap != null) ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
+                        else ArtworkColorExtractor.generateThemePalette(track.dominantColor))
+
+                if (bitmap != null) {
+                    VelvetArtworkCache.put(track.id, bitmap, null, colors)
                 }
                 withContext(Dispatchers.Main) {
                     resolvedArtworkBitmap = bitmap
-                    themeColors = extractedColors
+                    themeColors = colors
                 }
             }
         }
@@ -889,7 +881,7 @@ fun PlayerSheet(
                         DarkSilhouetteWaveform(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
-                            visualizerColor = animatedVisualizerColor,
+                            visualizerColor = Color.Black,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1498,22 +1490,49 @@ private fun NowPlayingProgressBar(
 private fun DarkSilhouetteWaveform(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
-    visualizerColor: Color,
+    visualizerColor: Color = Color.Black,
     modifier: Modifier = Modifier
 ) {
-    val maxBars = 180
-    val restingProfile = remember {
-        FloatArray(maxBars) { i ->
-            val norm = i.toFloat() / (maxBars - 1).coerceAtLeast(1)
-            val wave1 = abs(sin(norm * 3.14159f * 1.6f + 0.30f)) * 0.16f
-            val wave2 = abs(cos(norm * 3.14159f * 3.6f)) * 0.10f
-            (0.08f + wave1 + wave2).coerceIn(0.06f, 0.30f)
+    // 38 distinctly spaced lines - clean, separated, never looking like too many visualizers put together
+    val barCount = 38
+
+    // Calibrated resting profile for each individual bar when idle or paused
+    val restingProfile = remember(barCount) {
+        FloatArray(barCount) { i ->
+            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
+            val v1 = abs(sin(norm * 3.14159f * 2.2f + 0.4f)) * 0.12f
+            val v2 = abs(cos(i * 0.85f)) * 0.08f
+            (0.08f + v1 + v2).coerceIn(0.06f, 0.24f)
         }
     }
-    val liveAmplitudes = remember {
-        FloatArray(maxBars) { i -> restingProfile[i] }
+
+    // Persisted amplitudes across frames for natural, studio-grade attack/decay physics
+    val liveAmplitudes = remember(barCount) {
+        FloatArray(barCount) { i -> restingProfile[i] }
     }
 
+    // Per-bar independent attack rates: different lines push up with their own speed
+    val attackRates = remember(barCount) {
+        FloatArray(barCount) { i ->
+            0.60f + (((i * 37 + 13) % 100) / 100f) * 0.35f
+        }
+    }
+
+    // Per-bar independent decay rates: lines drop back down separately, not together as one block
+    val decayRates = remember(barCount) {
+        FloatArray(barCount) { i ->
+            0.18f + (((i * 47 + 29) % 100) / 100f) * 0.22f
+        }
+    }
+
+    // Per-bar sensitivity / gain multiplier: gives each line distinct dynamic height response
+    val barSensitivities = remember(barCount) {
+        FloatArray(barCount) { i ->
+            0.75f + (((i * 53 + 7) % 100) / 100f) * 0.50f
+        }
+    }
+
+    // Continuous hardware animation ticker while playing
     val frameTicker = remember { mutableLongStateOf(0L) }
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
@@ -1526,72 +1545,108 @@ private fun DarkSilhouetteWaveform(
     }
 
     Canvas(modifier = modifier) {
-        @Suppress("UNUSED_VARIABLE")
         val ticker = frameTicker.longValue
         val totalWidth = size.width
         val totalHeight = size.height
         if (totalWidth <= 0f || totalHeight <= 0f) return@Canvas
 
-        // Fill edge-to-edge across both left and right sides of the player card
-        val barWidth = 2.0.dp.toPx()
-        val minGap = 1.0.dp.toPx()
-        val barCount = ((totalWidth + minGap) / (barWidth + minGap)).toInt().coerceIn(90, maxBars)
-        val barGap = if (barCount > 1) (totalWidth - (barWidth * barCount)) / (barCount - 1) else 0f
+        val timeSec = (ticker / 1_000_000_000.0).toFloat()
+
+        // Bar layout: clearly spaced lines with generous gap so they are visually separate
+        val barWidth = 3.5.dp.toPx()
+        val totalBarsWidth = barWidth * barCount
+        val barGap = if (barCount > 1) {
+            ((totalWidth - totalBarsWidth) / (barCount - 1)).coerceAtLeast(1.5.dp.toPx())
+        } else 0f
 
         val rawFft = telemetry.fftBars
         val fftSize = rawFft.size
-        val subBassEnergy = if (fftSize >= 4) (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f else 0f
-        val midEnergy = if (fftSize >= 24) (rawFft[8] + rawFft[12] + rawFft[16] + rawFft[20]) / 4f else 0f
-        val highEnergy = if (fftSize >= 48) (rawFft[36] + rawFft[42] + rawFft[47]) / 3f else 0f
 
-        val minBarHeight = 2.0.dp.toPx()
-        // Restrict maximum height to 85% of visualizer height
-        val maxBarHeight = totalHeight * 0.85f
+        // Extract mixed audio features
+        val subBassEnergy = if (fftSize >= 4) {
+            (rawFft[0] + rawFft[1] + rawFft[2] + rawFft[3]) / 4f
+        } else telemetry.rmsLevel
+
+        val midEnergy = if (fftSize >= 24) {
+            (rawFft[8] + rawFft[12] + rawFft[16] + rawFft[20]) / 4f
+        } else telemetry.rmsLevel * 0.6f
+
+        val highEnergy = if (fftSize >= 48) {
+            (rawFft[32] + rawFft[38] + rawFft[44]) / 3f
+        } else telemetry.transientSpike * 0.5f
+
+        val isKick = telemetry.kickDetected
+        val isSnare = telemetry.snareDetected
+        val transient = telemetry.transientSpike
+        val rms = telemetry.rmsLevel
+
+        // Dynamic height range:
+        // Tops are NEVER sharp-edged, always rounded capsules
+        val minBarHeight = barWidth // Guarantee at least a circular dome pill
+        val maxBarHeight = totalHeight * 0.88f
         val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
-
-        // Snappy rise (attack) and fast drop (decay)
-        val attackRate = 0.72f
-        val decayRate = 0.38f
 
         for (i in 0 until barCount) {
             val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
 
-            // Perceptual frequency spectrum distribution
-            val fftIndex = (Math.pow(norm.toDouble(), 1.35) * (fftSize - 1)).toInt().coerceIn(0, (fftSize - 1).coerceAtLeast(0))
-            val binVal = if (fftIndex < fftSize) rawFft[fftIndex] else 0f
-            val prevVal = if (fftIndex > 0) rawFft[fftIndex - 1] else binVal
-            val nextVal = if (fftIndex < fftSize - 1) rawFft[fftIndex + 1] else binVal
-            val smoothBin = prevVal * 0.20f + binVal * 0.60f + nextVal * 0.20f
+            // 1. SPREAD BASS EVERYWHERE ACROSS THE VISUALIZER:
+            // Multiple bass focal centers distributed across left, center, right, and interleaved bars
+            val bassWave = abs(sin(norm * 3.14159f * 3.0f + 0.35f)) * 0.35f +
+                    abs(cos(norm * 3.14159f * 5.0f)) * 0.25f +
+                    (if (i % 3 == 0) 0.30f else 0.10f)
 
-            // 1. Kick and bass punch on lower spectrum
-            val kickWeight = if (norm < 0.28f) (1f - norm / 0.28f) else 0f
-            val kickBoost = if (telemetry.kickDetected) kickWeight * 0.55f else kickWeight * subBassEnergy * 0.40f
+            val kickBoost = if (isKick) {
+                bassWave * 0.70f + 0.20f
+            } else {
+                bassWave * subBassEnergy * 0.55f
+            }
 
-            // 2. Snare and vocals on mid spectrum
-            val midDist = abs(norm - 0.45f) / 0.25f
-            val snareWeight = (1f - midDist).coerceIn(0f, 1f)
-            val snareBoost = if (telemetry.snareDetected) snareWeight * 0.50f else snareWeight * midEnergy * 0.35f
+            // 2. MIXED MID AND HIGH FREQUENCIES:
+            // Interleave and mix vocals, snares, and cymbals across all positions
+            val midWave = abs(sin((1f - norm) * 3.14159f * 2.5f + 1.2f)) * 0.30f +
+                    (if (i % 2 == 1) 0.25f else 0.08f)
+            val snareBoost = if (isSnare) midWave * 0.65f else midWave * midEnergy * 0.40f
 
-            // 3. Hi-hats, percussions, transients on high spectrum
-            val highWeight = ((norm - 0.55f) / 0.45f).coerceIn(0f, 1f)
-            val transientBoost = highWeight * telemetry.transientSpike * 0.45f + highWeight * highEnergy * 0.35f
+            val highWave = abs(cos(i * 1.37f)) * 0.25f + (if (i % 4 == 2) 0.30f else 0.05f)
+            val highBoost = highWave * transient * 0.50f + highWave * highEnergy * 0.35f
 
-            val soundResponse = (smoothBin * 0.60f + kickBoost + snareBoost + transientBoost + telemetry.rmsLevel * 0.12f)
-            // Restricted height so it remains elegant and bounded
-            val targetFraction = soundResponse.coerceIn(0.06f, 0.82f)
+            // 3. INTERLEAVED / SHUFFLED FFT SAMPLING:
+            // Sound is thoroughly mixed so adjacent bars sample different frequencies
+            val fftIndex = if (fftSize > 0) {
+                ((i * 7 + (i % 3) * 5) % fftSize).coerceIn(0, fftSize - 1)
+            } else 0
+            val rawBinVal = if (fftSize > 0) rawFft[fftIndex] else 0f
+
+            // 4. INDEPENDENT SUBTLE PHASE PULSE:
+            // Each bar pushes independently with its own rhythmic character
+            val localPulse = sin(i * 2.4f + timeSec * (3.5f + (i % 5) * 0.4f)).toFloat() * 0.04f
+
+            // Combined mixed audio response
+            val mixedResponse = (
+                rawBinVal * 0.30f +
+                kickBoost * 0.45f +
+                snareBoost * 0.30f +
+                highBoost * 0.25f +
+                rms * 0.15f +
+                localPulse
+            ) * barSensitivities[i]
+
+            val targetFraction = mixedResponse.coerceIn(0.04f, 0.88f)
 
             if (isPlaying) {
                 val current = liveAmplitudes[i]
+                val attack = attackRates[i]
+                val decay = decayRates[i]
                 val updated = if (targetFraction > current) {
-                    current + (targetFraction - current) * attackRate
+                    current + (targetFraction - current) * attack
                 } else {
-                    current - (current - targetFraction) * decayRate
+                    current - (current - targetFraction) * decay
                 }
-                liveAmplitudes[i] = updated.coerceIn(0.04f, 0.85f)
+                liveAmplitudes[i] = updated.coerceIn(0.04f, 0.90f)
             } else {
-                val target = restingProfile[i % restingProfile.size]
+                val target = restingProfile[i]
                 val current = liveAmplitudes[i]
-                liveAmplitudes[i] = (current - (current - target) * 0.28f).coerceIn(0.04f, 0.85f)
+                liveAmplitudes[i] = (current - (current - target) * 0.22f).coerceIn(0.04f, 0.90f)
             }
 
             val clampedFraction = liveAmplitudes[i].coerceIn(0f, 1f)
@@ -1599,8 +1654,9 @@ private fun DarkSilhouetteWaveform(
             val barTop = totalHeight - barHeight
             val barX = i * (barWidth + barGap)
 
+            // Smooth rounded top: perfectly circular dome, never sharp-edged!
             drawRoundRect(
-                color = visualizerColor,
+                color = Color.Black,
                 topLeft = Offset(barX, barTop),
                 size = Size(barWidth, barHeight),
                 cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
@@ -2835,20 +2891,21 @@ fun AudioVisualizerBottomSheet(
             }
         }
 
-        val targetHeights = calculateCompressedWaveform(
-            rawFft = effectiveFft,
-            barCount = bands,
-            subBassEnergy = subBassEnergy
-        )
-
         for (b in 0 until bands) {
-            val target = targetHeights[b]
+            val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
+            // Spread bass across all bands (left, middle, right, interleaved)
+            val bassFactor = abs(sin(norm * 3.14159f * 3.0f + 0.35f)) * 0.40f + (if (b % 3 == 0) 0.35f else 0.10f)
+            val mixedBass = subBassEnergy * bassFactor
+            val rawFftVal = if (hasFft) effectiveFft[(b * 5) % effectiveFft.size] else 0f
+            val target = (rawFftVal * 0.40f + mixedBass * 0.45f + telemetry.rmsLevel * 0.15f).coerceIn(0.06f, 0.95f)
+
             val current = liveBandHeights[b]
-            // Instant Beat Snap (100%) & Fast Snappy Falloff (0.32)
+            val attack = 0.60f + (((b * 37) % 35) / 100f)
+            val decay = 0.20f + (((b * 47) % 25) / 100f)
             val updated = if (target > current) {
-                target // Instant attack on beat
+                current + (target - current) * attack
             } else {
-                current - (current - target) * 0.32f // Fast gravitational drop
+                current - (current - target) * decay
             }
             liveBandHeights[b] = updated.coerceIn(0.06f, 1.0f)
         }
@@ -2902,49 +2959,30 @@ fun AudioVisualizerBottomSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 32-band live FFT spectrum canvas
+            // 32-band live FFT spectrum canvas with clean black bars on light card
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(130.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.40f))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                    .background(Color(0xFFE8E8EC))
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 val canvasWidth = size.width
                 val canvasHeight = size.height
-                val spacing = 3.dp.toPx()
+                val spacing = 3.5.dp.toPx()
                 val totalSpacing = spacing * (bands - 1)
                 val barWidth = (canvasWidth - totalSpacing) / bands
 
                 for (b in 0 until bands) {
                     val hFraction = liveBandHeights[b]
-                    val barHeight = (canvasHeight * hFraction).coerceIn(4.dp.toPx(), canvasHeight)
+                    val barHeight = (canvasHeight * hFraction).coerceIn(barWidth, canvasHeight)
                     val x = b * (barWidth + spacing)
                     val y = canvasHeight - barHeight
 
-                    // Frequency gradient coloring:
-                    // Low frequencies (bass) on the left, high frequencies (treble) on the right
-                    val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
-                    val barColor = if (norm < 0.33f) {
-                        accentColor
-                    } else if (norm < 0.66f) {
-                        Color(0xFFBB86FC)
-                    } else {
-                        Color(0xFF03DAC6)
-                    }
-
                     drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.90f),
-                                barColor,
-                                barColor.copy(alpha = 0.45f)
-                            ),
-                            startY = y,
-                            endY = canvasHeight
-                        ),
+                        color = Color.Black,
                         topLeft = Offset(x, y),
                         size = Size(barWidth, barHeight),
                         cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
@@ -2954,28 +2992,28 @@ fun AudioVisualizerBottomSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Frequency spectrum labels: 5 Bass Focal Centers with Interleaved Spectrum
+            // Frequency spectrum labels: Distributed Bass & Mixed Sound
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "◀ 10% • 30% Bass",
+                    text = "◀ Mixed Audio",
                     fontSize = 10.sp,
-                    color = Color(0xFF03DAC6).copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.60f),
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "▲ 50% Center Ripple ▲",
+                    text = "• Distributed Bass Spectrum •",
                     fontSize = 10.sp,
-                    color = accentColor,
+                    color = Color.White.copy(alpha = 0.85f),
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "70% • 90% Bass ▶",
+                    text = "Mixed Audio ▶",
                     fontSize = 10.sp,
-                    color = Color(0xFF03DAC6).copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.60f),
                     fontFamily = FontFamily.Monospace
                 )
             }

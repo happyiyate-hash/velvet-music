@@ -41,13 +41,16 @@ import com.example.model.FallbackArtworkPool
 import com.example.model.Track
 import kotlinx.coroutines.Dispatchers
 
+import androidx.compose.ui.graphics.asImageBitmap
+import com.example.media.VelvetArtworkCache
+
 /**
  * Universal Track Artwork renderer:
- * 1. Fully Asynchronous: Decoding runs strictly on Dispatchers.IO, never blocking the main UI thread.
+ * 1. Cache-First: Uses VelvetArtworkCache to serve in-memory decoded bitmaps instantly with 0ms delay.
  * 2. Guaranteed Replacement Artwork: If track has no artwork or MediaStore URI fails,
  *    instantly falls back to the app's rich fallback pool artwork.
- * 3. Exact Downscaling: Resizes bitmaps to exact target visual dimensions (128x128 px).
- * 4. Asynchronous Crossfade: Smooth transition with zero-jank caching.
+ * 3. Exact Downscaling: Resizes bitmaps to exact target visual dimensions.
+ * 4. Zero Placeholders: Seamless surface integration with no black box placeholder.
  */
 @Composable
 fun TrackArtworkImage(
@@ -59,55 +62,68 @@ fun TrackArtworkImage(
     crossfade: Boolean = true
 ) {
     val context = LocalContext.current
-    val fallbackResId = remember(track.id, track.coverResId, track.title, track.artist) {
-        if (track.coverResId != 0) {
-            track.coverResId
-        } else {
-            FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
-        }
-    }
-
-    val primaryData: Any = remember(track.artworkUri, fallbackResId) {
-        val uri = track.artworkUri
-        if (!uri.isNullOrBlank()) {
-            uri
-        } else {
-            fallbackResId
-        }
-    }
-
-    val imageLoader = remember { VelvetImageLoader.get(context) }
-    val request = remember(track.id, primaryData, fallbackResId, thumbnailSizePx, crossfade) {
-        val builder = ImageRequest.Builder(context)
-            .data(primaryData)
-            .error(fallbackResId)
-            .fallback(fallbackResId)
-            .dispatcher(Dispatchers.IO)
-            .crossfade(crossfade)
-            .allowHardware(true)
-            .memoryCachePolicy(CachePolicy.ENABLED)
-            .diskCachePolicy(CachePolicy.ENABLED)
-            .memoryCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
-            .diskCacheKey("art_${track.id}_${thumbnailSizePx ?: 0}")
-
-        if (thumbnailSizePx != null && thumbnailSizePx > 0) {
-            builder.size(thumbnailSizePx, thumbnailSizePx)
-                .precision(Precision.EXACT)
-                .scale(Scale.FILL)
-        }
-        builder.build()
+    val cachedBitmap = remember(track.id) {
+        VelvetArtworkCache.getBitmap(track.id)
     }
 
     Box(
-        modifier = modifier.background(Color(0xFF18181C))
+        modifier = modifier
     ) {
-        AsyncImage(
-            model = request,
-            imageLoader = imageLoader,
-            contentDescription = contentDescription,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = contentScale
-        )
+        if (cachedBitmap != null) {
+            Image(
+                bitmap = cachedBitmap.asImageBitmap(),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale
+            )
+        } else {
+            val fallbackResId = remember(track.id, track.coverResId, track.title, track.artist) {
+                if (track.coverResId != 0) {
+                    track.coverResId
+                } else {
+                    FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
+                }
+            }
+
+            val primaryData: Any = remember(track.artworkUri, fallbackResId) {
+                val uri = track.artworkUri
+                if (!uri.isNullOrBlank()) {
+                    uri
+                } else {
+                    fallbackResId
+                }
+            }
+
+            val imageLoader = remember { VelvetImageLoader.get(context) }
+            val request = remember(track.id, primaryData, fallbackResId, thumbnailSizePx, crossfade) {
+                val builder = ImageRequest.Builder(context)
+                    .data(primaryData)
+                    .error(fallbackResId)
+                    .fallback(fallbackResId)
+                    .dispatcher(Dispatchers.IO)
+                    .crossfade(crossfade)
+                    .allowHardware(true)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .memoryCacheKey("art_${track.id}")
+                    .diskCacheKey("art_${track.id}")
+
+                if (thumbnailSizePx != null && thumbnailSizePx > 0) {
+                    builder.size(thumbnailSizePx, thumbnailSizePx)
+                        .precision(Precision.EXACT)
+                        .scale(Scale.FILL)
+                }
+                builder.build()
+            }
+
+            AsyncImage(
+                model = request,
+                imageLoader = imageLoader,
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale
+            )
+        }
     }
 }
 

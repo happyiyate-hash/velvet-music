@@ -87,6 +87,7 @@ import kotlinx.coroutines.launch
 import com.example.audio.RepeatMode
 import com.example.audio.VelvetAudioEngine
 import com.example.media.DeviceMediaManager
+import com.example.media.VelvetArtworkCache
 import com.example.model.SampleData
 import com.example.model.Track
 import com.example.ui.theme.VelvetActiveGlow
@@ -176,6 +177,15 @@ fun VelvetApp() {
             .distinctBy { it.id }
             .filterNot { deletedTrackIds.contains(it.id) }
         if (filtered.isNotEmpty()) filtered else SampleData.starterTracks.filterNot { deletedTrackIds.contains(it.id) }
+    }
+
+    // Preload & warm artwork cache for all library tracks immediately on mount
+    LaunchedEffect(allTracks) {
+        if (allTracks.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                VelvetArtworkCache.warmCache(context, allTracks)
+            }
+        }
     }
 
     val mostPlayedTracks = remember(allTracks, trackPlayCounts) {
