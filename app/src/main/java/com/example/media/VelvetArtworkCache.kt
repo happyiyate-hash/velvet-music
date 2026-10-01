@@ -15,6 +15,7 @@ import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 /**
  * YouTube Music Style High-Fidelity Artwork Engine:
@@ -63,6 +64,20 @@ object VelvetArtworkCache {
     fun getPalette(trackId: String): TrackThemeColors? = paletteMemoryCache.get(trackId)
     fun putPalette(trackId: String, colors: TrackThemeColors) {
         paletteMemoryCache.put(trackId, colors)
+    }
+
+    /**
+     * Warms artwork caches for a collection without blocking the UI.
+     * Tracks are processed sequentially to avoid decoding every artwork at once.
+     */
+    fun warmCache(context: Context, tracks: List<Track>) {
+        kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + Dispatchers.IO
+        ).launch {
+            tracks.distinctBy { it.id }.forEach { track ->
+                runCatching { preloadTrack(context, track) }
+            }
+        }
     }
 
     /**
