@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -80,8 +81,7 @@ fun FastArtworkThumbnail(
     Box(
         modifier = modifier
             .size(size)
-            .clip(shape)
-            .background(Color(0xFF141418)),
+            .clip(shape),
         contentAlignment = Alignment.Center
     ) {
         if (memoryBitmap != null && !memoryBitmap.isRecycled) {
@@ -92,7 +92,15 @@ fun FastArtworkThumbnail(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-        } else {
+        } else if (track.coverResId != 0) {
+            Image(
+                painter = painterResource(track.coverResId),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+        if (memoryBitmap == null) {
             // Asynchronous fade-in via Coil and TrackArtworkFetcher
             AsyncImage(
                 model = request,

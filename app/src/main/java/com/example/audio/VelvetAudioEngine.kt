@@ -11,6 +11,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.example.media.ArtworkColorExtractor
+import com.example.media.VelvetArtworkCache
 import com.example.media.VelvetMediaSessionManager
 import com.example.model.SampleData
 import com.example.model.Track
@@ -222,9 +223,16 @@ class VelvetAudioEngine(
     fun playTrack(track: Track, updateQueue: Boolean = true) {
         val requestId = playbackRequestId.incrementAndGet()
 
-        // 1. Instant UI update
-        _currentTrack.value = track
+        // 1. Instant UI update with cached palette if available
+        val cachedPalette = VelvetArtworkCache.getPalette(track.id)
+        val readyTrack = if (cachedPalette != null) {
+            track.copy(dominantColor = cachedPalette.dominant, secondaryColor = cachedPalette.secondary)
+        } else {
+            track
+        }
+        _currentTrack.value = readyTrack
         _playbackPositionMs.value = 0L
+        _isPlaying.value = true
 
         if (updateQueue) {
             // Selecting a track must never reorder the visible queue.
@@ -240,8 +248,11 @@ class VelvetAudioEngine(
 
         updateMediaSession()
 
-        // 2. Extract colors lazily in background
+        // 2. Extract colors lazily in background (0ms if already cached)
         extractColorsLazily(track)
+
+        // 3. Preload upcoming queue items artwork and palettes in background
+        preloadUpcomingQueue(track.id)
 
         // 3. Playback: Resolve track URI, falling back to rich synthesized audio if local URI is absent
         val contentUriString = if (!track.contentUri.isNullOrBlank()) {
@@ -496,14 +507,20 @@ class VelvetAudioEngine(
 
     private fun extractColorsLazily(track: Track) {
         colorExtractionJob?.cancel()
+        val cached = VelvetArtworkCache.getPalette(track.id)
+        if (cached != null) {
+            if (_currentTrack.value.id == track.id) {
+                _currentTrack.value = _currentTrack.value.copy(
+                    dominantColor = cached.dominant,
+                    secondaryColor = cached.secondary
+                )
+            }
+            return
+        }
         colorExtractionJob = scope.launch(Dispatchers.Default) {
             val ctx = appContext ?: return@launch
             try {
-                val colors = if (!track.artworkUri.isNullOrBlank()) {
-                    ArtworkColorExtractor.extractColorsFromUri(ctx, track.artworkUri)
-                } else {
-                    ArtworkColorExtractor.extractColors(ctx, track)
-                }
+                val colors = ArtworkColorExtractor.extractColors(ctx, track)
                 if (_currentTrack.value.id == track.id) {
                     _currentTrack.value = _currentTrack.value.copy(
                         dominantColor = colors.dominant,
@@ -511,6 +528,24 @@ class VelvetAudioEngine(
                     )
                 }
             } catch (_: Exception) {}
+        }
+    }
+
+    private fun preloadUpcomingQueue(currentTrackId: String) {
+        val ctx = appContext ?: return
+        scope.launch(Dispatchers.IO) {
+            val q = _activeQueue.value
+            val idx = q.indexOfFirst { it.id == currentTrackId }
+            val targets: List<Track> = if (idx != -1) {
+                q.drop(idx + 1).take(8) + q.take(idx).takeLast(2)
+            } else {
+                q.take(8)
+            }
+            targets.forEach { t: Track ->
+                runCatching {
+                    VelvetArtworkCache.preloadTrack(ctx, t)
+                }
+            }
         }
     }
 

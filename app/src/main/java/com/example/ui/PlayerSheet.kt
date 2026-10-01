@@ -321,26 +321,36 @@ fun PlayerSheet(
     var showLyricsSheet by remember { mutableStateOf(false) }
 
     // Dynamically derive the calm, restrained palette based on the current artwork.
-    // Instant frame-0 derivation from dominantColor (0ms latency, zero main-thread disk I/O).
-    var resolvedArtworkBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var themeColors by remember(track.id) {
-        mutableStateOf(ArtworkColorExtractor.generateThemePalette(track.dominantColor))
+    // Instant frame-0 derivation from VelvetArtworkCache (0ms latency, zero main-thread disk I/O).
+    var resolvedArtworkBitmap by remember {
+        mutableStateOf<Bitmap?>(
+            VelvetArtworkCache.getFullFromMemory(track.id) ?: VelvetArtworkCache.getFromMemory(track.id)
+        )
+    }
+    var themeColors by remember {
+        mutableStateOf(
+            VelvetArtworkCache.getPalette(track.id)
+                ?: ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+        )
     }
 
     LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
-        withContext(Dispatchers.IO) {
-            val bitmap = ArtworkColorExtractor.resolveTrackBitmap(context, track)
-                ?: if (track.coverResId != 0) {
-                    runCatching { BitmapFactory.decodeResource(context.resources, track.coverResId) }.getOrNull()
-                } else null
-            val extractedColors = if (bitmap != null) {
-                ArtworkColorExtractor.extractColorsFromBitmap(bitmap)
-            } else {
-                ArtworkColorExtractor.generateThemePalette(track.dominantColor)
+        val cached = VelvetArtworkCache.getPalette(track.id)
+        val cachedBmp = VelvetArtworkCache.getFullFromMemory(track.id)
+            ?: VelvetArtworkCache.getFromMemory(track.id)
+        if (cached != null) {
+            themeColors = cached
+            if (cachedBmp != null) {
+                resolvedArtworkBitmap = cachedBmp
             }
+        }
+        withContext(Dispatchers.IO) {
+            val palette = VelvetArtworkCache.preloadTrack(context, track)
+            val bmp = VelvetArtworkCache.getFullFromMemory(track.id)
+                ?: VelvetArtworkCache.getFromMemory(track.id)
             withContext(Dispatchers.Main) {
-                resolvedArtworkBitmap = bitmap
-                themeColors = extractedColors
+                if (bmp != null) resolvedArtworkBitmap = bmp
+                themeColors = palette
             }
         }
     }
@@ -383,27 +393,32 @@ fun PlayerSheet(
     val queueListState = rememberLazyListState()
 
     var activeQueueDragId by remember { mutableStateOf<String?>(null) }
+    var settlingDragId by remember { mutableStateOf<String?>(null) }
     var activeQueueDragIndex by remember { mutableIntStateOf(-1) }
     var activeQueueDragOriginalIndex by remember { mutableIntStateOf(-1) }
     var queueDragOffsetY by remember { mutableFloatStateOf(0f) }
+    val queueSettleAnim = remember { Animatable(0f) }
 
     LaunchedEffect(queueItems) {
-        if (activeQueueDragId == null) orderedQueueItems = queueItems
+        if (activeQueueDragId == null && settlingDragId == null) orderedQueueItems = queueItems
     }
 
-    LaunchedEffect(queueItems, track.id) {
-        val upcoming = queueItems.dropWhile { it.id != track.id }.drop(1).take(3)
+    LaunchedEffect(orderedQueueItems, track.id) {
+        val currIdx = orderedQueueItems.indexOfFirst { it.id == track.id }
+        val upcoming = if (currIdx != -1) {
+            orderedQueueItems.drop(currIdx + 1).take(8) + orderedQueueItems.take(currIdx).takeLast(2)
+        } else {
+            orderedQueueItems.take(8)
+        }
         withContext(Dispatchers.IO) {
             upcoming.forEach { nextTrack ->
-                if (VelvetArtworkCache.getFullFromMemory(nextTrack.id) == null) {
-                    runCatching { VelvetArtworkCache.getOrDecodeFullArtwork(context, nextTrack) }
-                }
+                runCatching { VelvetArtworkCache.preloadTrack(context, nextTrack) }
             }
         }
     }
 
     fun beginQueueDrag(id: String, index: Int, canDrag: Boolean = true) {
-        if (!canDrag || index < 0 || activeQueueDragId != null) return
+        if (!canDrag || index < 0 || activeQueueDragId != null || settlingDragId != null) return
         activeQueueDragId = id
         activeQueueDragIndex = index
         activeQueueDragOriginalIndex = index
@@ -415,41 +430,66 @@ fun PlayerSheet(
         if (activeQueueDragId == null || activeQueueDragIndex < 0) return
         queueDragOffsetY += deltaY
         val rowHeightPx = with(density) { 60.dp.toPx() }
+        val threshold = rowHeightPx * 0.55f
 
-        while (queueDragOffsetY >= rowHeightPx * 0.50f && activeQueueDragIndex < orderedQueueItems.lastIndex) {
+        if (queueDragOffsetY >= threshold && activeQueueDragIndex < orderedQueueItems.lastIndex) {
             val from = activeQueueDragIndex
+            val to = from + 1
             val mutable = orderedQueueItems.toMutableList()
             val moved = mutable.removeAt(from)
-            mutable.add(from + 1, moved)
+            mutable.add(to, moved)
             orderedQueueItems = mutable
-            activeQueueDragIndex = from + 1
+            activeQueueDragIndex = to
             queueDragOffsetY -= rowHeightPx
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-
-        while (queueDragOffsetY <= -rowHeightPx * 0.50f && activeQueueDragIndex > 0) {
+        } else if (queueDragOffsetY <= -threshold && activeQueueDragIndex > 0) {
             val from = activeQueueDragIndex
+            val to = from - 1
             val mutable = orderedQueueItems.toMutableList()
             val moved = mutable.removeAt(from)
-            mutable.add(from - 1, moved)
+            mutable.add(to, moved)
             orderedQueueItems = mutable
-            activeQueueDragIndex = from - 1
+            activeQueueDragIndex = to
             queueDragOffsetY += rowHeightPx
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
     }
 
     fun finishQueueDrag() {
+        val dragId = activeQueueDragId ?: return
         val original = activeQueueDragOriginalIndex
         val final = activeQueueDragIndex
-        if (activeQueueDragId != null && original >= 0 && final >= 0 && original != final) {
+        if (original >= 0 && final >= 0 && original != final) {
             onReorderQueue?.invoke(original, final)
             onUpdateQueue?.invoke(orderedQueueItems)
         }
-        activeQueueDragId = null
-        activeQueueDragIndex = -1
-        activeQueueDragOriginalIndex = -1
-        queueDragOffsetY = 0f
+        val currentOffset = queueDragOffsetY
+        if (abs(currentOffset) > 1f) {
+            settlingDragId = dragId
+            activeQueueDragId = null
+            coroutineScope.launch {
+                queueSettleAnim.snapTo(currentOffset)
+                queueSettleAnim.animateTo(
+                    0f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ) {
+                    queueDragOffsetY = this.value
+                }
+                settlingDragId = null
+                activeQueueDragIndex = -1
+                activeQueueDragOriginalIndex = -1
+                queueDragOffsetY = 0f
+            }
+        } else {
+            activeQueueDragId = null
+            settlingDragId = null
+            activeQueueDragIndex = -1
+            activeQueueDragOriginalIndex = -1
+            queueDragOffsetY = 0f
+        }
     }
 
     // YouTube Music-style Artwork Background Color System:
@@ -1257,10 +1297,8 @@ fun PlayerSheet(
                             ) { queueIndex, queueTrack ->
                                 val isCurrent = queueTrack.id == track.id
                                 val isDragging = queueTrack.id == activeQueueDragId
-
-                                // Real queue order is changed during the gesture.
-                                // Do not add a second synthetic translation.
-                                val targetShift = 0f
+                                val isSettling = queueTrack.id == settlingDragId
+                                val isItemElevated = isDragging || isSettling
 
                                 UpNextTrackRow(
                                     track = queueTrack,
@@ -1284,7 +1322,7 @@ fun PlayerSheet(
                                         }
                                     },
                                     onDelete = {
-                                        if (!isCurrent && activeQueueDragId == null) {
+                                        if (!isCurrent && activeQueueDragId == null && settlingDragId == null) {
                                             val updated = orderedQueueItems.filterNot { it.id == queueTrack.id }
                                             orderedQueueItems = updated
                                             onUpdateQueue?.invoke(updated)
@@ -1293,10 +1331,18 @@ fun PlayerSheet(
                                     onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
                                     onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
                                     onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
-                                    isDragging = isDragging,
-                                    dragOffsetY = if (isDragging) queueDragOffsetY else 0f,
-                                    targetSlotShiftY = targetShift,
-                                    queueIndex = queueIndex
+                                    isDragging = isItemElevated,
+                                    dragOffsetY = if (isItemElevated) queueDragOffsetY else 0f,
+                                    targetSlotShiftY = 0f,
+                                    queueIndex = queueIndex,
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = null,
+                                        fadeOutSpec = null,
+                                        placementSpec = if (isItemElevated) null else spring(
+                                            dampingRatio = Spring.DampingRatioLowBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
                                 )
                             }
                         }
@@ -1709,40 +1755,15 @@ private fun UpNextTrackRow(
         }
     }
 
-    // Animate a row from its previous logical slot into its new logical slot.
-    // This is separate from the dragged row, whose position follows the finger.
-    val rowHeightPx = with(density) { 60.dp.toPx() }
-    val slotAnim = remember(track.id) { Animatable(0f) }
-    var previousQueueIndex by remember(track.id) { mutableIntStateOf(queueIndex) }
-
-    LaunchedEffect(queueIndex) {
-        if (previousQueueIndex != queueIndex && !isDragging) {
-            val slotDelta = previousQueueIndex - queueIndex
-            previousQueueIndex = queueIndex
-            slotAnim.snapTo(slotDelta * rowHeightPx)
-            slotAnim.animateTo(
-                0f,
-                animationSpec = spring(
-                    dampingRatio = 0.86f,
-                    stiffness = 72f
-                )
-            )
-        } else {
-            previousQueueIndex = queueIndex
-        }
-    }
-
-    val slotShiftAnim = if (isDragging) 0f else slotAnim.value
-
     val scale by animateFloatAsState(
-        targetValue = if (isDragging) 1.025f else 1f,
+        targetValue = if (isDragging) 1.03f else 1f,
         animationSpec = androidx.compose.animation.core.spring(stiffness = Spring.StiffnessMediumLow),
         label = "queue_drag_scale"
     )
 
     val elevation by animateFloatAsState(
         targetValue = if (isDragging) 8f else 0f,
-        animationSpec = tween(140),
+        animationSpec = tween(120),
         label = "queue_drag_elevation"
     )
 
@@ -1769,11 +1790,11 @@ private fun UpNextTrackRow(
             .height(60.dp)
             .onSizeChanged { rowWidthPx = it.width.toFloat() }
             .graphicsLayer {
-                translationY = if (isDragging) dragOffsetY else slotShiftAnim
+                translationY = if (isDragging) dragOffsetY else 0f
                 scaleX = scale
                 scaleY = scale
             }
-            .zIndex(if (isDragging) 10f else 0f)
+            .zIndex(if (isDragging) 100f else 0f)
             .shadow(
                 elevation = elevation.dp,
                 shape = RectangleShape,
@@ -1847,6 +1868,14 @@ private fun UpNextTrackRow(
                     indication = null,
                     onClick = onClick
                 )
+                .pointerInput(track.id) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { swipeOffset = 0f; onDragStart() },
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragEnd,
+                        onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }
+                    )
+                }
                 .padding(start = 6.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1916,10 +1945,10 @@ private fun UpNextTrackRow(
                 )
             }
 
-            // Drag Handle: 3 clean lines pushed to the far right with a small space
+            // Drag Handle: 2 clean lines pushed to the far right (YouTube Music style)
             Box(
                 modifier = Modifier
-                    .size(width = 32.dp, height = 44.dp)
+                    .size(width = 44.dp, height = 48.dp)
                     .pointerInput(track.id) {
                         detectDragGestures(
                             onDragStart = { swipeOffset = 0f; onDragStart() },
@@ -1931,16 +1960,16 @@ private fun UpNextTrackRow(
                 contentAlignment = Alignment.Center
             ) {
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(3.5.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    repeat(3) {
+                    repeat(2) {
                         Box(
                             Modifier
                                 .width(18.dp)
                                 .height(2.dp)
                                 .clip(RoundedCornerShape(1.dp))
-                                .background(if (isDragging) Color.White else Color.White.copy(alpha = 0.65f))
+                                .background(if (isDragging) Color.White else Color.White.copy(alpha = 0.60f))
                         )
                     }
                 }

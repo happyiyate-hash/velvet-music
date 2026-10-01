@@ -155,31 +155,42 @@ object VelvetArtworkColorEngine {
 
     var debugLoggingEnabled = true
 
-    fun extractColors(context: Context, track: Track): TrackThemeColors =
-        extractColorsFromBitmap(resolveTrackBitmap(context, track))
+    fun extractColors(context: Context, track: Track): TrackThemeColors {
+        VelvetArtworkCache.getPalette(track.id)?.let { return it }
+        val bmp = VelvetArtworkCache.getFullFromMemory(track.id)
+            ?: VelvetArtworkCache.getFromMemory(track.id)
+            ?: resolveTrackBitmap(context, track)
+        val colors = extractColorsFromBitmap(bmp)
+        VelvetArtworkCache.putPalette(track.id, colors)
+        return colors
+    }
 
-    fun resolveTrackBitmap(context: Context, track: Track): Bitmap? = try {
-        when {
-            !track.artworkUri.isNullOrBlank() -> decodeUri(context, Uri.parse(track.artworkUri), 4)
-            track.contentUri != null -> {
-                val retriever = MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(context, Uri.parse(track.contentUri))
-                    retriever.embeddedPicture?.let {
-                        BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+    fun resolveTrackBitmap(context: Context, track: Track): Bitmap? {
+        VelvetArtworkCache.getFullFromMemory(track.id)?.let { if (!it.isRecycled) return it }
+        VelvetArtworkCache.getFromMemory(track.id)?.let { if (!it.isRecycled) return it }
+        return try {
+            when {
+                !track.artworkUri.isNullOrBlank() -> decodeUri(context, Uri.parse(track.artworkUri), 4)
+                track.contentUri != null -> {
+                    val retriever = MediaMetadataRetriever()
+                    try {
+                        retriever.setDataSource(context, Uri.parse(track.contentUri))
+                        retriever.embeddedPicture?.let {
+                            BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+                        }
+                    } finally {
+                        retriever.release()
                     }
-                } finally {
-                    retriever.release()
                 }
+                track.coverResId != 0 -> BitmapFactory.decodeResource(
+                    context.resources, track.coverResId,
+                    BitmapFactory.Options().apply { inSampleSize = 8 }
+                )
+                else -> null
             }
-            track.coverResId != 0 -> BitmapFactory.decodeResource(
-                context.resources, track.coverResId,
-                BitmapFactory.Options().apply { inSampleSize = 8 }
-            )
-            else -> null
+        } catch (_: Exception) {
+            null
         }
-    } catch (_: Exception) {
-        null
     }
 
     fun extractColorsFromBitmap(bitmap: Bitmap?): TrackThemeColors {

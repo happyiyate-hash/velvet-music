@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -132,12 +133,19 @@ fun TrackArtworkImage(
     }
 
     Box(
-        modifier = modifier.background(Color(0xFF141418))
+        modifier = modifier
     ) {
         val activeBmp = memoryBitmap ?: displayedBitmap
         if (activeBmp != null && !activeBmp.isRecycled) {
             Image(
                 bitmap = activeBmp.asImageBitmap(),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale
+            )
+        } else if (track.coverResId != 0) {
+            Image(
+                painter = painterResource(track.coverResId),
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale

@@ -37,9 +37,14 @@ object VelvetArtworkCache {
         override fun sizeOf(key: String, value: Bitmap): Int = 1
     }
 
-    // Memory cache for full-resolution player artwork (holds up to 15 HD album covers)
-    private val fullMemoryCache = object : LruCache<String, Bitmap>(15) {
+    // Memory cache for full-resolution player artwork (holds up to 35 HD album covers)
+    private val fullMemoryCache = object : LruCache<String, Bitmap>(35) {
         override fun sizeOf(key: String, value: Bitmap): Int = 1
+    }
+
+    // Memory cache for extracted artwork palettes (holds up to 300 palettes)
+    private val paletteMemoryCache = object : LruCache<String, TrackThemeColors>(300) {
+        override fun sizeOf(key: String, value: TrackThemeColors): Int = 1
     }
 
     // Tracks confirmed to have no embedded audio artwork to avoid redundant extraction attempts
@@ -53,6 +58,34 @@ object VelvetArtworkCache {
     fun getFullFromMemory(trackId: String): Bitmap? = fullMemoryCache.get(trackId)
     fun putFullInMemory(trackId: String, bitmap: Bitmap) {
         fullMemoryCache.put(trackId, bitmap)
+    }
+
+    fun getPalette(trackId: String): TrackThemeColors? = paletteMemoryCache.get(trackId)
+    fun putPalette(trackId: String, colors: TrackThemeColors) {
+        paletteMemoryCache.put(trackId, colors)
+    }
+
+    /**
+     * Preloads full artwork, thumbnail, and extracts & caches palette in memory.
+     * All calls run on IO dispatcher. 0ms latency for subsequent gets.
+     */
+    suspend fun preloadTrack(context: Context, track: Track): TrackThemeColors = withContext(Dispatchers.IO) {
+        val cachedPalette = paletteMemoryCache.get(track.id)
+        val hasFull = fullMemoryCache.get(track.id) != null
+        if (cachedPalette != null && hasFull) {
+            return@withContext cachedPalette
+        }
+
+        val fullBmp = getOrDecodeFullArtwork(context, track)
+        val palette = cachedPalette ?: VelvetArtworkColorEngine.extractColorsFromBitmap(fullBmp).also {
+            paletteMemoryCache.put(track.id, it)
+        }
+
+        if (thumbnailMemoryCache.get(track.id) == null) {
+            try { getOrDecodeThumbnail(context, track) } catch (_: Throwable) {}
+        }
+
+        palette
     }
 
     /**

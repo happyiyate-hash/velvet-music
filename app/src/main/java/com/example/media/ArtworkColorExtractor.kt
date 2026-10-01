@@ -20,6 +20,9 @@ object ArtworkColorExtractor {
     fun extractColors(context: Context, track: Track): TrackThemeColors =
         VelvetArtworkColorEngine.extractColors(context, track)
 
+    fun getCachedPalette(trackId: String): TrackThemeColors? =
+        VelvetArtworkCache.getPalette(trackId)
+
     fun resolveTrackBitmap(context: Context, track: Track): Bitmap? =
         VelvetArtworkColorEngine.resolveTrackBitmap(context, track)
 
