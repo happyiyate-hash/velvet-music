@@ -192,7 +192,7 @@ import kotlin.math.roundToInt
  *    using the extracted artwork color.
  * 7. Secondary Shuffle and Repeat controls positioned below the primary playback controls.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun PlayerBottomVerticalLines(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
