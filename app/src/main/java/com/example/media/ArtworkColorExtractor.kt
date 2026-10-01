@@ -18,14 +18,10 @@ object ArtworkColorExtractor {
         }
 
     fun extractColors(context: Context, track: Track): TrackThemeColors =
-        VelvetArtworkCache.getColors(track.id)
-            ?: VelvetArtworkColorEngine.extractColors(context, track).also {
-                VelvetArtworkCache.putColors(track.id, it)
-            }
+        VelvetArtworkColorEngine.extractColors(context, track)
 
     fun resolveTrackBitmap(context: Context, track: Track): Bitmap? =
-        VelvetArtworkCache.getBitmap(track.id)
-            ?: VelvetArtworkColorEngine.resolveTrackBitmap(context, track)
+        VelvetArtworkColorEngine.resolveTrackBitmap(context, track)
 
     fun extractColorsFromBitmap(bitmap: Bitmap?): TrackThemeColors =
         VelvetArtworkColorEngine.extractColorsFromBitmap(bitmap)

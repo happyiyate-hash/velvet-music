@@ -235,10 +235,10 @@ fun RealTimeAudioPlayerVisualizer(
                 val y = canvasHeight - barHeight
 
                 drawRoundRect(
-                    color = Color.Black,
+                    color = Color(0xFF6200EE),
                     topLeft = Offset(x, y),
                     size = Size(barWidth, barHeight),
-                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                 )
             }
         }

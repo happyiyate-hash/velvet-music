@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,7 +39,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
@@ -67,8 +69,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -182,7 +189,7 @@ fun HomeFeedScreen(
                     .weight(1f),
                 contentPadding = PaddingValues(
                     start = 14.dp,
-                    end = 14.dp,
+                    end = 6.dp,
                     top = 10.dp,
                     bottom = 120.dp
                 )
@@ -195,7 +202,7 @@ fun HomeFeedScreen(
                     }
                 }
 
-                items(displayTracks, key = { it.id }) { track ->
+                itemsIndexed(displayTracks, key = { _, track -> track.id }) { index, track ->
                     val isCurrent = track.id == currentTrack.id
                     DeviceTrackRowItem(
                         track = track,
@@ -203,6 +210,7 @@ fun HomeFeedScreen(
                         isPlaying = isPlaying && isCurrent,
                         onClick = { onSelectTrack(track) },
                         onMenuClick = { onTrackMenuClick(track) },
+                        artworkLoadDelayMs = (index % 6) * 18L,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -283,31 +291,18 @@ private fun VelvetTopHeaderCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Transparent Logo + App Name (Track text removed!)
+                // Left: Transparent Logo (V) + ELVET Glass Wordmark
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     VelvetCornerAppLogo(
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(30.dp)
                     )
 
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
 
-                    Text(
-                        text = "VELVET",
-                        style = TextStyle(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color(0xFFFFFFFF),
-                                    Color(0xFFFFB3C6),
-                                    Color(0xFFFF2A6D), // Vibrant pink
-                                    Color(0xFFE50914)  // Crimson red
-                                )
-                            ),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 2.0.sp
-                        )
+                    ElvetGlassWordmark(
+                        modifier = Modifier.height(18.dp)
                     )
                 }
 
@@ -444,6 +439,147 @@ private fun VelvetCornerAppLogo(
 }
 
 /**
+ * Premium Glass Logotype Wordmark: "ELVET"
+ * - Starts with 'E' because the preceding logo itself acts as the initial 'V'
+ * - Pushed closely to the logo picture
+ * - Increased height with a thin, refined stroke
+ * - Premium glass design: frosted crystal specular highlight, electric pink refraction, ruby glow
+ * - Curved edges: The remaining 'V' features a smooth, rounded bottom apex (no sharp corner),
+ *   while 'L' and 'E' feature smooth rounded corner transitions.
+ */
+@Composable
+private fun ElvetGlassWordmark(
+    modifier: Modifier = Modifier
+) {
+    Canvas(
+        modifier = modifier
+            .height(18.dp)
+            .width(68.dp)
+    ) {
+        val h = size.height
+        val strokeWidth = 2.8.dp.toPx()
+        val glowStrokeWidth = 4.6.dp.toPx()
+
+        val charSpacing = 3.8.dp.toPx()
+        val eWidth = 9.2.dp.toPx()
+        val lWidth = 8.0.dp.toPx()
+        val vWidth = 10.8.dp.toPx()
+        val tWidth = 9.2.dp.toPx()
+
+        val cornerR = 2.0.dp.toPx()
+        val paths = mutableListOf<Path>()
+
+        // 1. First 'E' (Rounded corners on outer joins)
+        var currentX = 1.0.dp.toPx()
+        val pathE1 = Path().apply {
+            moveTo(currentX + eWidth, 0f)
+            lineTo(currentX + cornerR, 0f)
+            quadraticTo(currentX, 0f, currentX, cornerR)
+            lineTo(currentX, h - cornerR)
+            quadraticTo(currentX, h, currentX + cornerR, h)
+            lineTo(currentX + eWidth, h)
+            moveTo(currentX, h * 0.5f)
+            lineTo(currentX + eWidth * 0.70f, h * 0.5f)
+        }
+        paths.add(pathE1)
+
+        // 2. 'L' (Smooth rounded bend at bottom)
+        currentX += eWidth + charSpacing
+        val pathL = Path().apply {
+            moveTo(currentX, 0f)
+            lineTo(currentX, h - cornerR)
+            quadraticTo(currentX, h, currentX + cornerR, h)
+            lineTo(currentX + lWidth, h)
+        }
+        paths.add(pathL)
+
+        // 3. Middle 'V' (Curved bottom apex - NO sharp edge!)
+        currentX += lWidth + charSpacing
+        val pathV = Path().apply {
+            moveTo(currentX, 0f)
+            val vMidX = currentX + vWidth / 2f
+            val curveRx = vWidth * 0.22f
+            val curveRy = h * 0.16f
+            lineTo(vMidX - curveRx, h - curveRy)
+            // Quadratic Bézier creates a sleek U-curved apex
+            quadraticTo(vMidX, h, vMidX + curveRx, h - curveRy)
+            lineTo(currentX + vWidth, 0f)
+        }
+        paths.add(pathV)
+
+        // 4. Second 'E' (Rounded corners)
+        currentX += vWidth + charSpacing
+        val pathE2 = Path().apply {
+            moveTo(currentX + eWidth, 0f)
+            lineTo(currentX + cornerR, 0f)
+            quadraticTo(currentX, 0f, currentX, cornerR)
+            lineTo(currentX, h - cornerR)
+            quadraticTo(currentX, h, currentX + cornerR, h)
+            lineTo(currentX + eWidth, h)
+            moveTo(currentX, h * 0.5f)
+            lineTo(currentX + eWidth * 0.70f, h * 0.5f)
+        }
+        paths.add(pathE2)
+
+        // 5. 'T' (Crossbar and vertical stem)
+        currentX += eWidth + charSpacing
+        val pathT = Path().apply {
+            moveTo(currentX, 0f)
+            lineTo(currentX + tWidth, 0f)
+            val tCenter = currentX + tWidth / 2f
+            moveTo(tCenter, 0f)
+            lineTo(tCenter, h)
+        }
+        paths.add(pathT)
+
+        // Ambient Frosted Glass Glow (Inner illumination)
+        val glassGlowBrush = Brush.verticalGradient(
+            colors = listOf(
+                Color(0x35FFCCD8),
+                Color(0x55FF2A6D),
+                Color(0x35E50914)
+            )
+        )
+
+        // Premium Translucent Glass Body Shader
+        val glassBodyBrush = Brush.verticalGradient(
+            colors = listOf(
+                Color(0xF5FFFFFF), // Specular light reflection at top
+                Color(0xD8FFD6E2), // Frosted crystal pink
+                Color(0xCCFF3366), // Translucent electric pink body
+                Color(0xA0E50914)  // Translucent ruby red refraction
+            )
+        )
+
+        // 1. Draw ambient glass glow pass
+        paths.forEach { path ->
+            drawPath(
+                path = path,
+                brush = glassGlowBrush,
+                style = Stroke(
+                    width = glowStrokeWidth,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round
+                )
+            )
+        }
+
+        // 2. Draw refined glass strokes with increased thickness
+        paths.forEach { path ->
+            drawPath(
+                path = path,
+                brush = glassBodyBrush,
+                style = Stroke(
+                    width = strokeWidth,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round
+                )
+            )
+        }
+    }
+}
+
+/**
  * Horizontally Scrollable Action Pill without harsh borders
  */
 @Composable
@@ -515,6 +651,7 @@ private fun DeviceTrackRowItem(
     isPlaying: Boolean,
     onClick: () -> Unit,
     onMenuClick: () -> Unit,
+    artworkLoadDelayMs: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     val cleanTitle = track.title.substringBefore(" - ")
@@ -537,6 +674,7 @@ private fun DeviceTrackRowItem(
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
                 thumbnailSizePx = 128,
+                loadDelayMs = artworkLoadDelayMs,
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -579,16 +717,16 @@ private fun DeviceTrackRowItem(
             )
         }
 
-        // Action Menu
+        // Action Menu: Vertical 3-dots (standing straight), pure white, bigger & mature
         IconButton(
             onClick = onMenuClick,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(44.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.MoreHoriz,
+                imageVector = Icons.Default.MoreVert,
                 contentDescription = "Track options",
-                tint = Color(0xFFC098A2),
-                modifier = Modifier.size(22.dp)
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
             )
         }
     }

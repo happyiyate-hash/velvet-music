@@ -29,16 +29,19 @@ object VelvetImageLoader {
 
     private fun buildLoader(context: Context): ImageLoader {
         return ImageLoader.Builder(context)
+            .components {
+                add(TrackArtworkFetcher.Factory(context))
+            }
             .memoryCache {
                 MemoryCache.Builder(context)
-                    .maxSizePercent(0.25)
+                    .maxSizePercent(0.30)
                     .strongReferencesEnabled(true)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(context.cacheDir.resolve("velvet_art_cache"))
-                    .maxSizeBytes(50L * 1024 * 1024)
+                    .maxSizeBytes(100L * 1024 * 1024)
                     .build()
             }
             .respectCacheHeaders(false)
