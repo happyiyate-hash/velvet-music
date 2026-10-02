@@ -618,20 +618,16 @@ fun PlayerSheet(
             val collapsedControlsY = totalHeight - collapsedPeekHeight - controlsHeight - 12.dp
             val collapsedCardHeight = collapsedControlsY - 6.dp
 
-            // Clean, harmonious vertical spacing in Collapsed state:
-            // 1. Artwork thumbnail sits under top bar with comfortable breathing room
-            val collapsedArtworkTop = statusBarTop + 48.dp
-            val collapsedArtworkAvailableHeight = collapsedCardHeight - collapsedArtworkTop - 180.dp
-            val collapsedArtworkHeight = (minOf(totalWidth - 36.dp, collapsedArtworkAvailableHeight, 320.dp)).coerceIn(230.dp, 320.dp)
+            val collapsedProgressY = collapsedCardHeight - 72.dp
+            val collapsedMetadataY = collapsedProgressY - 54.dp
+            val collapsedArtworkBottom = collapsedMetadataY - 16.dp
+
+            // Collapsed state (p = 0f): Original centered display with rounded corners and proper margins:
+            val collapsedArtworkHeight = (minOf(totalWidth - 32.dp, collapsedArtworkBottom - (statusBarTop + 46.dp) - 6.dp)).coerceIn(240.dp, 330.dp)
             val collapsedArtworkWidth = collapsedArtworkHeight * artworkAspectRatio
+            val collapsedArtworkTop = ((statusBarTop + 46.dp) + (collapsedArtworkBottom - (statusBarTop + 46.dp) - collapsedArtworkHeight) / 2f)
             val collapsedArtworkLeft = (totalWidth - collapsedArtworkWidth) / 2f
             val collapsedArtworkRadius = 14.dp
-
-            // 2. Title & Artist dragged upward closer to artwork with a clean, generous space (22.dp)
-            val collapsedMetadataY = collapsedArtworkTop + collapsedArtworkHeight + 22.dp
-
-            // 3. Progress bar dragged upward from the visualizer, cleanly spaced below title/artist
-            val collapsedProgressY = collapsedMetadataY + 54.dp
 
             // Stage 1 Expanded state (p = 1f):
             val expandedArtworkWidth = totalWidth
@@ -642,7 +638,7 @@ fun PlayerSheet(
             val expandedArtworkBottom = expandedArtworkTop + expandedArtworkHeight // = totalWidth
             val expandedCardHeight = expandedArtworkBottom
 
-            val expandedProgressY = expandedCardHeight - 74.dp
+            val expandedProgressY = expandedCardHeight - 72.dp
             val expandedMetadataY = expandedProgressY - 54.dp
 
             // Stage 2 Mini Artwork Targets:
