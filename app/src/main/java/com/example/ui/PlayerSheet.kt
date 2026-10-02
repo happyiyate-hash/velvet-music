@@ -145,7 +145,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import com.example.util.VelvetHaptics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -174,6 +176,8 @@ import kotlinx.coroutines.withContext
 import com.example.audio.AudioTelemetry
 import com.example.audio.RepeatMode
 import com.example.media.ArtworkColorExtractor
+import com.example.media.ArtworkContrastAnalyzer
+import com.example.media.PlayerAdaptiveContrast
 import com.example.media.VelvetArtworkCache
 import com.example.media.TrackThemeColors
 import com.example.model.Track
@@ -334,6 +338,20 @@ fun PlayerSheet(
         )
     }
 
+    var artworkContrast by remember { mutableStateOf(PlayerAdaptiveContrast()) }
+
+    LaunchedEffect(track.id, resolvedArtworkBitmap) {
+        val bmp = resolvedArtworkBitmap
+            ?: VelvetArtworkCache.getFullFromMemory(track.id)
+            ?: VelvetArtworkCache.getFromMemory(track.id)
+        if (bmp != null) {
+            val result = withContext(Dispatchers.Default) {
+                ArtworkContrastAnalyzer.analyzeArtwork(bmp, artworkContrast)
+            }
+            artworkContrast = result
+        }
+    }
+
     LaunchedEffect(track.id, track.artworkUri, track.coverResId) {
         val cached = VelvetArtworkCache.getPalette(track.id)
         val cachedBmp = VelvetArtworkCache.getFullFromMemory(track.id)
@@ -425,7 +443,7 @@ fun PlayerSheet(
         activeQueueDragIndex = realIndex
         activeQueueDragOriginalIndex = realIndex
         queueDragOffsetY = 0f
-        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        VelvetHaptics.dragActivated(context)
     }
 
     fun updateQueueDrag(deltaY: Float) {
@@ -445,7 +463,7 @@ fun PlayerSheet(
             orderedQueueItems = mutable
             activeQueueDragIndex = to
             queueDragOffsetY -= rowHeightPx
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            VelvetHaptics.click(context)
         } else if (queueDragOffsetY <= -threshold && currentIndex > 0) {
             val to = currentIndex - 1
             val mutable = orderedQueueItems.toMutableList()
@@ -454,7 +472,7 @@ fun PlayerSheet(
             orderedQueueItems = mutable
             activeQueueDragIndex = to
             queueDragOffsetY += rowHeightPx
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            VelvetHaptics.click(context)
         }
     }
 
@@ -465,6 +483,7 @@ fun PlayerSheet(
         if (original >= 0 && final >= 0 && original != final) {
             onUpdateQueue?.invoke(orderedQueueItems)
             onReorderQueue?.invoke(original, final)
+            VelvetHaptics.actionExecuted(context)
         }
         val currentOffset = queueDragOffsetY
         if (abs(currentOffset) > 1f) {
@@ -693,6 +712,31 @@ fun PlayerSheet(
             // Stage 1 elements alpha: fades out rapidly so it never shows through the up next list
             val stage1CardElementsAlpha = if (p <= 1f) 1f else (1f - p2 * 6f).coerceIn(0f, 1f)
 
+            // Local Automatic Contrast Adaptation:
+            // Samples the exact background area directly behind each element to guarantee 100% legibility.
+            val isTitleOverLight = (p > 0.35f && artworkContrast.title.isLightBackground)
+            val isProgressOverLight = (p > 0.35f && artworkContrast.progress.isLightBackground)
+            val isVisualizerOverLight = (p > 0.35f && artworkContrast.visualizer.isLightBackground)
+            val isTopBarOverLight = (p > 0.20f && artworkContrast.topBar.isLightBackground)
+
+            val targetTitlePrimary = if (isTitleOverLight) artworkContrast.title.primaryColor else Color.White
+            val targetTitleSecondary = if (isTitleOverLight) artworkContrast.title.secondaryColor else Color.White.copy(alpha = 0.68f)
+
+            val targetProgressActive = if (isProgressOverLight) artworkContrast.progress.primaryColor else Color.White
+            val targetProgressTrack = if (isProgressOverLight) artworkContrast.progress.tertiaryColor else Color.White.copy(alpha = 0.18f)
+            val targetProgressTimestamp = if (isProgressOverLight) artworkContrast.progress.secondaryColor else Color.White.copy(alpha = 0.65f)
+
+            val targetVisualizerColor = if (isVisualizerOverLight) artworkContrast.visualizer.primaryColor else Color.White
+            val targetTopBarColor = if (isTopBarOverLight) artworkContrast.topBar.primaryColor else Color.White.copy(alpha = 0.95f)
+
+            val animatedTitleColor by animateColorAsState(targetTitlePrimary, tween(220), label = "adaptive_title_color")
+            val animatedArtistColor by animateColorAsState(targetTitleSecondary, tween(220), label = "adaptive_artist_color")
+            val animatedProgressActiveColor by animateColorAsState(targetProgressActive, tween(220), label = "adaptive_prog_active")
+            val animatedProgressTrackColor by animateColorAsState(targetProgressTrack, tween(220), label = "adaptive_prog_track")
+            val animatedProgressTimestampColor by animateColorAsState(targetProgressTimestamp, tween(220), label = "adaptive_prog_time")
+            val animatedVisualizerLineColor by animateColorAsState(targetVisualizerColor, tween(220), label = "adaptive_vis_color")
+            val animatedTopBarColor by animateColorAsState(targetTopBarColor, tween(220), label = "adaptive_top_bar_color")
+
             // Continuous lerp for elements inside the Card:
             val metadataY = lerp(collapsedMetadataY, expandedMetadataY, p1)
             val progressY = lerp(collapsedProgressY, expandedProgressY, p1)
@@ -864,7 +908,7 @@ fun PlayerSheet(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
                             contentDescription = "Collapse Player",
-                            tint = Color.White.copy(alpha = 0.95f),
+                            tint = animatedTopBarColor.copy(alpha = 0.95f),
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -878,7 +922,7 @@ fun PlayerSheet(
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "More Options",
-                            tint = Color.White.copy(alpha = 0.95f),
+                            tint = animatedTopBarColor.copy(alpha = 0.95f),
                             modifier = Modifier.size(26.dp)
                         )
                     }
@@ -974,6 +1018,7 @@ fun PlayerSheet(
                         ) {
                             MarqueeTrackTitle(
                                 title = track.title,
+                                color = animatedTitleColor,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("player_track_title")
@@ -986,7 +1031,7 @@ fun PlayerSheet(
                                 fontSize = 12.sp,
                                 letterSpacing = 1.4.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color.White.copy(alpha = 0.68f),
+                                color = animatedArtistColor,
                                 textAlign = TextAlign.Start,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -1011,6 +1056,9 @@ fun PlayerSheet(
                             durationMs = track.durationMs,
                             isPlaying = isPlaying,
                             onSeekTo = onSeekTo,
+                            activeColor = animatedProgressActiveColor,
+                            trackColor = animatedProgressTrackColor,
+                            timestampColor = animatedProgressTimestampColor,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -1027,6 +1075,7 @@ fun PlayerSheet(
                         PlayerBottomVerticalLines(
                             isPlaying = isPlaying,
                             telemetry = telemetry,
+                            lineColor = animatedVisualizerLineColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1518,7 +1567,10 @@ private fun NowPlayingProgressBar(
     durationMs: Long,
     isPlaying: Boolean,
     onSeekTo: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    activeColor: Color = Color.White,
+    trackColor: Color = Color.White.copy(alpha = 0.18f),
+    timestampColor: Color = Color.White.copy(alpha = 0.65f)
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
@@ -1588,18 +1640,18 @@ private fun NowPlayingProgressBar(
                 val lineThickness = 4.5.dp.toPx()
                 val progressWidth = (totalWidth * displayFraction).coerceIn(0f, totalWidth)
 
-                // Unplayed track - subtle translucent ash white
+                // Unplayed track
                 drawRoundRect(
-                    color = Color.White.copy(alpha = 0.18f),
+                    color = trackColor,
                     topLeft = Offset(0f, centerY - lineThickness / 2f),
                     size = Size(totalWidth, lineThickness),
                     cornerRadius = CornerRadius(lineThickness / 2f, lineThickness / 2f)
                 )
 
-                // Played track - clean solid milk-white
+                // Played track
                 if (progressWidth > 0f) {
                     drawRoundRect(
-                        color = Color.White,
+                        color = activeColor,
                         topLeft = Offset(0f, centerY - lineThickness / 2f),
                         size = Size(progressWidth, lineThickness),
                         cornerRadius = CornerRadius(lineThickness / 2f, lineThickness / 2f)
@@ -1620,13 +1672,13 @@ private fun NowPlayingProgressBar(
                 text = formatMs(currentDisplayMs),
                 fontSize = 11.5.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color.White.copy(alpha = 0.65f)
+                color = timestampColor
             )
             Text(
                 text = formatMs(durationMs),
                 fontSize = 11.5.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color.White.copy(alpha = 0.65f)
+                color = timestampColor
             )
         }
     }
@@ -1683,7 +1735,8 @@ private fun NowPlayingProgressBar(
 private fun PlayerBottomVerticalLines(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lineColor: Color = Color.White
 ) {
     val lineCount = 76
     val heights = remember(lineCount) { FloatArray(lineCount) { 0.08f } }
@@ -1816,7 +1869,7 @@ private fun PlayerBottomVerticalLines(
             val lineAlpha = if (isPeak) 0.95f else 0.65f
 
             drawLine(
-                color = Color.White.copy(alpha = lineAlpha),
+                color = lineColor.copy(alpha = lineAlpha),
                 start = Offset(x, size.height),
                 end = Offset(x, size.height - lineHeight),
                 strokeWidth = 1.2.dp.toPx(),
@@ -1846,23 +1899,24 @@ private fun UpNextTrackRow(
     queueIndex: Int = -1,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val view = LocalView.current
     var rowWidthPx by remember { mutableFloatStateOf(0f) }
     var swipeOffset by remember(track.id) { mutableFloatStateOf(0f) }
     var thresholdLatched by remember(track.id) { mutableStateOf(false) }
     val swipeSettle = remember(track.id) { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
-    val thresholdPx = if (rowWidthPx > 0f) rowWidthPx * 0.38f else with(density) { 140.dp.toPx() }
+    val thresholdPx = if (rowWidthPx > 0f) rowWidthPx * 0.50f else with(density) { 180.dp.toPx() }
     val swipeLimitPx = with(density) { 600.dp.toPx() }
 
     val isSwiping = abs(swipeOffset) > 1f
     val isPastThreshold = abs(swipeOffset) >= thresholdPx
 
-    // Trigger one short haptic vibration exactly at the instant threshold is crossed into action mode
+    // Instant tactile burst when card edge reaches the screen center into red/green action mode
     LaunchedEffect(isPastThreshold) {
         if (isPastThreshold && !thresholdLatched) {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            VelvetHaptics.thresholdCrossed(context, view)
             thresholdLatched = true
         } else if (!isPastThreshold) {
             thresholdLatched = false
@@ -1881,8 +1935,6 @@ private fun UpNextTrackRow(
         label = "queue_drag_elevation"
     )
 
-    // Active Item Highlight:
-    // Attached directly to row position. Travels naturally with scroll and drag.
     val rowBaseBg = surfaceColor
     val activeRowBg = when {
         isDragging -> Color.White.copy(alpha = 0.16f).compositeOver(rowBaseBg)
@@ -1897,7 +1949,6 @@ private fun UpNextTrackRow(
         else -> Color.Transparent
     }
 
-    // Full-Bleed Surface Layer: Spans 100% width, moves as part of the unified scroll container
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1917,12 +1968,13 @@ private fun UpNextTrackRow(
                 clip = false
             )
     ) {
-        // Step 1: Background Reveal Layer - strictly sits behind moving card, revealed only as card is swiped open
+        // Step 1: Background Reveal Layer - Revealed only as card is swiped open
         if (isSwiping && !isCurrent) {
+            val showingPlayNext = swipeOffset > 0f
             val targetActionColor = when {
-                !isPastThreshold -> Color.Black
-                swipeOffset > 0f -> Color(0xFF22C55E)
-                else -> Color(0xFFEF4444)
+                !isPastThreshold -> Color(0xFF0C0D0F)
+                showingPlayNext -> Color(0xFF16A34A) // Vibrant Emerald Green
+                else -> Color(0xFFDC2626) // Vibrant Crimson Red
             }
             val animatedActionBg by animateColorAsState(
                 targetValue = targetActionColor,
@@ -1930,21 +1982,11 @@ private fun UpNextTrackRow(
                 label = "swipe_action_bg"
             )
             val progress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
-            val iconScale by animateFloatAsState(
-                targetValue = if (isPastThreshold) 1.2f else (0.70f + progress * 0.30f),
-                animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow
-                ),
-                label = "swipe_icon_scale"
-            )
-            val iconAlpha by animateFloatAsState(
-                targetValue = if (isPastThreshold) 1f else (0.45f + progress * 0.55f),
-                animationSpec = tween(120),
-                label = "swipe_icon_alpha"
-            )
 
-            val showingPlayNext = swipeOffset > 0f
+            // The icon floats inward away from the edges by ~20% of the row width
+            val floatDistanceDp = with(density) { (rowWidthPx * 0.20f * progress).toDp() }
+            val iconAlpha = (progress * 3.5f).coerceIn(0f, 1f)
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1953,25 +1995,33 @@ private fun UpNextTrackRow(
             ) {
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 24.dp)
-                        .graphicsLayer {
-                            scaleX = iconScale
-                            scaleY = iconScale
-                            alpha = iconAlpha
-                        },
+                        .padding(
+                            start = if (showingPlayNext) 12.dp + floatDistanceDp else 0.dp,
+                            end = if (!showingPlayNext) 12.dp + floatDistanceDp else 0.dp
+                        )
+                        .graphicsLayer { alpha = iconAlpha },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (showingPlayNext) Icons.Default.QueueMusic else Icons.Default.Delete,
-                        contentDescription = if (showingPlayNext) "Play Next" else "Delete",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    if (showingPlayNext) {
+                        AnimatedUpNextArrowIcon(
+                            openProgress = progress,
+                            isPastThreshold = isPastThreshold,
+                            tint = Color.White
+                        )
+                    } else {
+                        AnimatedTrashDeleteIcon(
+                            openProgress = progress,
+                            isPastThreshold = isPastThreshold,
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         }
 
-        // Step 2: Track Row Content - Solid opaque surface
+        // Step 2: Track Row Content
+        // Holding ANYWHERE on the music item activates reorder drag with instant haptic vibration!
+        // Sliding horizontally reveals the animated trash lid / up next arrow.
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -1982,6 +2032,21 @@ private fun UpNextTrackRow(
                     indication = null,
                     onClick = onClick
                 )
+                .pointerInput(track.id, isDragging) {
+                    if (isDragging) return@pointerInput
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = {
+                            swipeOffset = 0f
+                            onDragStart()
+                        },
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragEnd,
+                        onDrag = { change, amount ->
+                            change.consume()
+                            onDragBy(amount.y)
+                        }
+                    )
+                }
                 .pointerInput(track.id, isDragging) {
                     if (isDragging) return@pointerInput
                     detectHorizontalDragGestures(
@@ -1999,6 +2064,7 @@ private fun UpNextTrackRow(
                             val releaseOffset = swipeOffset
                             val pastThreshold = abs(releaseOffset) >= thresholdPx
                             if (pastThreshold) {
+                                VelvetHaptics.actionExecuted(context, view)
                                 if (releaseOffset > 0f) {
                                     onPlayNext()
                                 } else {
@@ -2062,7 +2128,7 @@ private fun UpNextTrackRow(
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            // Title and Subtitle (Wave indicator removed from title as requested)
+            // Title and Subtitle
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
@@ -2088,6 +2154,7 @@ private fun UpNextTrackRow(
             }
 
             // Drag Handle: 2 clean mature white lines with extra spacing and stroke thickness
+            // Immediate drag on touch (without long press wait)
             Box(
                 modifier = Modifier
                     .size(width = 44.dp, height = 48.dp)
@@ -2749,6 +2816,7 @@ fun NowPlayingActionSheet(
 private fun MarqueeTrackTitle(
     title: String,
     modifier: Modifier = Modifier,
+    color: Color = Color.White,
     fontSize: TextUnit = 21.sp,
     fontWeight: FontWeight = FontWeight.Bold,
     letterSpacing: TextUnit = (-0.2).sp
@@ -2757,7 +2825,7 @@ private fun MarqueeTrackTitle(
     val textStyle = TextStyle(
         fontSize = fontSize,
         fontWeight = fontWeight,
-        color = Color.White,
+        color = color,
         textAlign = TextAlign.Start,
         letterSpacing = letterSpacing
     )
