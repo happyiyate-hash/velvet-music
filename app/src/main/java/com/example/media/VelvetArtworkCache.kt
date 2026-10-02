@@ -13,7 +13,9 @@ import com.example.model.Track
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
@@ -101,6 +103,14 @@ object VelvetArtworkCache {
         }
 
         palette
+    }
+
+    fun warmCache(context: Context, tracks: List<Track>) {
+        CoroutineScope(Dispatchers.IO).launch {
+            tracks.take(25).forEach { track ->
+                runCatching { preloadTrack(context, track) }
+            }
+        }
     }
 
     /**

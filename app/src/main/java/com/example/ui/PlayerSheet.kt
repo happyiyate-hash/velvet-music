@@ -417,36 +417,39 @@ fun PlayerSheet(
         }
     }
 
-    fun beginQueueDrag(id: String, index: Int, canDrag: Boolean = true) {
-        if (!canDrag || index < 0 || activeQueueDragId != null || settlingDragId != null) return
+    fun beginQueueDrag(id: String, canDrag: Boolean = true) {
+        if (!canDrag || activeQueueDragId != null || settlingDragId != null) return
+        val realIndex = orderedQueueItems.indexOfFirst { it.id == id }
+        if (realIndex == -1) return
         activeQueueDragId = id
-        activeQueueDragIndex = index
-        activeQueueDragOriginalIndex = index
+        activeQueueDragIndex = realIndex
+        activeQueueDragOriginalIndex = realIndex
         queueDragOffsetY = 0f
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
     fun updateQueueDrag(deltaY: Float) {
-        if (activeQueueDragId == null || activeQueueDragIndex < 0) return
+        val dragId = activeQueueDragId ?: return
         queueDragOffsetY += deltaY
         val rowHeightPx = with(density) { 60.dp.toPx() }
         val threshold = rowHeightPx * 0.55f
 
-        if (queueDragOffsetY >= threshold && activeQueueDragIndex < orderedQueueItems.lastIndex) {
-            val from = activeQueueDragIndex
-            val to = from + 1
+        val currentIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
+        if (currentIndex == -1) return
+
+        if (queueDragOffsetY >= threshold && currentIndex < orderedQueueItems.lastIndex) {
+            val to = currentIndex + 1
             val mutable = orderedQueueItems.toMutableList()
-            val moved = mutable.removeAt(from)
+            val moved = mutable.removeAt(currentIndex)
             mutable.add(to, moved)
             orderedQueueItems = mutable
             activeQueueDragIndex = to
             queueDragOffsetY -= rowHeightPx
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        } else if (queueDragOffsetY <= -threshold && activeQueueDragIndex > 0) {
-            val from = activeQueueDragIndex
-            val to = from - 1
+        } else if (queueDragOffsetY <= -threshold && currentIndex > 0) {
+            val to = currentIndex - 1
             val mutable = orderedQueueItems.toMutableList()
-            val moved = mutable.removeAt(from)
+            val moved = mutable.removeAt(currentIndex)
             mutable.add(to, moved)
             orderedQueueItems = mutable
             activeQueueDragIndex = to
@@ -457,11 +460,11 @@ fun PlayerSheet(
 
     fun finishQueueDrag() {
         val dragId = activeQueueDragId ?: return
+        val final = orderedQueueItems.indexOfFirst { it.id == dragId }
         val original = activeQueueDragOriginalIndex
-        val final = activeQueueDragIndex
         if (original >= 0 && final >= 0 && original != final) {
-            onReorderQueue?.invoke(original, final)
             onUpdateQueue?.invoke(orderedQueueItems)
+            onReorderQueue?.invoke(original, final)
         }
         val currentOffset = queueDragOffsetY
         if (abs(currentOffset) > 1f) {
@@ -1328,7 +1331,7 @@ fun PlayerSheet(
                                             onUpdateQueue?.invoke(updated)
                                         }
                                     },
-                                    onDragStart = { beginQueueDrag(queueTrack.id, queueIndex) },
+                                    onDragStart = { beginQueueDrag(queueTrack.id) },
                                     onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
                                     onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
                                     isDragging = isItemElevated,
@@ -1868,12 +1871,40 @@ private fun UpNextTrackRow(
                     indication = null,
                     onClick = onClick
                 )
-                .pointerInput(track.id) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = { swipeOffset = 0f; onDragStart() },
-                        onDragEnd = onDragEnd,
-                        onDragCancel = onDragEnd,
-                        onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }
+                .pointerInput(track.id, isDragging) {
+                    if (isDragging) return@pointerInput
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            thresholdLatched = false
+                        },
+                        onDragCancel = {
+                            scope.launch {
+                                swipeSettle.snapTo(swipeOffset)
+                                swipeSettle.animateTo(0f, tween(180)) { swipeOffset = value }
+                                thresholdLatched = false
+                            }
+                        },
+                        onDragEnd = {
+                            val releaseOffset = swipeOffset
+                            val pastThreshold = abs(releaseOffset) >= thresholdPx
+                            if (pastThreshold) {
+                                if (releaseOffset > 0f) {
+                                    onPlayNext()
+                                } else {
+                                    onDelete()
+                                }
+                            }
+                            scope.launch {
+                                swipeSettle.snapTo(releaseOffset)
+                                swipeSettle.animateTo(0f, tween(180)) { swipeOffset = value }
+                                thresholdLatched = false
+                            }
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            val newOffset = (swipeOffset + dragAmount).coerceIn(-swipeLimitPx, swipeLimitPx)
+                            swipeOffset = newOffset
+                        }
                     )
                 }
                 .padding(start = 6.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
@@ -1945,7 +1976,7 @@ private fun UpNextTrackRow(
                 )
             }
 
-            // Drag Handle: 2 clean lines pushed to the far right (YouTube Music style)
+            // Drag Handle: 2 clean mature white lines with extra spacing and stroke thickness
             Box(
                 modifier = Modifier
                     .size(width = 44.dp, height = 48.dp)
@@ -1960,16 +1991,16 @@ private fun UpNextTrackRow(
                 contentAlignment = Alignment.Center
             ) {
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.5.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     repeat(2) {
                         Box(
                             Modifier
-                                .width(18.dp)
-                                .height(2.dp)
-                                .clip(RoundedCornerShape(1.dp))
-                                .background(if (isDragging) Color.White else Color.White.copy(alpha = 0.60f))
+                                .width(20.dp)
+                                .height(2.5.dp)
+                                .clip(RoundedCornerShape(1.25.dp))
+                                .background(Color.White)
                         )
                     }
                 }
