@@ -49,14 +49,15 @@ import com.example.media.VelvetArtworkCache
 import com.example.model.FallbackArtworkPool
 import com.example.model.Track
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Universal Track Artwork renderer:
  * 1. Fully Asynchronous: Decoding runs strictly on Dispatchers.IO, never blocking the main UI thread.
- * 2. Guaranteed Replacement Artwork: If track has no artwork or MediaStore URI fails,
- *    instantly falls back to the app's rich fallback pool artwork.
- * 3. Exact Downscaling: Resizes bitmaps to exact target visual dimensions (128x128 px).
- * 4. Asynchronous Crossfade: Smooth transition with zero-jank caching.
+ * 2. Guaranteed Full Resolution for Player Sheet:
+ *    - Never gets stuck on downsampled thumbnails. Always decodes and displays full-resolution HD artwork.
+ * 3. Exact Downscaling for Lists: Resizes list/queue thumbnails to 128x128 px for smooth 60fps scrolling.
+ * 4. Zero-Flicker Transitions: Frame-0 memory hit ensures zero blank cards.
  */
 @Composable
 fun TrackArtworkImage(
@@ -69,73 +70,57 @@ fun TrackArtworkImage(
     loadDelayMs: Long = 0L
 ) {
     val context = LocalContext.current
-    val imageLoader = remember { VelvetImageLoader.get(context) }
     val isThumbnail = thumbnailSizePx != null && thumbnailSizePx > 0
 
-    // Instant frame-0 memory check: for thumbnails check thumbnail cache; for Player Sheet check full HD cache, then thumbnail cache!
-    val memoryBitmap: Bitmap? = remember(track.id, isThumbnail) {
-        if (isThumbnail) {
+    // Frame-0 memory check:
+    // If thumbnail: get from thumbnail memory cache.
+    // If full artwork (Player Sheet): get from full HD memory cache. If not yet decoded in HD,
+    // temporarily show thumbnail as a 0ms placeholder so the UI is never blank while full HD loads.
+    var displayedBitmap by remember(track.id, isThumbnail) {
+        val initialBmp = if (isThumbnail) {
             VelvetArtworkCache.getFromMemory(track.id)
         } else {
             VelvetArtworkCache.getFullFromMemory(track.id)
                 ?: VelvetArtworkCache.getFromMemory(track.id)
         }
+        mutableStateOf(initialBmp)
     }
 
-    var displayedBitmap by remember { mutableStateOf<Bitmap?>(memoryBitmap) }
-    var allowImageRequest by remember(track.id, memoryBitmap, loadDelayMs) {
-        mutableStateOf(memoryBitmap != null || loadDelayMs <= 0L)
-    }
-
-    LaunchedEffect(track.id, memoryBitmap, loadDelayMs) {
-        if (memoryBitmap != null) {
-            allowImageRequest = true
-            return@LaunchedEffect
-        }
-        if (loadDelayMs > 0L) kotlinx.coroutines.delay(loadDelayMs)
-        allowImageRequest = true
-    }
-
-    LaunchedEffect(track.id) {
-        val mem = if (isThumbnail) {
-            VelvetArtworkCache.getFromMemory(track.id)
+    // High-Fidelity Resolver:
+    // For Player Sheet (!isThumbnail), guarantees that full-resolution HD artwork (up to 1200x1200px)
+    // is decoded, cached in memory/disk, and displayed with ZERO blur.
+    LaunchedEffect(track.id, isThumbnail) {
+        if (!isThumbnail) {
+            val cachedFull = VelvetArtworkCache.getFullFromMemory(track.id)
+            if (cachedFull != null && !cachedFull.isRecycled) {
+                displayedBitmap = cachedFull
+            } else {
+                val fullBmp = withContext(Dispatchers.IO) {
+                    VelvetArtworkCache.getOrDecodeFullArtwork(context, track)
+                }
+                if (!fullBmp.isRecycled) {
+                    displayedBitmap = fullBmp
+                }
+            }
         } else {
-            VelvetArtworkCache.getFullFromMemory(track.id) ?: VelvetArtworkCache.getFromMemory(track.id)
+            val cachedThumb = VelvetArtworkCache.getFromMemory(track.id)
+            if (cachedThumb != null && !cachedThumb.isRecycled) {
+                displayedBitmap = cachedThumb
+            } else {
+                val thumbBmp = withContext(Dispatchers.IO) {
+                    VelvetArtworkCache.getOrDecodeThumbnail(context, track)
+                }
+                if (!thumbBmp.isRecycled) {
+                    displayedBitmap = thumbBmp
+                }
+            }
         }
-        if (mem != null && !mem.isRecycled) {
-            displayedBitmap = mem
-        }
-    }
-
-    val request = remember(track.id, thumbnailSizePx, crossfade, isThumbnail) {
-        val builder = ImageRequest.Builder(context)
-            .data(track)
-            .dispatcher(Dispatchers.IO)
-            .crossfade(if (crossfade) 180 else 0)
-            .allowHardware(true)
-            .memoryCachePolicy(CachePolicy.ENABLED)
-            .diskCachePolicy(CachePolicy.ENABLED)
-
-        if (isThumbnail && thumbnailSizePx != null) {
-            builder.setParameter("is_thumbnail", true)
-                .memoryCacheKey("track_thumb_${track.id}_$thumbnailSizePx")
-                .diskCacheKey("track_thumb_${track.id}_$thumbnailSizePx")
-                .size(thumbnailSizePx, thumbnailSizePx)
-                .precision(Precision.EXACT)
-                .scale(Scale.FILL)
-        } else {
-            // Full-resolution artwork for PlayerSheet: full HD original clarity, zero downsample blur
-            builder.setParameter("is_thumbnail", false)
-                .memoryCacheKey("track_full_${track.id}")
-                .diskCacheKey("track_full_${track.id}")
-        }
-        builder.build()
     }
 
     Box(
         modifier = modifier
     ) {
-        val activeBmp = memoryBitmap ?: displayedBitmap
+        val activeBmp = displayedBitmap
         if (activeBmp != null && !activeBmp.isRecycled) {
             Image(
                 bitmap = activeBmp.asImageBitmap(),
@@ -150,23 +135,15 @@ fun TrackArtworkImage(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale
             )
-        }
-        if (activeBmp == null && allowImageRequest) {
-            AsyncImage(
-                model = request,
-                imageLoader = imageLoader,
+        } else {
+            val fallbackRes = remember(track.id) {
+                FallbackArtworkPool.getPhotoForTrack(track.id, track.title, track.artist)
+            }
+            Image(
+                painter = painterResource(fallbackRes),
                 contentDescription = contentDescription,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = 1f },
-                contentScale = contentScale,
-                onSuccess = { state ->
-                    val d = state.result.drawable
-                    if (d is android.graphics.drawable.BitmapDrawable) {
-                        displayedBitmap = d.bitmap
-                        VelvetArtworkCache.putInMemory(track.id, d.bitmap)
-                    }
-                }
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale
             )
         }
     }

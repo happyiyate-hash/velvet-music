@@ -15,9 +15,9 @@ import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.launch
 
 /**
  * YouTube Music Style High-Fidelity Artwork Engine:
@@ -73,8 +73,8 @@ object VelvetArtworkCache {
      * Tracks are processed sequentially to avoid decoding every artwork at once.
      */
     fun warmCache(context: Context, tracks: List<Track>) {
-        kotlinx.coroutines.CoroutineScope(
-            kotlinx.coroutines.SupervisorJob() + Dispatchers.IO
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.IO
         ).launch {
             tracks.distinctBy { it.id }.forEach { track ->
                 runCatching { preloadTrack(context, track) }
@@ -103,14 +103,6 @@ object VelvetArtworkCache {
         }
 
         palette
-    }
-
-    fun warmCache(context: Context, tracks: List<Track>) {
-        CoroutineScope(Dispatchers.IO).launch {
-            tracks.take(25).forEach { track ->
-                runCatching { preloadTrack(context, track) }
-            }
-        }
     }
 
     /**

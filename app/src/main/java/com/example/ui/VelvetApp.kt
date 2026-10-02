@@ -182,9 +182,7 @@ fun VelvetApp() {
     // Preload & warm artwork cache for all library tracks immediately on mount
     LaunchedEffect(allTracks) {
         if (allTracks.isNotEmpty()) {
-            withContext(Dispatchers.IO) {
-                VelvetArtworkCache.warmCache(context, allTracks)
-            }
+            VelvetArtworkCache.warmCache(context, allTracks)
         }
     }
 

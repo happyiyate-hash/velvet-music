@@ -284,13 +284,13 @@ fun ExactAudioWaveformProgress(
                     liveAmplitudes[i]
                 }
 
-                // Instant Beat Snap (100%) & Fast Snappy Falloff (0.32)
+                // Instant Beat Snap (100%) & Fast Snappy Falloff (0.48)
                 val current = liveAmplitudes[i]
                 val updated = if (isPlaying) {
                     if (targetFraction > current) {
                         targetFraction // Instant attack on beat
                     } else {
-                        current - (current - targetFraction) * 0.32f // Fast gravitational drop
+                        current - (current - targetFraction) * 0.48f // Fast gravitational drop
                     }
                 } else {
                     // FREEZING ENTIRELY WHEN PAUSED

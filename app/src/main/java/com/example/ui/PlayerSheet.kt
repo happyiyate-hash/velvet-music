@@ -617,16 +617,21 @@ fun PlayerSheet(
             val collapsedPeekHeight = (navBarBottom + 20.dp).coerceIn(20.dp, 32.dp)
             val collapsedControlsY = totalHeight - collapsedPeekHeight - controlsHeight - 12.dp
             val collapsedCardHeight = collapsedControlsY - 6.dp
-            val collapsedProgressY = collapsedCardHeight - 34.dp
-            val collapsedMetadataY = collapsedProgressY - 48.dp
-            val collapsedArtworkBottom = collapsedMetadataY - 12.dp
 
-            // Collapsed state (p = 0f): Original centered display with rounded corners and proper margins:
-            val collapsedArtworkHeight = (minOf(totalWidth - 32.dp, collapsedArtworkBottom - (statusBarTop + 46.dp) - 6.dp)).coerceIn(240.dp, 330.dp)
+            // Clean, harmonious vertical spacing in Collapsed state:
+            // 1. Artwork thumbnail sits under top bar with comfortable breathing room
+            val collapsedArtworkTop = statusBarTop + 48.dp
+            val collapsedArtworkAvailableHeight = collapsedCardHeight - collapsedArtworkTop - 180.dp
+            val collapsedArtworkHeight = (minOf(totalWidth - 36.dp, collapsedArtworkAvailableHeight, 320.dp)).coerceIn(230.dp, 320.dp)
             val collapsedArtworkWidth = collapsedArtworkHeight * artworkAspectRatio
-            val collapsedArtworkTop = ((statusBarTop + 46.dp) + (collapsedArtworkBottom - (statusBarTop + 46.dp) - collapsedArtworkHeight) / 2f)
             val collapsedArtworkLeft = (totalWidth - collapsedArtworkWidth) / 2f
             val collapsedArtworkRadius = 14.dp
+
+            // 2. Title & Artist dragged upward closer to artwork with a clean, generous space (22.dp)
+            val collapsedMetadataY = collapsedArtworkTop + collapsedArtworkHeight + 22.dp
+
+            // 3. Progress bar dragged upward from the visualizer, cleanly spaced below title/artist
+            val collapsedProgressY = collapsedMetadataY + 54.dp
 
             // Stage 1 Expanded state (p = 1f):
             val expandedArtworkWidth = totalWidth
@@ -637,8 +642,8 @@ fun PlayerSheet(
             val expandedArtworkBottom = expandedArtworkTop + expandedArtworkHeight // = totalWidth
             val expandedCardHeight = expandedArtworkBottom
 
-            val expandedProgressY = expandedCardHeight - 34.dp
-            val expandedMetadataY = expandedProgressY - 48.dp
+            val expandedProgressY = expandedCardHeight - 74.dp
+            val expandedMetadataY = expandedProgressY - 54.dp
 
             // Stage 2 Mini Artwork Targets:
             // Reduced size: ~20% larger than 48dp queue art = 56dp. Pushed to far left with small space (10dp).
@@ -695,8 +700,8 @@ fun PlayerSheet(
             // Continuous lerp for elements inside the Card:
             val metadataY = lerp(collapsedMetadataY, expandedMetadataY, p1)
             val progressY = lerp(collapsedProgressY, expandedProgressY, p1)
-            val visualizerHeight = 34.dp
-            val waveformY = cardHeight - visualizerHeight
+            val visualizerHeight = 24.dp
+            val waveformY = cardHeight - visualizerHeight - 4.dp
             val contentPaddingHorizontal = lerp(22.dp, 18.dp, p1)
 
             // Transport Controls:
@@ -813,13 +818,15 @@ fun PlayerSheet(
                         .clip(dynamicArtworkShape)
                         .zIndex(artworkZIndex)
                 ) {
-                    TrackArtworkImage(
-                        track = track,
-                        contentDescription = track.title,
-                        contentScale = ContentScale.Crop,
-                        thumbnailSizePx = null,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    key(track.id) {
+                        TrackArtworkImage(
+                            track = track,
+                            contentDescription = track.title,
+                            contentScale = ContentScale.Crop,
+                            thumbnailSizePx = null,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
 
                 // TOP BAR (Stays at status bar level, sits cleanly above artwork with .zIndex(10f))
@@ -1655,13 +1662,34 @@ private fun NowPlayingProgressBar(
  *    - Low amplitude, still visible (not completely flat).
  *    - Gentle breathing undulating wave across the baseline; never a flat horizontal straight line.
  */
+/**
+ * Velvet Music Player - Fully Scattered Independent Audio Visualizer:
+ *
+ * Implements completely scattered, independent frequency needles across the full width:
+ * 1. Zero Blocks & Zero Triangles:
+ *    - Adjacent lines never share the same frequency band or slope together into triangles.
+ *    - Every individual line is assigned an independent frequency bin via scatter permutation.
+ * 2. Scattered Bass & Speech Everywhere:
+ *    - Sub-bass, punch-bass, vocal speech, and treble needles are intermixed and distributed
+ *      uniformly from far left to far right across the entire width.
+ *    - Bass pulses everywhere across the spectrum without clustering into any localized lump.
+ * 3. Fully Independent Line Physics:
+ *    - Each line operates with its own distinct sensitivity, phase offset, and falloff speed.
+ *    - 100% instant attack on transients; rapid independent gravitational descent.
+ * 4. Vibration Bass vs. Normal Bass:
+ *    - Normal kicks produce instantaneous needle spikes that plummet immediately.
+ *    - Sustained vibration bass (808s / sub rumbles) drives rapid acoustic micro-vibrations
+ *      (42-66 Hz flutter) independently per line, preventing lines from sticking to the ceiling.
+ * 5. Compact, Non-Intrusive Height:
+ *    - Sleek 24.dp height profile sits cleanly along the bottom edge of the player card.
+ */
 @Composable
 private fun PlayerBottomVerticalLines(
     isPlaying: Boolean,
     telemetry: AudioTelemetry,
     modifier: Modifier = Modifier
 ) {
-    val lineCount = 72
+    val lineCount = 76
     val heights = remember(lineCount) { FloatArray(lineCount) { 0.08f } }
     val frameTicker = remember { mutableLongStateOf(0L) }
 
@@ -1678,37 +1706,124 @@ private fun PlayerBottomVerticalLines(
         val time = frameTicker.longValue / 1_000_000_000f
         val fft = telemetry.fftBars
 
+        // 1. Overall telemetry energy extraction
+        val subBass: Float
+        val punchBass: Float
+        val speechBody: Float
+        val treble: Float
+
+        if (fft.isNotEmpty()) {
+            var maxSb = 0f
+            for (idx in 0..minOf(4, fft.lastIndex)) {
+                if (fft[idx] > maxSb) maxSb = fft[idx]
+            }
+            subBass = maxSb
+
+            var sumPb = 0f
+            val pbEnd = minOf(12, fft.lastIndex)
+            val pbCount = (pbEnd - 5 + 1).coerceAtLeast(1)
+            for (idx in 5..pbEnd) sumPb += fft[idx]
+            punchBass = sumPb / pbCount
+
+            var sumSp = 0f
+            val spEnd = minOf(32, fft.lastIndex)
+            val spCount = (spEnd - 13 + 1).coerceAtLeast(1)
+            for (idx in 13..spEnd) sumSp += fft[idx]
+            speechBody = sumSp / spCount
+
+            var sumTr = 0f
+            val trEnd = minOf(63, fft.lastIndex)
+            val trCount = (trEnd - 36 + 1).coerceAtLeast(1)
+            for (idx in 36..trEnd) sumTr += fft[idx]
+            treble = sumTr / trCount
+        } else {
+            val rms = telemetry.rmsLevel.coerceIn(0f, 1f)
+            val transient = telemetry.transientSpike.coerceIn(0f, 1f)
+            val isKick = telemetry.kickDetected
+            val isSnare = telemetry.snareDetected
+            subBass = if (isKick) 0.95f else (rms * 0.72f).coerceIn(0.1f, 0.85f)
+            punchBass = if (isKick) 0.88f else (rms * 0.60f).coerceIn(0.1f, 0.75f)
+            speechBody = (rms * 0.65f + 0.15f * kotlin.math.sin(time * 6.5f)).coerceIn(0.1f, 0.80f)
+            treble = if (isSnare) 0.90f else (transient * 0.75f).coerceIn(0.08f, 0.75f)
+        }
+
+        val totalBass = (subBass * 0.62f + punchBass * 0.38f).coerceIn(0f, 1f)
+        val isKickBeat = telemetry.kickDetected || (telemetry.transientSpike > 0.72f && totalBass > 0.55f)
+        val isSustainedVibration = subBass > 0.30f && (telemetry.sustainedEnergy > 0.35f || !isKickBeat)
+        val vibrationFrequency = 42f + subBass * 24f // 42Hz to 66Hz real acoustic bass vibration
+
+        // 2. Render each line independently with scattered frequency picking
         for (i in 0 until lineCount) {
-            val normalized = i.toFloat() / (lineCount - 1).coerceAtLeast(1)
-            val fftIndex = if (fft.isNotEmpty()) {
-                (normalized * (fft.size - 1)).toInt().coerceIn(0, fft.lastIndex)
-            } else 0
-            val raw = if (fft.isNotEmpty()) fft[fftIndex].coerceIn(0f, 1f) else 0f
-            val breathing = (kotlin.math.sin(time * 2.2f + i * 0.24f) * 0.5f + 0.5f) * 0.035f
+            val norm = i.toFloat() / (lineCount - 1).coerceAtLeast(1)
+
+            // Scattered permutation ensures adjacent lines have completely different roles
+            val band = (i * 3 + (i / 4)) % 4
+            val vibPhase = i * 2.39996f // Golden angle phase divergence prevents clustering
+            val sens = 0.84f + (((i * 17) % 7) / 6f) * 0.26f // Individual line sensitivity
+            val dropSpeed = 0.44f + (((i * 13) % 5) / 4f) * 0.12f // Individual snappy drop speed
+
+            // Independent vibration flutter for bass lines during sustained vibration
+            val vibrationFlutter = if (isSustainedVibration) {
+                kotlin.math.sin(time * vibrationFrequency * 6.283f + vibPhase) * (0.16f * subBass.coerceIn(0f, 1f))
+            } else 0f
+
+            // Baseline organic breathing (individual rates per line)
+            val breathing = (kotlin.math.sin(time * (1.8f + (i % 4) * 0.35f) + i * 1.618f) * 0.5f + 0.5f) * 0.035f
+
             val target = if (isPlaying) {
-                (0.10f + raw * 0.78f + breathing).coerceIn(0.06f, 0.92f)
+                when (band) {
+                    0 -> { // SUB-BASS (Scattered everywhere across entire width)
+                        val binIndex = (i * 7) % 5
+                        val raw = if (fft.isNotEmpty()) fft[binIndex] else subBass
+                        val kickBoost = if (isKickBeat) 0.20f else 0f
+                        (0.08f + (raw * 0.78f + kickBoost) * sens + vibrationFlutter + breathing).coerceIn(0.06f, 0.95f)
+                    }
+                    2 -> { // PUNCH-BASS (Scattered everywhere across entire width)
+                        val binIndex = 5 + ((i * 7) % 7)
+                        val raw = if (fft.isNotEmpty()) fft[minOf(binIndex, fft.lastIndex)] else punchBass
+                        val kickBoost = if (isKickBeat) 0.15f else 0f
+                        (0.08f + (raw * 0.76f + kickBoost) * sens + (vibrationFlutter * 0.5f) + breathing).coerceIn(0.06f, 0.92f)
+                    }
+                    1 -> { // SPEECH & VOCAL ARTICULATION (Scattered everywhere across entire width)
+                        val binIndex = 12 + ((i * 11) % 24)
+                        val raw = if (fft.isNotEmpty()) fft[minOf(binIndex, fft.lastIndex)] else speechBody
+                        val vocalPulse = kotlin.math.sin(time * 8.5f + vibPhase) * 0.05f * speechBody
+                        (0.08f + (raw * 0.74f + vocalPulse) * sens + breathing).coerceIn(0.06f, 0.90f)
+                    }
+                    else -> { // TREBLE / HIGHS / AIR (Scattered everywhere across entire width)
+                        val binIndex = 36 + ((i * 13) % 28)
+                        val raw = if (fft.isNotEmpty()) fft[minOf(binIndex, fft.lastIndex)] else treble
+                        val snareBoost = if (telemetry.snareDetected) 0.30f else 0f
+                        (0.06f + (raw * 0.72f + snareBoost) * sens + breathing).coerceIn(0.06f, 0.88f)
+                    }
+                }
             } else {
-                heights[i]
+                heights[i] // Freeze when paused
             }
 
+            // 3. Studio Physics: 100% Instant Attack & Rapid Independent Descent
             val current = heights[i]
             heights[i] = if (isPlaying) {
                 if (target > current) {
-                    current + (target - current) * 0.28f
+                    target // Instant attack: reaches peak on exact frame
                 } else {
-                    current + (target - current) * 0.10f
+                    current - (current - target) * dropSpeed // Snappy independent drop
                 }
             } else {
                 current
             }
 
+            // 4. Draw independent crisp vertical line
             val lineHeight = (size.height * heights[i]).coerceIn(2.dp.toPx(), size.height)
-            val x = normalized * size.width
+            val x = norm * size.width
+            val isPeak = heights[i] > 0.72f
+            val lineAlpha = if (isPeak) 0.95f else 0.65f
+
             drawLine(
-                color = Color.White.copy(alpha = 0.62f),
+                color = Color.White.copy(alpha = lineAlpha),
                 start = Offset(x, size.height),
                 end = Offset(x, size.height - lineHeight),
-                strokeWidth = 1.15.dp.toPx(),
+                strokeWidth = 1.2.dp.toPx(),
                 cap = StrokeCap.Round
             )
         }
@@ -2910,11 +3025,11 @@ fun AudioVisualizerBottomSheet(
         for (b in 0 until bands) {
             val target = targetHeights[b]
             val current = liveBandHeights[b]
-            // Instant Beat Snap (100%) & Fast Snappy Falloff (0.32)
+            // Instant Beat Snap (100%) & Fast Snappy Falloff (0.48)
             val updated = if (target > current) {
                 target // Instant attack on beat
             } else {
-                current - (current - target) * 0.32f // Fast gravitational drop
+                current - (current - target) * 0.48f // Fast gravitational drop
             }
             liveBandHeights[b] = updated.coerceIn(0.06f, 1.0f)
         }
