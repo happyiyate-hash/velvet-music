@@ -1,0 +1,37 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Bent queue line -->
+    <path
+        android:pathData="M6,17V8H10"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Play arrow, moved upward -->
+    <path
+        android:pathData="M9,5L14,8L9,11V5Z"
+        android:fillColor="#FFFFFFFF" />
+
+    <!-- Queue lines -->
+    <path
+        android:pathData="M15.5,7H19"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+
+    <path
+        android:pathData="M11,12H19"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+
+    <path
+        android:pathData="M11,17H19"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+</vector>
