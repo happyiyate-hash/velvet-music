@@ -40,7 +40,11 @@ data class AudioTelemetry(
     val snareDetected: Boolean = false,
     val dominantFrequencyHz: Float = 110f,
     val pipelineLatencyMs: Long = 4L,
-    val fftBars: FloatArray = FloatArray(64) { 0f }
+    val fftBars: FloatArray = FloatArray(64) { 0f },
+    val kickEnergy: Float = 0f,
+    val sustainedBass: Float = 0f,
+    val midEnergy: Float = 0f,
+    val highTransient: Float = 0f
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -53,6 +57,10 @@ data class AudioTelemetry(
         if (snareDetected != other.snareDetected) return false
         if (dominantFrequencyHz != other.dominantFrequencyHz) return false
         if (pipelineLatencyMs != other.pipelineLatencyMs) return false
+        if (kickEnergy != other.kickEnergy) return false
+        if (sustainedBass != other.sustainedBass) return false
+        if (midEnergy != other.midEnergy) return false
+        if (highTransient != other.highTransient) return false
         if (!fftBars.contentEquals(other.fftBars)) return false
         return true
     }
@@ -65,6 +73,10 @@ data class AudioTelemetry(
         result = 31 * result + snareDetected.hashCode()
         result = 31 * result + dominantFrequencyHz.hashCode()
         result = 31 * result + pipelineLatencyMs.hashCode()
+        result = 31 * result + kickEnergy.hashCode()
+        result = 31 * result + sustainedBass.hashCode()
+        result = 31 * result + midEnergy.hashCode()
+        result = 31 * result + highTransient.hashCode()
         result = 31 * result + fftBars.contentHashCode()
         return result
     }
@@ -93,6 +105,15 @@ class VelvetAudioEngine(
     @Volatile private var liveFrequencyHz = 110f
     @Volatile private var liveKick = false
     @Volatile private var liveSnare = false
+    @Volatile private var liveKickEnergy = 0f
+    @Volatile private var liveSustainedBass = 0f
+    @Volatile private var liveMidEnergy = 0f
+    @Volatile private var liveHighTransient = 0f
+    private var prevLiveBass = 0f
+    private var prevLiveMids = 0f
+    private var prevLiveTreble = 0f
+    private var lastFftKickTimeMs = 0L
+    private var lastFftSnareTimeMs = 0L
     private val liveFftBars = FloatArray(64) { 0f }
     @Volatile private var isPlayerPrepared = false
 
@@ -480,10 +501,34 @@ class VelvetAudioEngine(
                             for (t in 39..minOf(63, liveFftBars.size - 1)) trebleSum += liveFftBars[t]
                             val trebleEnergy = trebleSum / 25f
 
-                            liveRms = (bassEnergy * 0.45f + midEnergy * 0.35f + trebleEnergy * 0.20f).coerceIn(0.05f, 1.0f)
+                            val nowMs = System.currentTimeMillis()
+                            val deltaBass = bassEnergy - prevLiveBass
+                            val deltaMids = midEnergy - prevLiveMids
+                            val deltaTreble = trebleEnergy - prevLiveTreble
+
+                            // Sharp bass onset detection (Kick hit)
+                            val isKickOnset = (deltaBass > 0.12f && bassEnergy > 0.28f && (nowMs - lastFftKickTimeMs > 90L))
+                            if (isKickOnset) {
+                                lastFftKickTimeMs = nowMs
+                                liveKick = true
+                                liveKickEnergy = (deltaBass * 2.2f + bassEnergy * 0.95f).coerceIn(0.6f, 2.5f)
+                            }
+                            prevLiveBass = if (bassEnergy > prevLiveBass) bassEnergy else prevLiveBass - (prevLiveBass - bassEnergy) * 0.35f
+
+                            // Mid/High transient onset (Snare/Clap hit)
+                            val isSnareOnset = ((deltaMids > 0.14f || deltaTreble > 0.16f) && (nowMs - lastFftSnareTimeMs > 80L))
+                            if (isSnareOnset) {
+                                lastFftSnareTimeMs = nowMs
+                                liveSnare = true
+                                liveHighTransient = (maxOf(deltaMids, deltaTreble) * 2.0f + midEnergy * 0.70f).coerceIn(0.4f, 2.0f)
+                            }
+                            prevLiveMids = if (midEnergy > prevLiveMids) midEnergy else prevLiveMids - (prevLiveMids - midEnergy) * 0.40f
+                            prevLiveTreble = if (trebleEnergy > prevLiveTreble) trebleEnergy else prevLiveTreble - (prevLiveTreble - trebleEnergy) * 0.40f
+
+                            liveSustainedBass = if (bassEnergy > 0.10f) bassEnergy else 0f
+                            liveMidEnergy = midEnergy
+                            liveRms = (bassEnergy * 0.40f + midEnergy * 0.35f + trebleEnergy * 0.25f).coerceIn(0f, 1.0f)
                             liveTransient = maxOf(bassEnergy, midEnergy * 0.90f, trebleEnergy * 0.85f)
-                            liveKick = bassEnergy > 0.40f && bassEnergy > midEnergy * 1.10f
-                            liveSnare = midEnergy > 0.35f && (midEnergy > bassEnergy * 0.88f || trebleEnergy > 0.32f)
                             liveFrequencyHz = (40f * Math.pow(16000.0 / 40.0, ((liveFftBars.indices.maxByOrNull { liveFftBars[it] } ?: 0).toFloat() / (barCount - 1)).toDouble())).toFloat().coerceIn(20f, 20_000f)
                         }
                     },
@@ -842,16 +887,22 @@ class VelvetAudioEngine(
                         s
                     } else isSnare
 
-                    val transient = if (visualizerActive) {
-                        liveTransient
-                    } else if (kick || snare) {
-                        0.88f + (0.12f * kotlin.random.Random.nextFloat())
-                    } else {
-                        (_telemetry.value.transientSpike * 0.78f).coerceAtLeast(0f)
-                    }
+                    val kickEnergy = if (visualizerActive) {
+                        val ke = liveKickEnergy
+                        liveKickEnergy = 0f
+                        ke
+                    } else if (kick) 1.25f else 0f
 
-                    val sustained = if (visualizerActive) liveRms else 0.45f + (0.35f * sin(step * 0.04f))
-                    val rms = if (visualizerActive) liveRms.coerceIn(0.05f, 1f) else (transient * 0.45f + sustained * 0.55f).coerceIn(0.1f, 1f)
+                    val highTransient = if (visualizerActive) {
+                        val ht = liveHighTransient
+                        liveHighTransient = 0f
+                        ht
+                    } else if (snare) 1.10f else 0f
+
+                    val sustained = if (visualizerActive) liveSustainedBass else 0.38f + (0.12f * sin(step * 0.04f))
+                    val rms = if (visualizerActive) liveRms.coerceIn(0f, 1f) else (if (kick) 0.82f else if (snare) 0.62f else 0.32f).coerceIn(0.04f, 1f)
+                    val transient = if (visualizerActive) liveTransient else maxOf(kickEnergy, highTransient, rms * 0.5f)
+
                     _telemetry.value = AudioTelemetry(
                         transientSpike = transient,
                         sustainedEnergy = sustained,
@@ -859,8 +910,12 @@ class VelvetAudioEngine(
                         kickDetected = kick,
                         snareDetected = snare,
                         dominantFrequencyHz = if (visualizerActive) liveFrequencyHz else if (kick) 55f else 220f + (sin(step * 0.08f) * 110f),
-                        pipelineLatencyMs = if (visualizerActive) 4L else (3L..6L).random(),
-                        fftBars = liveFftBars.clone()
+                        pipelineLatencyMs = if (visualizerActive) 4L else 4L,
+                        fftBars = liveFftBars.clone(),
+                        kickEnergy = kickEnergy,
+                        sustainedBass = sustained,
+                        midEnergy = if (visualizerActive) liveMidEnergy else 0.32f,
+                        highTransient = highTransient
                     )
                 } else {
                     // Freezing entirely when paused: retain the current fftBars strictly in place

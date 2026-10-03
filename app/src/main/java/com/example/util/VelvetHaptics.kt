@@ -31,75 +31,11 @@ object VelvetHaptics {
     }
 
     /**
-     * Instant, noticeable vibration burst when holding/activating a queue item to drag.
+     * Subtle, pleasant vibration when holding/activating a queue item to drag (fires once).
      */
     fun dragActivated(context: Context, view: View? = null) {
-        // Channel 1: View-level haptic feedback
         try {
-            val flags = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING or 2 // FLAG_IGNORE_GLOBAL_SETTING
-            view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, flags)
-        } catch (_: Throwable) {}
-
-        // Channel 2: Direct Hardware Vibrator
-        val vibrator = getVibrator(context) ?: return
-        if (!vibrator.hasVibrator()) return
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(55, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(55)
-            }
-        } catch (_: Throwable) {
-            try {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(55)
-            } catch (_: Throwable) {}
-        }
-    }
-
-    /**
-     * Tactile punch when crossing the 50% threshold (screen center) into Delete (red) or Play Next (green).
-     */
-    fun thresholdCrossed(context: Context, view: View? = null) {
-        // Channel 1: View-level haptic feedback
-        try {
-            val flags = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING or 2
-            view?.performHapticFeedback(HapticFeedbackConstants.CONFIRM, flags)
-        } catch (_: Throwable) {}
-
-        // Channel 2: Direct Hardware Vibrator
-        val vibrator = getVibrator(context) ?: return
-        if (!vibrator.hasVibrator()) return
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Crisp double-pulse for unmistakable tactile threshold confirmation
-                val timings = longArrayOf(0, 28, 40, 35)
-                val amplitudes = intArrayOf(0, 200, 0, 255)
-                vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 28, 40, 35), -1)
-            }
-        } catch (_: Throwable) {
-            try {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(40)
-            } catch (_: Throwable) {}
-        }
-    }
-
-    /**
-     * Crisp confirmation pulse when an action is executed (item removed or moved to next).
-     */
-    fun actionExecuted(context: Context, view: View? = null) {
-        try {
-            val flags = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING or 2
-            view?.performHapticFeedback(HapticFeedbackConstants.GESTURE_END, flags)
+            view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         } catch (_: Throwable) {}
 
         val vibrator = getVibrator(context) ?: return
@@ -109,10 +45,56 @@ object VelvetHaptics {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(35, VibrationEffect.DEFAULT_AMPLITUDE))
+                vibrator.vibrate(VibrationEffect.createOneShot(25, 120))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(35)
+                vibrator.vibrate(25)
+            }
+        } catch (_: Throwable) {}
+    }
+
+    /**
+     * Subtle micro-tick when crossing the swipe threshold.
+     */
+    fun thresholdCrossed(context: Context, view: View? = null) {
+        try {
+            view?.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        } catch (_: Throwable) {}
+
+        val vibrator = getVibrator(context) ?: return
+        if (!vibrator.hasVibrator()) return
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(15, 80))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(15)
+            }
+        } catch (_: Throwable) {}
+    }
+
+    /**
+     * Crisp subtle confirmation when an action is executed.
+     */
+    fun actionExecuted(context: Context, view: View? = null) {
+        try {
+            view?.performHapticFeedback(HapticFeedbackConstants.GESTURE_END)
+        } catch (_: Throwable) {}
+
+        val vibrator = getVibrator(context) ?: return
+        if (!vibrator.hasVibrator()) return
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(20, 100))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(20)
             }
         } catch (_: Throwable) {}
     }

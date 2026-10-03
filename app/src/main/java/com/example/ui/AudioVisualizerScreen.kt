@@ -23,6 +23,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.audio.AudioTelemetry
+import com.example.audio.VelvetVisualizerPhysicsEngine
+import com.example.audio.VisualizerBarLayout
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -78,6 +81,17 @@ fun RealTimeAudioPlayerVisualizer(
     barCount: Int = 32
 ) {
     val context = LocalContext.current
+
+    val physicsEngine = remember(barCount) {
+        VelvetVisualizerPhysicsEngine(
+            barCount = barCount,
+            layout = VisualizerBarLayout.NATURAL_SPECTRUM,
+            stiffness = 300f,
+            damping = 25f,
+            kickVelocityGain = 16f,
+            snareVelocityGain = 12f
+        )
+    }
 
     // Store array of normalized bar amplitudes (0.0f to 1.0f)
     val fftMagnitudes = remember { mutableStateListOf(*Array(barCount) { 0f }) }
@@ -154,22 +168,10 @@ fun RealTimeAudioPlayerVisualizer(
                                     rawBins[i] = (((db + trebleTiltDb) - minDb) / (maxDb - minDb)).coerceIn(0.05, 1.0).toFloat()
                                 }
 
-                                val peakBass = rawBins.take(6).maxOrNull() ?: 0.1f
-                                val balancedTargets = generateBalancedRippleSpectrum(
-                                    rawFft = rawBins,
-                                    barCount = barCount,
-                                    subBassEnergy = peakBass
-                                )
-
+                                val telem = AudioTelemetry(fftBars = rawBins)
+                                physicsEngine.update(telem, System.nanoTime(), isPlaying = true)
                                 for (i in 0 until barCount) {
-                                    val targetNormalized = balancedTargets[i]
-                                    val current = fftMagnitudes[i]
-                                    val smoothed = if (targetNormalized > current) {
-                                        targetNormalized // 100% Instant Attack on beat
-                                    } else {
-                                        current - (current - targetNormalized) * 0.32f // Fast gravitational drop
-                                    }
-                                    fftMagnitudes[i] = smoothed.coerceIn(0.05f, 1.0f)
+                                    fftMagnitudes[i] = physicsEngine.positions[i]
                                 }
                             }
                         },
@@ -229,8 +231,8 @@ fun RealTimeAudioPlayerVisualizer(
             val totalSpacing = spacing * (barCount - 1)
             val barWidth = (canvasWidth - totalSpacing) / barCount
 
-            fftMagnitudes.forEachIndexed { index, magnitude ->
-                val barHeight = canvasHeight * magnitude
+            fftMagnitudes.forEachIndexed { index, _ ->
+                val barHeight = physicsEngine.getProjectedBarHeight(index, canvasHeight, 4.dp.toPx())
                 val x = index * (barWidth + spacing)
                 val y = canvasHeight - barHeight
 

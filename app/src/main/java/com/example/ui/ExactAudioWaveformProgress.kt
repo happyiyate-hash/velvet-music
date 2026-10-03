@@ -32,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioTelemetry
+import com.example.audio.VelvetVisualizerPhysicsEngine
+import com.example.audio.VisualizerBarLayout
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.cos
@@ -141,23 +143,17 @@ fun ExactAudioWaveformProgress(
     var dragFraction by remember { mutableFloatStateOf(0f) }
     val displayFraction = if (isDragging) dragFraction else progressFraction
 
-    // 80 bars provides high spectral detail and perfect spacing across standard phone screens
+    // 100 bars provides high spectral detail and perfect spacing across standard phone screens
     val barCount = 100
-
-    // Calibrated baseline resting profile when paused or between beats
-    val restingProfile = remember(barCount) {
-        FloatArray(barCount) { i ->
-            val norm = i.toFloat() / (barCount - 1).coerceAtLeast(1)
-            val wave1 = abs(sin(norm * 3.14159f * 1.5f + 0.35f)) * 0.16f
-            val wave2 = abs(sin(norm * 3.14159f * 3.8f)) * 0.10f
-            val wave3 = abs(cos(norm * 3.14159f * 7.2f)) * 0.06f
-            (0.12f + wave1 + wave2 + wave3).coerceIn(0.12f, 0.32f)
-        }
-    }
-
-    // Persisted amplitudes across frames for natural, studio-grade attack/decay physics
-    val liveAmplitudes = remember(barCount) {
-        FloatArray(barCount) { i -> restingProfile[i] }
+    val physicsEngine = remember {
+        VelvetVisualizerPhysicsEngine(
+            barCount = barCount,
+            layout = VisualizerBarLayout.CENTER_BASS,
+            stiffness = 300f,
+            damping = 25f,
+            kickVelocityGain = 15f,
+            snareVelocityGain = 11f
+        )
     }
 
     // Continuous 60/120 FPS hardware animation ticker while playing
@@ -210,104 +206,26 @@ fun ExactAudioWaveformProgress(
         ) {
             if (size.width <= 0f || size.height <= 0f) return@Canvas
 
-            // Read frameTicker to drive frame-by-frame draw invalidate without recomposing
             val frameTime = frameTicker.longValue
-            val timeSeconds = (frameTime / 1_000_000L) * 0.003f
+            if (isPlaying) {
+                physicsEngine.update(telemetry, frameTime, isPlaying = true)
+            }
 
             val totalWidth = size.width
             val barWidth = 2.dp.toPx()
             val totalBarWidth = barWidth * barCount
             val barGap = if (barCount > 1) (totalWidth - totalBarWidth) / (barCount - 1) else 0f
 
-            // Strictly constrain height bounds so bars never go against canvas height
             val maxBarHeight = size.height
             val minBarHeight = 2.5.dp.toPx().coerceAtMost(maxBarHeight)
             val usableRange = (maxBarHeight - minBarHeight).coerceAtLeast(0f)
 
-            val rms = telemetry.rmsLevel.coerceIn(0f, 1f)
-            val transient = telemetry.transientSpike.coerceIn(0f, 1f)
-            val isKick = telemetry.kickDetected
-            val isSnare = telemetry.snareDetected
-            val domFreq = telemetry.dominantFrequencyHz.coerceIn(40f, 16000f)
-
-            // Normalized center of pitch/dominant frequency (0.0 to 1.0)
-            val domNorm = (log10(domFreq / 40f) / log10(400f)).coerceIn(0.08f, 0.92f)
-
-            // Highest beat impact (Bass & Kick)
-            val highestBeat = if (isKick) 0.92f else 0f
-
-            // Highest sound impact (Transients, highs & Snares)
-            val highestSound = transient
-
-            val fft = telemetry.fftBars
-            val hasLiveFft = fft.isNotEmpty()
-            val peakBass = if (hasLiveFft) {
-                var maxB = 0.08f
-                for (b in 0 until minOf(8, fft.size)) {
-                    if (fft[b] > maxB) maxB = fft[b]
-                }
-                maxB
-            } else {
-                highestBeat
-            }
-
-            val subBassEnergy = if (isKick) {
-                maxOf(peakBass * 1.25f, 0.85f)
-            } else if (hasLiveFft) {
-                peakBass
-            } else {
-                highestBeat
-            }
-
-            // Synthesize balanced spectrum if raw FFT is not yet available
-            val effectiveFft = if (hasLiveFft) {
-                fft
-            } else {
-                FloatArray(64) { idx ->
-                    val n = idx / 63f
-                    val w = sin(n * 3.14159f).coerceAtLeast(0f)
-                    (restingProfile.getOrElse(idx) { 0.2f } * 0.25f + rms * 0.40f * w + sin(idx * 0.42f + timeSeconds).toFloat() * 0.05f).coerceIn(0.06f, 0.75f)
-                }
-            }
-
-            val targetHeights = calculateCompressedWaveform(
-                rawFft = effectiveFft,
-                barCount = barCount,
-                subBassEnergy = subBassEnergy
-            )
-
             for (i in 0 until barCount) {
-                val targetFraction = if (isPlaying) {
-                    targetHeights[i]
-                } else {
-                    // Freezing entirely when paused: hold previous frame
-                    liveAmplitudes[i]
-                }
-
-                // Instant Beat Snap (100%) & Fast Snappy Falloff (0.48)
-                val current = liveAmplitudes[i]
-                val updated = if (isPlaying) {
-                    if (targetFraction > current) {
-                        targetFraction // Instant attack on beat
-                    } else {
-                        current - (current - targetFraction) * 0.48f // Fast gravitational drop
-                    }
-                } else {
-                    // FREEZING ENTIRELY WHEN PAUSED
-                    current
-                }
-                liveAmplitudes[i] = updated.coerceIn(0f, 1f)
-
-                // STRICT HEIGHT ENFORCEMENT:
-                // barHeight is strictly clamped between minBarHeight and maxBarHeight.
-                // barTop is strictly >= 0 and never exceeds size.height.
-                val clampedFraction = liveAmplitudes[i].coerceIn(0f, 1f)
-                val barHeight = (minBarHeight + usableRange * clampedFraction)
-                    .coerceIn(minBarHeight, maxBarHeight)
+                val barHeight = physicsEngine.getProjectedBarHeight(i, maxBarHeight, minBarHeight)
                 val barTop = size.height - barHeight
                 val barX = i * (barWidth + barGap)
 
-                // Mature color response: tips illuminate brightly on highest beats/sounds
+                val clampedFraction = if (usableRange > 0f) (barHeight - minBarHeight) / usableRange else 0f
                 val isPeak = clampedFraction > 0.78f
                 val tipColor = if (isPeak) {
                     Color.White.copy(alpha = 0.92f)

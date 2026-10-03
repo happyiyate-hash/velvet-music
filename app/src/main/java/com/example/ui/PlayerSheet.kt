@@ -175,6 +175,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.audio.AudioTelemetry
 import com.example.audio.RepeatMode
+import com.example.audio.VelvetVisualizerPhysicsEngine
+import com.example.audio.VisualizerBarLayout
 import com.example.media.ArtworkColorExtractor
 import com.example.media.ArtworkContrastAnalyzer
 import com.example.media.PlayerAdaptiveContrast
@@ -463,7 +465,6 @@ fun PlayerSheet(
             orderedQueueItems = mutable
             activeQueueDragIndex = to
             queueDragOffsetY -= rowHeightPx
-            VelvetHaptics.click(context)
         } else if (queueDragOffsetY <= -threshold && currentIndex > 0) {
             val to = currentIndex - 1
             val mutable = orderedQueueItems.toMutableList()
@@ -472,7 +473,6 @@ fun PlayerSheet(
             orderedQueueItems = mutable
             activeQueueDragIndex = to
             queueDragOffsetY += rowHeightPx
-            VelvetHaptics.click(context)
         }
     }
 
@@ -483,7 +483,6 @@ fun PlayerSheet(
         if (original >= 0 && final >= 0 && original != final) {
             onUpdateQueue?.invoke(orderedQueueItems)
             onReorderQueue?.invoke(original, final)
-            VelvetHaptics.actionExecuted(context)
         }
         val currentOffset = queueDragOffsetY
         if (abs(currentOffset) > 1f) {
@@ -988,7 +987,6 @@ fun PlayerSheet(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null
                                     ) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         onTogglePlayPause()
                                     }
                                     .testTag("player_stage2_play_pause"),
@@ -1133,7 +1131,6 @@ fun PlayerSheet(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     onTogglePlayPause()
                                 }
                             )
@@ -1739,7 +1736,16 @@ private fun PlayerBottomVerticalLines(
     lineColor: Color = Color.White
 ) {
     val lineCount = 76
-    val heights = remember(lineCount) { FloatArray(lineCount) { 0.08f } }
+    val physicsEngine = remember {
+        VelvetVisualizerPhysicsEngine(
+            barCount = lineCount,
+            layout = VisualizerBarLayout.SCATTERED_NEEDLES,
+            stiffness = 320f,
+            damping = 26f,
+            kickVelocityGain = 15f,
+            snareVelocityGain = 12f
+        )
+    }
     val frameTicker = remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(isPlaying) {
@@ -1752,120 +1758,21 @@ private fun PlayerBottomVerticalLines(
 
     Canvas(modifier = modifier) {
         if (size.width <= 0f || size.height <= 0f) return@Canvas
-        val time = frameTicker.longValue / 1_000_000_000f
-        val fft = telemetry.fftBars
-
-        // 1. Overall telemetry energy extraction
-        val subBass: Float
-        val punchBass: Float
-        val speechBody: Float
-        val treble: Float
-
-        if (fft.isNotEmpty()) {
-            var maxSb = 0f
-            for (idx in 0..minOf(4, fft.lastIndex)) {
-                if (fft[idx] > maxSb) maxSb = fft[idx]
-            }
-            subBass = maxSb
-
-            var sumPb = 0f
-            val pbEnd = minOf(12, fft.lastIndex)
-            val pbCount = (pbEnd - 5 + 1).coerceAtLeast(1)
-            for (idx in 5..pbEnd) sumPb += fft[idx]
-            punchBass = sumPb / pbCount
-
-            var sumSp = 0f
-            val spEnd = minOf(32, fft.lastIndex)
-            val spCount = (spEnd - 13 + 1).coerceAtLeast(1)
-            for (idx in 13..spEnd) sumSp += fft[idx]
-            speechBody = sumSp / spCount
-
-            var sumTr = 0f
-            val trEnd = minOf(63, fft.lastIndex)
-            val trCount = (trEnd - 36 + 1).coerceAtLeast(1)
-            for (idx in 36..trEnd) sumTr += fft[idx]
-            treble = sumTr / trCount
-        } else {
-            val rms = telemetry.rmsLevel.coerceIn(0f, 1f)
-            val transient = telemetry.transientSpike.coerceIn(0f, 1f)
-            val isKick = telemetry.kickDetected
-            val isSnare = telemetry.snareDetected
-            subBass = if (isKick) 0.95f else (rms * 0.72f).coerceIn(0.1f, 0.85f)
-            punchBass = if (isKick) 0.88f else (rms * 0.60f).coerceIn(0.1f, 0.75f)
-            speechBody = (rms * 0.65f + 0.15f * kotlin.math.sin(time * 6.5f)).coerceIn(0.1f, 0.80f)
-            treble = if (isSnare) 0.90f else (transient * 0.75f).coerceIn(0.08f, 0.75f)
+        val timeNanos = frameTicker.longValue
+        if (isPlaying) {
+            physicsEngine.update(telemetry, timeNanos, isPlaying = true)
         }
 
-        val totalBass = (subBass * 0.62f + punchBass * 0.38f).coerceIn(0f, 1f)
-        val isKickBeat = telemetry.kickDetected || (telemetry.transientSpike > 0.72f && totalBass > 0.55f)
-        val isSustainedVibration = subBass > 0.30f && (telemetry.sustainedEnergy > 0.35f || !isKickBeat)
-        val vibrationFrequency = 42f + subBass * 24f // 42Hz to 66Hz real acoustic bass vibration
+        val totalWidth = size.width
+        val minLineHeight = 2.dp.toPx()
 
-        // 2. Render each line independently with scattered frequency picking
         for (i in 0 until lineCount) {
-            val norm = i.toFloat() / (lineCount - 1).coerceAtLeast(1)
+            val norm = if (lineCount > 1) i.toFloat() / (lineCount - 1) else 0.5f
+            val lineHeight = physicsEngine.getProjectedBarHeight(i, size.height, minLineHeight)
+            val x = norm * totalWidth
 
-            // Scattered permutation ensures adjacent lines have completely different roles
-            val band = (i * 3 + (i / 4)) % 4
-            val vibPhase = i * 2.39996f // Golden angle phase divergence prevents clustering
-            val sens = 0.84f + (((i * 17) % 7) / 6f) * 0.26f // Individual line sensitivity
-            val dropSpeed = 0.44f + (((i * 13) % 5) / 4f) * 0.12f // Individual snappy drop speed
-
-            // Independent vibration flutter for bass lines during sustained vibration
-            val vibrationFlutter = if (isSustainedVibration) {
-                kotlin.math.sin(time * vibrationFrequency * 6.283f + vibPhase) * (0.16f * subBass.coerceIn(0f, 1f))
-            } else 0f
-
-            // Baseline organic breathing (individual rates per line)
-            val breathing = (kotlin.math.sin(time * (1.8f + (i % 4) * 0.35f) + i * 1.618f) * 0.5f + 0.5f) * 0.035f
-
-            val target = if (isPlaying) {
-                when (band) {
-                    0 -> { // SUB-BASS (Scattered everywhere across entire width)
-                        val binIndex = (i * 7) % 5
-                        val raw = if (fft.isNotEmpty()) fft[binIndex] else subBass
-                        val kickBoost = if (isKickBeat) 0.20f else 0f
-                        (0.08f + (raw * 0.78f + kickBoost) * sens + vibrationFlutter + breathing).coerceIn(0.06f, 0.95f)
-                    }
-                    2 -> { // PUNCH-BASS (Scattered everywhere across entire width)
-                        val binIndex = 5 + ((i * 7) % 7)
-                        val raw = if (fft.isNotEmpty()) fft[minOf(binIndex, fft.lastIndex)] else punchBass
-                        val kickBoost = if (isKickBeat) 0.15f else 0f
-                        (0.08f + (raw * 0.76f + kickBoost) * sens + (vibrationFlutter * 0.5f) + breathing).coerceIn(0.06f, 0.92f)
-                    }
-                    1 -> { // SPEECH & VOCAL ARTICULATION (Scattered everywhere across entire width)
-                        val binIndex = 12 + ((i * 11) % 24)
-                        val raw = if (fft.isNotEmpty()) fft[minOf(binIndex, fft.lastIndex)] else speechBody
-                        val vocalPulse = kotlin.math.sin(time * 8.5f + vibPhase) * 0.05f * speechBody
-                        (0.08f + (raw * 0.74f + vocalPulse) * sens + breathing).coerceIn(0.06f, 0.90f)
-                    }
-                    else -> { // TREBLE / HIGHS / AIR (Scattered everywhere across entire width)
-                        val binIndex = 36 + ((i * 13) % 28)
-                        val raw = if (fft.isNotEmpty()) fft[minOf(binIndex, fft.lastIndex)] else treble
-                        val snareBoost = if (telemetry.snareDetected) 0.30f else 0f
-                        (0.06f + (raw * 0.72f + snareBoost) * sens + breathing).coerceIn(0.06f, 0.88f)
-                    }
-                }
-            } else {
-                heights[i] // Freeze when paused
-            }
-
-            // 3. Studio Physics: 100% Instant Attack & Rapid Independent Descent
-            val current = heights[i]
-            heights[i] = if (isPlaying) {
-                if (target > current) {
-                    target // Instant attack: reaches peak on exact frame
-                } else {
-                    current - (current - target) * dropSpeed // Snappy independent drop
-                }
-            } else {
-                current
-            }
-
-            // 4. Draw independent crisp vertical line
-            val lineHeight = (size.height * heights[i]).coerceIn(2.dp.toPx(), size.height)
-            val x = norm * size.width
-            val isPeak = heights[i] > 0.72f
+            val virtualAmp = physicsEngine.positions[i]
+            val isPeak = virtualAmp > 0.85f
             val lineAlpha = if (isPeak) 0.95f else 0.65f
 
             drawLine(
@@ -1983,8 +1890,8 @@ private fun UpNextTrackRow(
             )
             val progress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
 
-            // The icon floats inward away from the edges by ~20% of the row width
-            val floatDistanceDp = with(density) { (rowWidthPx * 0.20f * progress).toDp() }
+            // The icon floats out from the very edge just a little bit (8.dp max float)
+            val floatDistanceDp = 8.dp * progress
             val iconAlpha = (progress * 3.5f).coerceIn(0f, 1f)
 
             Box(
@@ -1996,8 +1903,8 @@ private fun UpNextTrackRow(
                 Box(
                     modifier = Modifier
                         .padding(
-                            start = if (showingPlayNext) 12.dp + floatDistanceDp else 0.dp,
-                            end = if (!showingPlayNext) 12.dp + floatDistanceDp else 0.dp
+                            start = if (showingPlayNext) 14.dp + floatDistanceDp else 0.dp,
+                            end = if (!showingPlayNext) 14.dp + floatDistanceDp else 0.dp
                         )
                         .graphicsLayer { alpha = iconAlpha },
                     contentAlignment = Alignment.Center
@@ -2469,15 +2376,24 @@ fun NowPlayingWaveformProgress(
     var dragFraction by remember { mutableFloatStateOf(0f) }
     val displayFraction = if (isDragging) dragFraction else progressFraction
 
-    val barCount = 80    // Generate an authentic acoustic signature for the song
-    val baseProfile = remember(durationMs, barCount) {
-        FloatArray(barCount) { i ->
-            val norm = i.toFloat() / barCount
-            val wave1 = abs(sin(norm * 3.14159f * 1.8f + 0.35f))
-            val wave2 = abs(sin(norm * 3.14159f * 4.3f)) * 0.42f
-            val wave3 = abs(sin(norm * 3.14159f * 7.8f + 1.1f)) * 0.28f
-            val wave4 = abs(cos(norm * 3.14159f * 12.2f)) * 0.16f
-            (wave1 * 0.52f + wave2 + wave3 + wave4).coerceIn(0.18f, 0.95f)
+    val barCount = 80
+    val physicsEngine = remember {
+        VelvetVisualizerPhysicsEngine(
+            barCount = barCount,
+            layout = VisualizerBarLayout.CENTER_BASS,
+            stiffness = 300f,
+            damping = 25f,
+            kickVelocityGain = 15f,
+            snareVelocityGain = 11f
+        )
+    }
+    val frameTicker = remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isActive) {
+                withFrameNanos { frameTicker.longValue = it }
+            }
         }
     }
 
@@ -2517,6 +2433,11 @@ fun NowPlayingWaveformProgress(
                 .height(24.dp)
                 .graphicsLayer { alpha = waveformAlpha.coerceIn(0f, 1f) }
         ) {
+            val timeNanos = frameTicker.longValue
+            if (isPlaying) {
+                physicsEngine.update(telemetry, timeNanos, isPlaying = true)
+            }
+
             val totalWidth = size.width
             val barWidth = 1.3.dp.toPx()
             val totalBarWidth = barWidth * barCount
@@ -2524,48 +2445,16 @@ fun NowPlayingWaveformProgress(
             val maxBarHeight = size.height
             val minBarHeight = 2.5.dp.toPx()
 
-            val liveEnergy = if (isPlaying) telemetry.rmsLevel else 0.32f
-            val liveTransient = if (isPlaying) telemetry.transientSpike else 0f
-
-            val fft = telemetry.fftBars
-            val peakBass = if (fft.isNotEmpty()) {
-                var maxB = 0.08f
-                for (b in 0 until minOf(8, fft.size)) {
-                    if (fft[b] > maxB) maxB = fft[b]
-                }
-                maxB
-            } else if (telemetry.kickDetected) 0.85f else liveEnergy
-
-            val subBassEnergy = if (telemetry.kickDetected) {
-                maxOf(peakBass * 1.25f, 0.85f)
-            } else {
-                peakBass
-            }
-
-            val effectiveFft = if (fft.isNotEmpty()) {
-                fft
-            } else {
-                FloatArray(barCount) { idx ->
-                    val n = idx.toFloat() / barCount
-                    val wave = abs(sin(n * 3.14159f * 2.5f)).toFloat()
-                    (0.18f + 0.45f * liveEnergy * wave).coerceIn(0.06f, 0.75f)
-                }
-            }
-
-            val compressedTargets = calculateCompressedWaveform(
-                rawFft = effectiveFft,
-                barCount = barCount,
-                subBassEnergy = subBassEnergy
-            )
-
             for (i in 0 until barCount) {
                 val barX = i * (barWidth + barGap)
-                val targetFraction = if (isPlaying) compressedTargets[i] else 0.20f
-                val barHeight = (minBarHeight + (maxBarHeight - minBarHeight) * targetFraction).coerceIn(minBarHeight, maxBarHeight)
+                val barHeight = physicsEngine.getProjectedBarHeight(i, maxBarHeight, minBarHeight)
                 val barTop = size.height - barHeight
 
+                val isPlayed = (barX / totalWidth) <= displayFraction
+                val barColor = if (isPlayed) activeColor else activeColor.copy(alpha = 0.35f)
+
                 drawRoundRect(
-                    color = activeColor,
+                    color = barColor,
                     topLeft = Offset(barX, barTop),
                     size = Size(barWidth, barHeight),
                     cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
@@ -3043,62 +2932,25 @@ fun AudioVisualizerBottomSheet(
     }
 
     val bands = 32
-    val liveBandHeights = remember(bands) {
-        FloatArray(bands) { 0.12f }
-    }
-
-    // Capture and smooth real FFT frequency data
-    val fft = telemetry.fftBars
-    val hasFft = fft.isNotEmpty()
-
-    if (isPlaying) {
-        val peakBass = if (hasFft) {
-            var maxB = 0.10f
-            for (i in 0 until minOf(6, fft.size)) {
-                if (fft[i] > maxB) maxB = fft[i]
-            }
-            maxB
-        } else {
-            telemetry.rmsLevel
-        }
-
-        val subBassEnergy = if (telemetry.kickDetected) {
-            maxOf(peakBass * 1.25f, 0.85f)
-        } else if (hasFft) {
-            peakBass
-        } else {
-            telemetry.rmsLevel
-        }
-
-        val effectiveFft = if (hasFft) {
-            fft
-        } else {
-            FloatArray(bands) { b ->
-                val norm = b.toFloat() / (bands - 1).coerceAtLeast(1)
-                val wave = kotlin.math.abs(kotlin.math.sin(norm * 3.14f * 2.5f + (telemetry.rmsLevel * 4f))).toFloat()
-                (0.18f + 0.50f * telemetry.rmsLevel * wave).coerceIn(0.06f, 0.75f)
-            }
-        }
-
-        val targetHeights = calculateCompressedWaveform(
-            rawFft = effectiveFft,
+    val physicsEngine = remember {
+        VelvetVisualizerPhysicsEngine(
             barCount = bands,
-            subBassEnergy = subBassEnergy
+            layout = VisualizerBarLayout.NATURAL_SPECTRUM,
+            stiffness = 300f,
+            damping = 25f,
+            kickVelocityGain = 16f,
+            snareVelocityGain = 12f
         )
+    }
+    val frameTicker = remember { mutableLongStateOf(0L) }
 
-        for (b in 0 until bands) {
-            val target = targetHeights[b]
-            val current = liveBandHeights[b]
-            // Instant Beat Snap (100%) & Fast Snappy Falloff (0.48)
-            val updated = if (target > current) {
-                target // Instant attack on beat
-            } else {
-                current - (current - target) * 0.48f // Fast gravitational drop
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isActive) {
+                withFrameNanos { frameTicker.longValue = it }
             }
-            liveBandHeights[b] = updated.coerceIn(0.06f, 1.0f)
         }
     }
-    // When isPlaying == false: FREEZE ENTIRELY! Maintain current liveBandHeights values.
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -3157,15 +3009,20 @@ fun AudioVisualizerBottomSheet(
                     .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
+                val timeNanos = frameTicker.longValue
+                if (isPlaying) {
+                    physicsEngine.update(telemetry, timeNanos, isPlaying = true)
+                }
+
                 val canvasWidth = size.width
                 val canvasHeight = size.height
                 val spacing = 3.dp.toPx()
                 val totalSpacing = spacing * (bands - 1)
                 val barWidth = (canvasWidth - totalSpacing) / bands
+                val minHeight = 4.dp.toPx()
 
                 for (b in 0 until bands) {
-                    val hFraction = liveBandHeights[b]
-                    val barHeight = (canvasHeight * hFraction).coerceIn(4.dp.toPx(), canvasHeight)
+                    val barHeight = physicsEngine.getProjectedBarHeight(b, canvasHeight, minHeight)
                     val x = b * (barWidth + spacing)
                     val y = canvasHeight - barHeight
 
