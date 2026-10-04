@@ -426,6 +426,7 @@ fun PlayerSheet(
     }
 
     LaunchedEffect(orderedQueueItems, track.id) {
+        if (activeQueueDragId != null || settlingDragId != null) return@LaunchedEffect
         val currIdx = orderedQueueItems.indexOfFirst { it.id == track.id }
         val upcoming = if (currIdx != -1) {
             orderedQueueItems.drop(currIdx + 1).take(8) + orderedQueueItems.take(currIdx).takeLast(2)
@@ -457,12 +458,13 @@ fun PlayerSheet(
 
     fun updateQueueDrag(deltaY: Float, fromFinger: Boolean = false) {
         val dragId = activeQueueDragId ?: return
+        if (deltaY == 0f) return
         queueDragOffsetY += deltaY
         if (fromFinger && queueDragTouchY >= 0f) {
             queueDragTouchY += deltaY
         }
         val rowHeightPx = with(density) { 60.dp.toPx() }
-        val threshold = rowHeightPx * 0.48f
+        val threshold = rowHeightPx * 0.50f
 
         var currentIndex = orderedQueueItems.indexOfFirst { it.id == dragId }
         if (currentIndex == -1) return
@@ -476,26 +478,29 @@ fun PlayerSheet(
             queueDragOffsetY = minOf(threshold * 0.35f, queueDragOffsetY)
         }
 
-        while (queueDragOffsetY >= threshold && currentIndex < orderedQueueItems.lastIndex) {
-            val to = currentIndex + 1
-            val mutable = orderedQueueItems.toMutableList()
-            val moved = mutable.removeAt(currentIndex)
-            mutable.add(to, moved)
-            orderedQueueItems = mutable
-            activeQueueDragIndex = to
-            queueDragOffsetY -= rowHeightPx
-            currentIndex = to
-        }
-
-        while (queueDragOffsetY <= -threshold && currentIndex > 0) {
-            val to = currentIndex - 1
-            val mutable = orderedQueueItems.toMutableList()
-            val moved = mutable.removeAt(currentIndex)
-            mutable.add(to, moved)
-            orderedQueueItems = mutable
-            activeQueueDragIndex = to
-            queueDragOffsetY += rowHeightPx
-            currentIndex = to
+        // Strictly direction-isolated swapping to prevent hysteresis flicker loop
+        if (deltaY > 0f) {
+            while (queueDragOffsetY >= threshold && currentIndex < orderedQueueItems.lastIndex) {
+                val to = currentIndex + 1
+                val mutable = orderedQueueItems.toMutableList()
+                val moved = mutable.removeAt(currentIndex)
+                mutable.add(to, moved)
+                orderedQueueItems = mutable
+                activeQueueDragIndex = to
+                queueDragOffsetY -= rowHeightPx
+                currentIndex = to
+            }
+        } else if (deltaY < 0f) {
+            while (queueDragOffsetY <= -threshold && currentIndex > 0) {
+                val to = currentIndex - 1
+                val mutable = orderedQueueItems.toMutableList()
+                val moved = mutable.removeAt(currentIndex)
+                mutable.add(to, moved)
+                orderedQueueItems = mutable
+                activeQueueDragIndex = to
+                queueDragOffsetY += rowHeightPx
+                currentIndex = to
+            }
         }
     }
 
@@ -1366,9 +1371,9 @@ fun PlayerSheet(
                         // Automatic queue auto-scrolling when dragging near top or bottom edges
                         LaunchedEffect(activeQueueDragId) {
                             val currentDragId = activeQueueDragId ?: return@LaunchedEffect
-                            val topScrollZone = with(density) { 60.dp.toPx() }
-                            val bottomScrollZone = with(density) { 85.dp.toPx() }
-                            val maxStepPx = with(density) { 9.dp.toPx() }
+                            val topScrollZone = with(density) { 130.dp.toPx() }
+                            val bottomScrollZone = with(density) { 140.dp.toPx() }
+                            val maxStepPx = with(density) { 11.5.dp.toPx() }
 
                             while (isActive && activeQueueDragId == currentDragId) {
                                 val layoutInfo = queueListState.layoutInfo
@@ -1379,12 +1384,12 @@ fun PlayerSheet(
                                     val scrollDelta = when {
                                         // Auto-scroll UP: ONLY when finger is held in top zone AND queue can scroll backward
                                         queueListState.canScrollBackward && touchY < topScrollZone -> {
-                                            val factor = ((topScrollZone - touchY) / topScrollZone).coerceIn(0.2f, 1.8f)
+                                            val factor = ((topScrollZone - touchY) / topScrollZone).coerceIn(0.25f, 2.0f)
                                             -(maxStepPx * factor)
                                         }
                                         // Auto-scroll DOWN: ONLY when finger is held in bottom zone AND queue can scroll forward
                                         queueListState.canScrollForward && touchY > (viewportHeight - bottomScrollZone) -> {
-                                            val factor = ((touchY - (viewportHeight - bottomScrollZone)) / bottomScrollZone).coerceIn(0.2f, 1.8f)
+                                            val factor = ((touchY - (viewportHeight - bottomScrollZone)) / bottomScrollZone).coerceIn(0.25f, 2.0f)
                                             (maxStepPx * factor)
                                         }
                                         else -> 0f
