@@ -24,9 +24,16 @@ android {
     val acrHost = (System.getenv("ACRCLOUD_HOST") ?: "").replace("\"", "\\\"")
     val acrKey = (System.getenv("ACRCLOUD_ACCESS_KEY") ?: "").replace("\"", "\\\"")
     val acrSecret = (System.getenv("ACRCLOUD_ACCESS_SECRET") ?: "").replace("\"", "\\\"")
+    val admobAppId = "ca-app-pub-5201231396499174~5411308963"
+    val appOpenId = "ca-app-pub-5201231396499174/5630052387"
+    val rewardedId = "ca-app-pub-5201231396499174/9210953174"
+    manifestPlaceholders["admobAppId"] = admobAppId
     buildConfigField("String", "ACRCLOUD_HOST", "\"$acrHost\"")
     buildConfigField("String", "ACRCLOUD_ACCESS_KEY", "\"$acrKey\"")
     buildConfigField("String", "ACRCLOUD_ACCESS_SECRET", "\"$acrSecret\"")
+    buildConfigField("String", "ADMOB_APP_ID", "\"$admobAppId\"")
+    buildConfigField("String", "ADMOB_APP_OPEN_AD_UNIT_ID", "\"$appOpenId\"")
+    buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", "\"$rewardedId\"")
   }
 
   signingConfigs {
@@ -81,6 +88,7 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("ADMOB_.*")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
@@ -103,6 +111,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.core.splashscreen)
+  implementation(libs.play.services.ads)
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)

@@ -1,6 +1,8 @@
 package com.example.ui
 
+import android.app.Activity
 import android.widget.Toast
+import com.example.ads.AdMobManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -33,6 +35,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FolderOpen
@@ -262,6 +265,7 @@ private fun VelvetTopHeaderCard(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -337,6 +341,27 @@ private fun VelvetTopHeaderCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 0. Rewards / VIP AdMob bonus
+                HeaderActionPill(
+                    icon = Icons.Default.CardGiftcard,
+                    label = "Rewards",
+                    isSelected = false,
+                    onClick = {
+                        val activity = context as? Activity ?: AdMobManager.currentActivity
+                        if (activity != null) {
+                            AdMobManager.showRewardedAd(
+                                activity = activity,
+                                onRewardEarned = { reward ->
+                                    Toast.makeText(context, "🎁 Reward Unlocked: +${reward.amount} VIP credits!", Toast.LENGTH_SHORT).show()
+                                },
+                                onAdDismissed = {}
+                            )
+                        } else {
+                            Toast.makeText(context, "Ad loading...", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+
                 // 1. Library
                 HeaderActionPill(
                     icon = Icons.Default.LibraryMusic,

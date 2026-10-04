@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -7,6 +8,8 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.example.ads.AdMobManager
+import kotlinx.coroutines.delay
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -220,6 +223,24 @@ fun SingToSearchSheet(
         }
     }
 
+    // Automatically trigger Google AdMob ad once the music was found
+    var hasTriggeredAdForMatch by remember { mutableStateOf(false) }
+    LaunchedEffect(state) {
+        if (state is HumRecognitionState.Matched && !hasTriggeredAdForMatch) {
+            hasTriggeredAdForMatch = true
+            val activity = context as? Activity ?: AdMobManager.currentActivity
+            if (activity != null) {
+                delay(650L) // Subtle pause allowing user to observe the matched song transition first
+                AdMobManager.showRewardedAd(
+                    activity = activity,
+                    onRewardEarned = { reward ->
+                        android.util.Log.d("SingToSearch", "Rewarded ad completed after song match: ${reward.amount}")
+                    }
+                )
+            }
+        }
+    }
+
     // Modal root: strictly consumes all gestures and clicks so nothing bleeds through
     Box(
         modifier = Modifier
@@ -400,6 +421,7 @@ fun SingToSearchSheet(
                             onDismiss()
                         },
                         onRestartMic = {
+                            hasTriggeredAdForMatch = false
                             recognitionEngine.startListening(context, libraryTracks)
                         },
                         onClose = {
