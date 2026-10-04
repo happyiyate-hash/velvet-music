@@ -418,6 +418,7 @@ fun PlayerSheet(
     var activeQueueDragIndex by remember { mutableIntStateOf(-1) }
     var activeQueueDragOriginalIndex by remember { mutableIntStateOf(-1) }
     var queueDragOffsetY by remember { mutableFloatStateOf(0f) }
+    var queueDragTouchY by remember { mutableFloatStateOf(-1f) }
     val queueSettleAnim = remember { Animatable(0f) }
 
     LaunchedEffect(queueItems) {
@@ -438,7 +439,7 @@ fun PlayerSheet(
         }
     }
 
-    fun beginQueueDrag(id: String, canDrag: Boolean = true) {
+    fun beginQueueDrag(id: String, touchYInItem: Float = 30f, canDrag: Boolean = true) {
         if (!canDrag || activeQueueDragId != null || settlingDragId != null) return
         val realIndex = orderedQueueItems.indexOfFirst { it.id == id }
         if (realIndex == -1) return
@@ -446,12 +447,20 @@ fun PlayerSheet(
         activeQueueDragIndex = realIndex
         activeQueueDragOriginalIndex = realIndex
         queueDragOffsetY = 0f
+
+        val itemOffset = queueListState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.key == id }?.offset
+            ?: ((realIndex - queueListState.firstVisibleItemIndex) * with(density) { 60.dp.toPx() }.toInt())
+        queueDragTouchY = itemOffset + touchYInItem
         VelvetHaptics.dragActivated(context)
     }
 
-    fun updateQueueDrag(deltaY: Float) {
+    fun updateQueueDrag(deltaY: Float, fromFinger: Boolean = false) {
         val dragId = activeQueueDragId ?: return
         queueDragOffsetY += deltaY
+        if (fromFinger && queueDragTouchY >= 0f) {
+            queueDragTouchY += deltaY
+        }
         val rowHeightPx = with(density) { 60.dp.toPx() }
         val threshold = rowHeightPx * 0.48f
 
@@ -494,6 +503,7 @@ fun PlayerSheet(
         val dragId = activeQueueDragId ?: return
         val final = orderedQueueItems.indexOfFirst { it.id == dragId }
         val original = activeQueueDragOriginalIndex
+        queueDragTouchY = -1f
         if (original >= 0 && final >= 0 && original != final) {
             onUpdateQueue?.invoke(orderedQueueItems)
             onReorderQueue?.invoke(original, final)
@@ -1356,30 +1366,25 @@ fun PlayerSheet(
                         // Automatic queue auto-scrolling when dragging near top or bottom edges
                         LaunchedEffect(activeQueueDragId) {
                             val currentDragId = activeQueueDragId ?: return@LaunchedEffect
-                            val edgeZonePx = with(density) { 68.dp.toPx() }
-                            val maxStepPx = with(density) { 9.5.dp.toPx() }
+                            val topScrollZone = with(density) { 60.dp.toPx() }
+                            val bottomScrollZone = with(density) { 85.dp.toPx() }
+                            val maxStepPx = with(density) { 9.dp.toPx() }
 
                             while (isActive && activeQueueDragId == currentDragId) {
                                 val layoutInfo = queueListState.layoutInfo
                                 val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-                                val visibleItems = layoutInfo.visibleItemsInfo
-                                val draggedItem = visibleItems.firstOrNull { it.key == currentDragId }
+                                val touchY = queueDragTouchY
 
-                                if (draggedItem != null && viewportHeight > 0) {
-                                    val itemTop = draggedItem.offset + queueDragOffsetY
-                                    val itemBottom = itemTop + draggedItem.size
-
+                                if (touchY >= 0f && viewportHeight > 0) {
                                     val scrollDelta = when {
-                                        // Auto-scroll UP: ONLY if list CAN scroll backward (never when already at top),
-                                        // AND the item is dragged into top edge zone while user is pulling/holding upward (queueDragOffsetY <= 0f)
-                                        queueListState.canScrollBackward && itemTop < edgeZonePx && queueDragOffsetY <= 0f -> {
-                                            val factor = ((edgeZonePx - itemTop) / edgeZonePx).coerceIn(0.25f, 2.2f)
+                                        // Auto-scroll UP: ONLY when finger is held in top zone AND queue can scroll backward
+                                        queueListState.canScrollBackward && touchY < topScrollZone -> {
+                                            val factor = ((topScrollZone - touchY) / topScrollZone).coerceIn(0.2f, 1.8f)
                                             -(maxStepPx * factor)
                                         }
-                                        // Auto-scroll DOWN: ONLY if list CAN scroll forward (never when already at the very end),
-                                        // AND the item is dragged into bottom edge zone while user is pulling/holding downward (queueDragOffsetY >= 0f)
-                                        queueListState.canScrollForward && itemBottom > (viewportHeight - edgeZonePx) && queueDragOffsetY >= 0f -> {
-                                            val factor = ((itemBottom - (viewportHeight - edgeZonePx)) / edgeZonePx).coerceIn(0.25f, 2.2f)
+                                        // Auto-scroll DOWN: ONLY when finger is held in bottom zone AND queue can scroll forward
+                                        queueListState.canScrollForward && touchY > (viewportHeight - bottomScrollZone) -> {
+                                            val factor = ((touchY - (viewportHeight - bottomScrollZone)) / bottomScrollZone).coerceIn(0.2f, 1.8f)
                                             (maxStepPx * factor)
                                         }
                                         else -> 0f
@@ -1388,9 +1393,8 @@ fun PlayerSheet(
                                     if (scrollDelta != 0f) {
                                         val consumed = queueListState.scrollBy(scrollDelta)
                                         if (consumed != 0f) {
-                                            // When the list scrolls by `consumed`, the dragged item moves relative to the list items.
-                                            // Feeding `consumed` to updateQueueDrag causes the item to continuously reorder with scrolling tracks!
-                                            updateQueueDrag(consumed)
+                                            // When list scrolls beneath the held finger, re-slot items
+                                            updateQueueDrag(consumed, fromFinger = false)
                                         }
                                     }
                                 }
@@ -1445,8 +1449,8 @@ fun PlayerSheet(
                                             onUpdateQueue?.invoke(updated)
                                         }
                                     },
-                                    onDragStart = { beginQueueDrag(queueTrack.id) },
-                                    onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy) },
+                                    onDragStart = { touchY -> beginQueueDrag(queueTrack.id, touchY) },
+                                    onDragBy = { dy -> if (activeQueueDragId == queueTrack.id) updateQueueDrag(dy, fromFinger = true) },
                                     onDragEnd = { if (activeQueueDragId == queueTrack.id) finishQueueDrag() },
                                     isDragging = isItemElevated,
                                     dragOffsetY = if (isItemElevated) queueDragOffsetY else 0f,
@@ -1862,7 +1866,7 @@ private fun UpNextTrackRow(
     onClick: () -> Unit,
     onPlayNext: () -> Unit,
     onDelete: () -> Unit,
-    onDragStart: () -> Unit,
+    onDragStart: (Float) -> Unit,
     onDragBy: (Float) -> Unit,
     onDragEnd: () -> Unit,
     isDragging: Boolean,
@@ -1956,8 +1960,8 @@ private fun UpNextTrackRow(
             val progress = (abs(swipeOffset) / thresholdPx).coerceIn(0f, 1f)
 
             // The icon starts coming out from the very ending of the screen (starts at 2.dp),
-            // and smoothly floats out to 26.dp as shown in the design
-            val floatDistanceDp = 2.dp + (24.dp * progress)
+            // and smoothly floats out to 20.dp as shown in the design
+            val floatDistanceDp = 2.dp + (18.dp * progress)
             val iconAlpha = (progress * 3.5f).coerceIn(0f, 1f)
 
             Box(
@@ -2007,9 +2011,9 @@ private fun UpNextTrackRow(
                 )
                 .pointerInput(track.id) {
                     detectDragGesturesAfterLongPress(
-                        onDragStart = {
+                        onDragStart = { offset ->
                             swipeOffset = 0f
-                            onDragStart()
+                            onDragStart(offset.y)
                         },
                         onDragEnd = onDragEnd,
                         onDragCancel = onDragEnd,
@@ -2132,7 +2136,7 @@ private fun UpNextTrackRow(
                     .size(width = 44.dp, height = 48.dp)
                     .pointerInput(track.id) {
                         detectDragGestures(
-                            onDragStart = { swipeOffset = 0f; onDragStart() },
+                            onDragStart = { offset -> swipeOffset = 0f; onDragStart(offset.y) },
                             onDragEnd = onDragEnd,
                             onDragCancel = onDragEnd,
                             onDrag = { change, amount -> change.consume(); onDragBy(amount.y) }
