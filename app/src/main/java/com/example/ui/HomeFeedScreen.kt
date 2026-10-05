@@ -35,6 +35,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
@@ -128,6 +129,7 @@ fun HomeFeedScreen(
     var showFoldersSheet by remember { mutableStateOf(false) }
     var showTempoSheet by remember { mutableStateOf(false) }
     var showAudioFxSheet by remember { mutableStateOf(false) }
+    var showAdDiagnosticsDialog by remember { mutableStateOf(false) }
 
     val displayTracks = remember(baseTracks, activeFilter, recentlyAddedTracks, favoriteTrackIds) {
         when (activeFilter) {
@@ -181,7 +183,8 @@ fun HomeFeedScreen(
                     Toast.makeText(context, "Shuffling library", Toast.LENGTH_SHORT).show()
                 },
                 onOpenSearch = onOpenSearch,
-                onOpenSettings = onOpenSettings
+                onOpenSettings = onOpenSettings,
+                onOpenAdDiagnostics = { showAdDiagnosticsDialog = true }
             )
 
             // 3. MAIN BACKGROUND MUSIC LIST:
@@ -240,6 +243,9 @@ fun HomeFeedScreen(
     if (showAudioFxSheet) {
         AudioFxBottomSheet(onDismiss = { showAudioFxSheet = false })
     }
+    if (showAdDiagnosticsDialog) {
+        AdMobDiagnosticsDialog(onDismiss = { showAdDiagnosticsDialog = false })
+    }
 }
 
 /**
@@ -263,6 +269,7 @@ private fun VelvetTopHeaderCard(
     onShuffleAll: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAdDiagnostics: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -354,12 +361,24 @@ private fun VelvetTopHeaderCard(
                                 onRewardEarned = { reward ->
                                     Toast.makeText(context, "🎁 Reward Unlocked: +${reward.amount} VIP credits!", Toast.LENGTH_SHORT).show()
                                 },
+                                onAdFailedToShow = { err ->
+                                    Toast.makeText(context, "⚠️ Ad notice: ${err.errorName}", Toast.LENGTH_SHORT).show()
+                                    onOpenAdDiagnostics()
+                                },
                                 onAdDismissed = {}
                             )
                         } else {
                             Toast.makeText(context, "Ad loading...", Toast.LENGTH_SHORT).show()
                         }
                     }
+                )
+
+                // 0b. AdMob Diagnostics & Error Inspector
+                HeaderActionPill(
+                    icon = Icons.Default.BugReport,
+                    label = "Ad Diagnostics",
+                    isSelected = false,
+                    onClick = onOpenAdDiagnostics
                 )
 
                 // 1. Library

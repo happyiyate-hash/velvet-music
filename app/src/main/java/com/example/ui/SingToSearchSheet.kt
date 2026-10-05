@@ -70,6 +70,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -225,6 +226,9 @@ fun SingToSearchSheet(
 
     // Automatically trigger Google AdMob ad once the music was found
     var hasTriggeredAdForMatch by remember { mutableStateOf(false) }
+    var adNoticeForMatch by remember { mutableStateOf<String?>(null) }
+    var showAdDiagnosticsInMatch by remember { mutableStateOf(false) }
+
     LaunchedEffect(state) {
         if (state is HumRecognitionState.Matched && !hasTriggeredAdForMatch) {
             hasTriggeredAdForMatch = true
@@ -235,6 +239,9 @@ fun SingToSearchSheet(
                     activity = activity,
                     onRewardEarned = { reward ->
                         android.util.Log.d("SingToSearch", "Rewarded ad completed after song match: ${reward.amount}")
+                    },
+                    onAdFailedToShow = { err ->
+                        adNoticeForMatch = err.errorName
                     }
                 )
             }
@@ -422,6 +429,7 @@ fun SingToSearchSheet(
                         },
                         onRestartMic = {
                             hasTriggeredAdForMatch = false
+                            adNoticeForMatch = null
                             recognitionEngine.startListening(context, libraryTracks)
                         },
                         onClose = {
@@ -484,6 +492,39 @@ fun SingToSearchSheet(
                     }
                 )
             }
+
+            // Floating Ad notice banner if ad failed or is not ready
+            if (adNoticeForMatch != null && state is HumRecognitionState.Matched) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFF261214),
+                    border = BorderStroke(1.dp, Color(0xFFE50914).copy(alpha = 0.8f)),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = topStatusBarInset + 64.dp, start = 16.dp, end = 16.dp)
+                        .clickable { showAdDiagnosticsInMatch = true }
+                        .testTag("admob_error_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Ad Notice: ${adNoticeForMatch} • Tap to Copy Error",
+                            color = Color(0xFFFFCDD2),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
         }
 
         // Fullscreen diagnostics modal overlay
@@ -491,6 +532,12 @@ fun SingToSearchSheet(
             RecognitionDiagnosticsModal(
                 diagnostics = activeDiagnostics,
                 onClose = { showDiagnosticsModal = false }
+            )
+        }
+
+        if (showAdDiagnosticsInMatch) {
+            AdMobDiagnosticsDialog(
+                onDismiss = { showAdDiagnosticsInMatch = false }
             )
         }
     }
