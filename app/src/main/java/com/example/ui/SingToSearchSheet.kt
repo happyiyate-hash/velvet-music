@@ -8,7 +8,6 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.example.ads.AdMobManager
 import kotlinx.coroutines.delay
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -224,30 +223,6 @@ fun SingToSearchSheet(
         }
     }
 
-    // Automatically trigger Google AdMob ad once the music was found
-    var hasTriggeredAdForMatch by remember { mutableStateOf(false) }
-    var adNoticeForMatch by remember { mutableStateOf<String?>(null) }
-    var showAdDiagnosticsInMatch by remember { mutableStateOf(false) }
-
-    LaunchedEffect(state) {
-        if (state is HumRecognitionState.Matched && !hasTriggeredAdForMatch) {
-            hasTriggeredAdForMatch = true
-            val activity = context as? Activity ?: AdMobManager.currentActivity
-            if (activity != null) {
-                delay(650L) // Subtle pause allowing user to observe the matched song transition first
-                AdMobManager.showRewardedAd(
-                    activity = activity,
-                    onRewardEarned = { reward ->
-                        android.util.Log.d("SingToSearch", "Rewarded ad completed after song match: ${reward.amount}")
-                    },
-                    onAdFailedToShow = { err ->
-                        adNoticeForMatch = err.errorName
-                    }
-                )
-            }
-        }
-    }
-
     // Modal root: strictly consumes all gestures and clicks so nothing bleeds through
     Box(
         modifier = Modifier
@@ -428,8 +403,6 @@ fun SingToSearchSheet(
                             onDismiss()
                         },
                         onRestartMic = {
-                            hasTriggeredAdForMatch = false
-                            adNoticeForMatch = null
                             recognitionEngine.startListening(context, libraryTracks)
                         },
                         onClose = {
@@ -492,39 +465,6 @@ fun SingToSearchSheet(
                     }
                 )
             }
-
-            // Floating Ad notice banner if ad failed or is not ready
-            if (adNoticeForMatch != null && state is HumRecognitionState.Matched) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF261214),
-                    border = BorderStroke(1.dp, Color(0xFFE50914).copy(alpha = 0.8f)),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = topStatusBarInset + 64.dp, start = 16.dp, end = 16.dp)
-                        .clickable { showAdDiagnosticsInMatch = true }
-                        .testTag("admob_error_banner")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = Color(0xFFFF5252),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Ad Notice: ${adNoticeForMatch} • Tap to Copy Error",
-                            color = Color(0xFFFFCDD2),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
         }
 
         // Fullscreen diagnostics modal overlay
@@ -532,12 +472,6 @@ fun SingToSearchSheet(
             RecognitionDiagnosticsModal(
                 diagnostics = activeDiagnostics,
                 onClose = { showDiagnosticsModal = false }
-            )
-        }
-
-        if (showAdDiagnosticsInMatch) {
-            AdMobDiagnosticsDialog(
-                onDismiss = { showAdDiagnosticsInMatch = false }
             )
         }
     }

@@ -218,7 +218,7 @@ fun AdMobDiagnosticsDialog(
                                         AdMobManager.showRewardedAd(
                                             activity = activity,
                                             onRewardEarned = {
-                                                Toast.makeText(context, "🎉 Reward Earned: +${it.amount} ${it.type}!", Toast.LENGTH_LONG).show()
+                                                Toast.makeText(context, "🎉 Reward Earned!", Toast.LENGTH_LONG).show()
                                             },
                                             onAdFailedToShow = { err ->
                                                 Toast.makeText(context, "Ad show failed: ${err.errorName}", Toast.LENGTH_LONG).show()

@@ -8,7 +8,6 @@ import androidx.activity.enableEdgeToEdge
 import com.example.media.DeviceMediaManager
 import com.example.media.VelvetArtworkCache
 import com.example.model.SampleData
-import com.example.ads.AdMobManager
 import com.example.ui.VelvetApp
 import com.example.ui.VelvetImageLoader
 import com.example.ui.theme.VelvetTheme
@@ -25,9 +24,6 @@ class MainActivity : ComponentActivity() {
             VelvetArtworkCache.warmCache(this, cachedTracks)
         }
         enableEdgeToEdge()
-
-        // Trigger Google AdMob App Open Ad on startup if ready
-        AdMobManager.showAppOpenAdIfAvailable(this)
 
         setContent {
             VelvetTheme {
